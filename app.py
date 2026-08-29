@@ -1,5 +1,5 @@
 """
-app.py - Tablero de Control Cuantitativo Top 50 Acciones (John Murphy Confluencia - 100% Datos)
+app.py - Tablero de Control Cuantitativo Top 50 Acciones (John Murphy Confluencia & Smart Money)
 """
 
 import streamlit as st
@@ -8,9 +8,7 @@ import numpy as np
 from datetime import datetime
 from data_loader import (
     load_all_stocks_data,
-    TOP_50_DEFAULT,
-    TOP_TECH,
-    TOP_DIVIDEND_VALUE
+    TOP_50_DEFAULT
 )
 from components.alerts_panel import render_alerts_panel
 from components.kpi_cards import render_kpi_cards
@@ -18,7 +16,7 @@ from components.screener_table import render_screener_table
 
 # 1. Configuración de página
 st.set_page_config(
-    page_title="Tablero Top 50 | Confluencia Cuantitativa",
+    page_title="Tablero Cuantitativo | Confluencia & Smart Money",
     page_icon="🚦",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -52,9 +50,9 @@ def main():
     header_col1, header_col2 = st.columns([4, 1])
 
     with header_col1:
-        st.markdown('<div class="main-title">🚦 Tablero Cuantitativo: Top 50 Acciones</div>', unsafe_allow_html=True)
+        st.markdown('<div class="main-title">🚦 Tablero Cuantitativo: Confluencia & Smart Money</div>', unsafe_allow_html=True)
         current_time_str = datetime.now().strftime("%H:%M:%S")
-        st.markdown(f'<div class="sub-title">Algoritmo de Confluencia (John Murphy) & Valuación Fundamental | 🕒 <i>Última recarga: {current_time_str}</i></div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="sub-title">Algoritmo de Confluencia (John Murphy) + Flujo Institucional (OBV) & Valuación | 🕒 <i>Última recarga: {current_time_str}</i></div>', unsafe_allow_html=True)
 
     with header_col2:
         st.markdown("<div style='padding-top: 10px;'></div>", unsafe_allow_html=True)
@@ -63,31 +61,25 @@ def main():
             st.rerun()
 
     # ----------------------------------------------------
-    # SIDEBAR: Selección de Universo, Temporalidad y Filtros
+    # SIDEBAR: Selección de Mercado, Temporalidad y Filtros
     # ----------------------------------------------------
-    st.sidebar.header("⚙️ Configuración del Universo")
+    st.sidebar.header("🌐 Mercados")
 
-    preset_option = st.sidebar.selectbox(
-        "Seleccionar Grupo de Acciones:",
-        ["Top 50 S&P / Mega-Caps (Por Defecto)", "Top Tech & Semiconductores", "Top Dividend & Value", "Personalizado (Ingresar Tickers)"]
+    market_option = st.sidebar.selectbox(
+        "Seleccionar Mercado (Dashboard):",
+        ["Acciones USA (S&P 500)", "Criptomonedas", "Acciones Argentinas (Merval)"]
     )
 
-    if preset_option == "Top 50 S&P / Mega-Caps (Por Defecto)":
-        tickers_list = TOP_50_DEFAULT
-    elif preset_option == "Top Tech & Semiconductores":
-        tickers_list = TOP_TECH
-    elif preset_option == "Top Dividend & Value":
-        tickers_list = TOP_DIVIDEND_VALUE
-    else:
-        custom_input = st.sidebar.text_area(
-            "Ingresa tickers separados por coma:",
-            value="AAPL, NVDA, MSFT, AMZN, GOOGL, META, TSLA, JPM, V, XOM"
-        )
-        tickers_list = [t.strip().upper() for t in custom_input.split(",") if t.strip()]
+    if market_option != "Acciones USA (S&P 500)":
+        st.sidebar.markdown("---")
+        st.info(f"🚧 **{market_option}**: Módulo en desarrollo. Próximamente disponible.")
+        return
+
+    tickers_list = TOP_50_DEFAULT
 
     # Selector de Temporalidad (Daily vs Weekly)
     timeframe_choice = st.sidebar.radio(
-        "⏱️ Temporalidad Técnica (RSI, Medias, Confluencia):",
+        "⏱️ Temporalidad Técnica (RSI, Medias, OBV):",
         ["☀️ Diario (1D)", "📅 Semanal (1W)"],
         help="Elige si deseas calcular los indicadores en velas diarias o semanales"
     )
@@ -95,11 +87,11 @@ def main():
     timeframe_label = "Semanal" if "Semanal" in timeframe_choice else "Diario"
 
     # Cargar datos
-    with st.spinner(f"⏳ Extrayendo datos en vivo ({timeframe_label}) y calculando confluencias..."):
+    with st.spinner(f"⏳ Extrayendo datos en vivo ({timeframe_label}) y calculando confluencias con OBV..."):
         df_summary, _ = load_all_stocks_data(tickers_list, timeframe=timeframe)
 
     if df_summary.empty:
-        st.error("No se pudieron cargar los datos de las acciones. Verifica tu conexión a internet o los tickers ingresados.")
+        st.error("No se pudieron cargar los datos de las acciones. Verifica tu conexión a internet.")
         return
 
     # ----------------------------------------------------
@@ -114,12 +106,10 @@ def main():
         ["Todas las Acciones", "🔴 Solo Venta / Rotar", "🟢 Solo Compra / Swing", "🚨 Solo Squeezes"]
     )
 
-    # Filtro por Sector
-    available_sectors = sorted(list(df_summary["Sector"].dropna().unique()))
-    selected_sectors = st.sidebar.multiselect(
-        "Filtrar por Sector:",
-        options=available_sectors,
-        default=available_sectors
+    # Filtro por Flujo Institucional
+    flow_filter = st.sidebar.selectbox(
+        "Filtrar por Smart Money (OBV):",
+        ["Todos los Flujos", "🐳 Solo Acumulación (OBV > SMA 20)", "📉 Solo Distribución (OBV < SMA 20)"]
     )
 
     # Filtro por RSI (14)
@@ -134,7 +124,7 @@ def main():
     # Filtro por Tendencia vs SMA 200
     sma200_filter = st.sidebar.radio(
         f"Tendencia vs SMA 200 ({timeframe_label}):",
-        ["Todos", f"Solo Alcistas (> SMA 200)", f"Solo Bajistas (< SMA 200)"]
+        ["Todos", "Solo Alcistas (> SMA 200)", "Solo Bajistas (< SMA 200)"]
     )
 
     # Aplicar Filtros
@@ -148,9 +138,11 @@ def main():
     elif signal_filter == "🚨 Solo Squeezes":
         df_filtered = df_filtered[df_filtered["Semáforo"] == "🚨 SQUEEZE"]
 
-    # Sector
-    if selected_sectors:
-        df_filtered = df_filtered[df_filtered["Sector"].isin(selected_sectors)]
+    # Flujo Institucional
+    if flow_filter == "🐳 Solo Acumulación (OBV > SMA 20)":
+        df_filtered = df_filtered[df_filtered["Flujo Institucional"] == "🐳 Acumulación"]
+    elif flow_filter == "📉 Solo Distribución (OBV < SMA 20)":
+        df_filtered = df_filtered[df_filtered["Flujo Institucional"] == "📉 Distribución"]
 
     # RSI
     df_filtered = df_filtered[
@@ -178,7 +170,7 @@ def main():
     st.markdown("---")
 
     # ----------------------------------------------------
-    # 3. TABLA SCREENER PRINCIPAL
+    # 3. TABLA SCREENER PRINCIPAL (LIMPIA, SIN EMPRESA NI SECTOR)
     # ----------------------------------------------------
     col_t1, col_t2 = st.columns([3, 1])
     with col_t1:
@@ -195,12 +187,12 @@ def main():
 
     render_screener_table(df_filtered, timeframe_label=timeframe_label)
 
-    with st.expander("ℹ️ Reglas del Algoritmo de Confluencia (John Murphy)"):
+    with st.expander("ℹ️ Reglas del Algoritmo de Confluencia & Smart Money"):
         st.markdown("""
-        * **🔴 VENTA / ROTAR**: Precio a menos del **5% del Máximo de 52 semanas** + **RSI > 70** + **Estocástico cruzando a la baja** (o > 80) + **MACD perdiendo fuerza**.
-        * **🟢 COMPRA / SWING**: Tendencia alcista confirmada (**SMA 50 > SMA 200**) + Precio retrocediendo a soporte (**Banda Inferior de Bollinger** o **SMA 50**) + **RSI < 35** + **Estocástico cruzando al alza**.
-        * **🚨 SQUEEZE**: Ancho de Bandas de Bollinger (*Bandwidth*) en **mínimos de los últimos 6 meses** (preludio de expansión o ruptura fuerte).
-        * **🟡 NEUTRAL**: No cumple simultáneamente con todos los criterios de confluencia.
+        * **🔴 VENTA / ROTAR**: Precio a menos del **5% del Máximo de 52 semanas** + **RSI > 70** + **Estocástico bajista** (o > 80) + **MACD perdiendo fuerza** + **Distribución Institucional (OBV < SMA 20)**.
+        * **🟢 COMPRA / SWING**: Tendencia alcista confirmada (**SMA 50 > SMA 200**) + Precio en soporte (**Banda Inferior** o **SMA 50**) + **RSI < 35** + **Estocástico alcista** + **Acumulación Institucional (OBV > SMA 20)**.
+        * **🚨 SQUEEZE**: Ancho de Bandas de Bollinger (*Bandwidth*) en **mínimos de los últimos 6 meses** (alerta de movimiento explosivo).
+        * **Smart Money (OBV)**: Mide si el volumen negociado acompaña a los días de suba (acumulación institucional 🐳) o días de baja (distribución 📉).
         """)
 
 

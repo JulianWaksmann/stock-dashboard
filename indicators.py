@@ -1,5 +1,5 @@
 """
-indicators.py - Cálculos matemáticos en Pandas y Algoritmo de Confluencia de John Murphy
+indicators.py - Cálculos matemáticos en Pandas, OBV y Algoritmo de Confluencia de John Murphy
 """
 
 import numpy as np
@@ -101,6 +101,29 @@ def compute_stochastic(df: pd.DataFrame, period_k: int = 14, period_d: int = 3) 
     }, index=df.index)
 
 
+def compute_obv(df: pd.DataFrame, period_sma: int = 20) -> pd.DataFrame:
+    """
+    Calcula el On-Balance Volume (OBV) y su Media Móvil de 20 períodos:
+      - Si Close[t] > Close[t-1] => OBV += Volume
+      - Si Close[t] < Close[t-1] => OBV -= Volume
+      - sma_obv_20 = SMA(OBV, 20)
+    """
+    if 'Close' not in df.columns or df.empty:
+        return pd.DataFrame({'obv': pd.Series(dtype=float), 'sma_obv_20': pd.Series(dtype=float)})
+    
+    close = df['Close']
+    volume = df['Volume'].fillna(0) if 'Volume' in df.columns else pd.Series(0, index=df.index)
+    
+    direction = np.sign(close.diff()).fillna(0)
+    obv = (direction * volume).cumsum()
+    sma_obv = obv.rolling(window=period_sma, min_periods=max(1, period_sma // 2)).mean()
+    
+    return pd.DataFrame({
+        'obv': obv,
+        'sma_obv_20': sma_obv
+    }, index=df.index)
+
+
 def compute_52w_high_low(df: pd.DataFrame, window: int = 252) -> pd.DataFrame:
     """
     Calcula el Máximo y Mínimo de 52 semanas (252 ruedas) y la distancia % al máximo.
@@ -130,9 +153,9 @@ def compute_percent_diff(current_price: float, reference_value: float) -> float:
 
 def evaluate_confluence_signal(df_history: pd.DataFrame, tech_data: dict) -> str:
     """
-    Algoritmo de Confluencia de John Murphy ("El Semáforo"):
-      - 🔴 VENTA/ROTAR: Precio a < 5% del Máx 52W + RSI > 70 + Estocástico bajista (o >80) + MACD perdiendo fuerza.
-      - 🟢 COMPRA/SWING: SMA 50 > SMA 200 + Retroceso a soporte (cerca Banda Inferior o SMA 50) + RSI < 35 + Estocástico alcista.
+    Algoritmo de Confluencia de John Murphy + Smart Money (OBV):
+      - 🔴 VENTA/ROTAR: Precio a < 5% de Max 52W + RSI > 70 + Estocástico bajista + MACD débil + Distribución (OBV < SMA_OBV_20).
+      - 🟢 COMPRA/SWING: SMA 50 > SMA 200 + Soporte + RSI < 35 + Estocástico alcista + Acumulación (OBV > SMA_OBV_20).
       - 🚨 SQUEEZE: Bandwidth en mínimos de los últimos 6 meses.
       - 🟡 NEUTRAL: Cualquier otro escenario.
     """
@@ -157,7 +180,12 @@ def evaluate_confluence_signal(df_history: pd.DataFrame, tech_data: dict) -> str
     bb_lower = tech_data.get('bb_lower', np.nan)
     is_bb_squeeze = tech_data.get('is_bb_squeeze', False)
 
-    # 1. 🔴 VENTA/ROTAR (Rotación en Máximos)
+    obv = tech_data.get('obv', np.nan)
+    sma_obv_20 = tech_data.get('sma_obv_20', np.nan)
+    is_accumulating = (obv >= sma_obv_20) if (not np.isnan(obv) and not np.isnan(sma_obv_20)) else True
+    is_distributing = (obv < sma_obv_20) if (not np.isnan(obv) and not np.isnan(sma_obv_20)) else True
+
+    # 1. 🔴 VENTA/ROTAR (Rotación en Máximos con Distribución Institucional)
     near_52w_high = (not np.isnan(dist_52w_high) and dist_52w_high >= -5.0)
     rsi_overbought = (not np.isnan(rsi_14) and rsi_14 >= 68.0)
     stoch_bearish = (
@@ -168,10 +196,10 @@ def evaluate_confluence_signal(df_history: pd.DataFrame, tech_data: dict) -> str
         (not np.isnan(macd_hist) and not np.isnan(prev_macd_hist) and macd_hist < prev_macd_hist) or
         (not np.isnan(macd_line) and not np.isnan(signal_line) and macd_line < signal_line)
     )
-    if near_52w_high and rsi_overbought and stoch_bearish and macd_weakening:
+    if near_52w_high and rsi_overbought and stoch_bearish and macd_weakening and is_distributing:
         return "🔴 VENTA/ROTAR"
 
-    # 2. 🟢 COMPRA/SWING (Retroceso a soporte en tendencia alcista)
+    # 2. 🟢 COMPRA/SWING (Retroceso a soporte con Acumulación Institucional)
     uptrend_confirmed = (not np.isnan(sma_50) and not np.isnan(sma_200) and sma_50 > sma_200 and close >= sma_200 * 0.95)
     near_support = (
         (not np.isnan(bb_lower) and close <= bb_lower * 1.025) or
@@ -183,7 +211,7 @@ def evaluate_confluence_signal(df_history: pd.DataFrame, tech_data: dict) -> str
         (not np.isnan(stoch_k) and stoch_k <= 30.0) or
         (not np.isnan(stoch_k) and not np.isnan(stoch_d) and not np.isnan(prev_stoch_k) and not np.isnan(prev_stoch_d) and prev_stoch_k <= prev_stoch_d and stoch_k > stoch_d)
     )
-    if uptrend_confirmed and near_support and rsi_oversold and stoch_bullish:
+    if uptrend_confirmed and near_support and rsi_oversold and stoch_bullish and is_accumulating:
         return "🟢 COMPRA/SWING"
 
     # 3. 🚨 SQUEEZE (Compresión de Volatilidad)
@@ -195,10 +223,10 @@ def evaluate_confluence_signal(df_history: pd.DataFrame, tech_data: dict) -> str
 
 def compute_stock_technicals(df_history: pd.DataFrame) -> dict:
     """
-    Calcula todos los indicadores técnicos y evalúa la señal del semáforo.
+    Calcula todos los indicadores técnicos, OBV y evalúa el semáforo de confluencia.
     """
     if df_history is None or df_history.empty or 'Close' not in df_history.columns or len(df_history) == 0:
-        return {'close': np.nan, 'confluence_signal': '🟡 NEUTRAL', 'technical_status': 'Sin datos'}
+        return {'close': np.nan, 'confluence_signal': '🟡 NEUTRAL', 'technical_status': 'Sin datos', 'institutional_flow': 'N/A'}
     
     close_series = df_history['Close'].dropna()
     if len(close_series) == 0:
@@ -223,10 +251,13 @@ def compute_stock_technicals(df_history: pd.DataFrame) -> dict:
     # 4. Estocástico
     df_stoch = compute_stochastic(df_history, period_k=14, period_d=3)
     
-    # 5. Máximos / Mínimos 52 Semanas
+    # 5. On-Balance Volume (OBV)
+    df_obv = compute_obv(df_history, period_sma=20)
+    
+    # 6. Máximos / Mínimos 52 Semanas
     df_52w = compute_52w_high_low(df_history, window=252)
 
-    # Extracción de valores escalares
+    # Valores escalares
     sma_20 = float(sma_20_series.iloc[-1]) if not sma_20_series.empty else np.nan
     sma_50 = float(sma_50_series.iloc[-1]) if not sma_50_series.empty else np.nan
     sma_200 = float(sma_200_series.iloc[-1]) if not sma_200_series.empty else np.nan
@@ -247,6 +278,10 @@ def compute_stock_technicals(df_history: pd.DataFrame) -> dict:
     stoch_d = float(df_stoch['stoch_d'].iloc[-1]) if not df_stoch.empty else np.nan
     prev_stoch_k = float(df_stoch['stoch_k'].iloc[-2]) if len(df_stoch) > 1 else stoch_k
     prev_stoch_d = float(df_stoch['stoch_d'].iloc[-2]) if len(df_stoch) > 1 else stoch_d
+
+    obv = float(df_obv['obv'].iloc[-1]) if not df_obv.empty else np.nan
+    sma_obv_20 = float(df_obv['sma_obv_20'].iloc[-1]) if not df_obv.empty else np.nan
+    institutional_flow = "🐳 Acumulación" if (not np.isnan(obv) and not np.isnan(sma_obv_20) and obv >= sma_obv_20) else "📉 Distribución"
 
     high_52w = float(df_52w['high_52w'].iloc[-1]) if not df_52w.empty else np.nan
     low_52w = float(df_52w['low_52w'].iloc[-1]) if not df_52w.empty else np.nan
@@ -276,6 +311,9 @@ def compute_stock_technicals(df_history: pd.DataFrame) -> dict:
         'stoch_d': stoch_d,
         'prev_stoch_k': prev_stoch_k,
         'prev_stoch_d': prev_stoch_d,
+        'obv': obv,
+        'sma_obv_20': sma_obv_20,
+        'institutional_flow': institutional_flow,
         'high_52w': high_52w,
         'low_52w': low_52w,
         'dist_52w_high_pct': dist_52w_high_pct

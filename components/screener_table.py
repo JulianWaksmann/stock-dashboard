@@ -1,5 +1,5 @@
 """
-components/screener_table.py - Visualización y formateo de la tabla de acciones con el Semáforo como primera columna
+components/screener_table.py - Visualización y formateo de la tabla de acciones (Sin Empresa ni Sector, con Flujo Institucional)
 """
 
 import streamlit as st
@@ -9,10 +9,11 @@ import numpy as np
 
 def render_screener_table(df: pd.DataFrame, timeframe_label: str = "Diario"):
     """
-    Renderiza la tabla interactiva de acciones en Streamlit con:
-      - 'Semáforo' como primera columna destacada.
-      - Columnas de valuación, RSI y distancias a medias móviles.
-      - Formato numérico claro y ordenamiento nativo por cualquier columna.
+    Renderiza la tabla interactiva en Streamlit:
+      - 'Semáforo' como primera columna.
+      - 'Ticker' y 'Flujo Institucional' (🐳 Acumulación / 📉 Distribución).
+      - Ratios de valuación y métricas de momentum.
+      - Sin columnas 'Empresa' ni 'Sector' para máxima limpieza visual.
     """
     if df.empty:
         st.warning("No hay acciones que coincidan con los filtros seleccionados.")
@@ -28,8 +29,7 @@ def render_screener_table(df: pd.DataFrame, timeframe_label: str = "Diario"):
     display_cols = [
         "Semáforo",
         "Ticker",
-        "Empresa",
-        "Sector",
+        "Flujo Institucional",
         "Precio Actual",
         "Var. Período (%)",
         "PER Pasado (Trailing)",
@@ -54,8 +54,11 @@ def render_screener_table(df: pd.DataFrame, timeframe_label: str = "Diario"):
             help="🔴 VENTA/ROTAR | 🟢 COMPRA/SWING | 🚨 SQUEEZE | 🟡 NEUTRAL"
         ),
         "Ticker": st.column_config.TextColumn("Ticker", width="small"),
-        "Empresa": st.column_config.TextColumn("Empresa", width="medium"),
-        "Sector": st.column_config.TextColumn("Sector", width="medium"),
+        "Flujo Institucional": st.column_config.TextColumn(
+            "Smart Money (OBV)",
+            width="medium",
+            help="🐳 Acumulación (OBV > SMA 20) | 📉 Distribución (OBV < SMA 20)"
+        ),
         "Precio Actual": st.column_config.NumberColumn("Precio ($)", format="$%.2f"),
         "Var. Período (%)": st.column_config.NumberColumn("Var. (%)", format="%+.2f%%"),
         "PER Pasado (Trailing)": st.column_config.NumberColumn("PER Pasado", format="%.1fx", help="Trailing P/E (últimos 12 meses)"),
@@ -71,7 +74,7 @@ def render_screener_table(df: pd.DataFrame, timeframe_label: str = "Diario"):
         diff_20_col: st.column_config.NumberColumn(f"vs SMA 20{tf_suffix}", format="%+.2f%%"),
         diff_50_col: st.column_config.NumberColumn(f"vs SMA 50{tf_suffix}", format="%+.2f%%"),
         diff_200_col: st.column_config.NumberColumn(f"vs SMA 200{tf_suffix}", format="%+.2f%%"),
-        "Dif. % Máx 52S": st.column_config.NumberColumn("vs Máx 52S (%)", format="%+.2f%%", help="Distancia porcentual respecto al Máximo de 52 semanas"),
+        "Dif. % Máx 52S": st.column_config.NumberColumn("vs Máx 52S (%)", format="%+.2f%%", help="Distancia respecto al Máximo de 52 semanas"),
         "Bollinger BW (%)": st.column_config.NumberColumn("Bandwidth (%)", format="%.1f%%", help="Ancho de Bandas de Bollinger")
     }
 

@@ -207,7 +207,7 @@ def load_all_stocks_data(tickers: list[str], timeframe: str = "1d") -> tuple[pd.
                     "market_cap": np.nan
                 }
 
-    # 3. Consolidar en un solo DataFrame con 'Semáforo' al inicio
+    # 3. Consolidar en un solo DataFrame con 'Semáforo' al inicio y 'Flujo Institucional'
     tf_suffix = " (Sem)" if timeframe == "1wk" else " (Día)"
     rows = []
     for ticker in tickers:
@@ -217,8 +217,7 @@ def load_all_stocks_data(tickers: list[str], timeframe: str = "1d") -> tuple[pd.
         row = {
             "Semáforo": tech.get("confluence_signal", "🟡 NEUTRAL"),
             "Ticker": ticker,
-            "Empresa": fund.get("name", ticker),
-            "Sector": fund.get("sector", "Desconocido"),
+            "Flujo Institucional": tech.get("institutional_flow", "N/A"),
             "Precio Actual": tech.get("close", np.nan),
             "Var. Período (%)": tech.get("day_change_pct", np.nan),
             "PER Pasado (Trailing)": fund.get("trailing_pe", np.nan),
@@ -243,6 +242,7 @@ def load_all_stocks_data(tickers: list[str], timeframe: str = "1d") -> tuple[pd.
             "DIFF_SMA_200_VAL": tech.get("diff_sma_200_pct", np.nan),
             "DIST_52W_HIGH_PCT": tech.get("dist_52w_high_pct", np.nan),
             "BB_BANDWIDTH": tech.get("bb_bandwidth", np.nan),
+            "Sector": fund.get("sector", "Desconocido"),
             "Market Cap ($B)": (fund.get("market_cap") / 1e9) if fund.get("market_cap") else np.nan,
             "Timeframe": timeframe
         }
