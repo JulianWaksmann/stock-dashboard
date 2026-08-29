@@ -1,5 +1,5 @@
 """
-indicators.py - Cálculos matemáticos en Pandas, OBV y Algoritmo de Confluencia de John Murphy
+indicators.py - Cálculos matemáticos en Pandas, OBV y Algoritmo de Confluencia por Sistema de Grados
 """
 
 import numpy as np
@@ -7,9 +7,7 @@ import pandas as pd
 
 
 def compute_rsi(series: pd.Series, period: int = 14) -> pd.Series:
-    """
-    Calcula el RSI (Relative Strength Index) utilizando el método de suavizado de Wilder.
-    """
+    """Calcula el RSI utilizando el método de suavizado de Wilder."""
     if len(series) < period + 1:
         return pd.Series(np.nan, index=series.index)
     
@@ -36,12 +34,7 @@ def compute_ema(series: pd.Series, period: int) -> pd.Series:
 
 
 def compute_macd(series: pd.Series, fast: int = 12, slow: int = 26, signal: int = 9) -> pd.DataFrame:
-    """
-    Calcula el MACD:
-      - macd_line = EMA(12) - EMA(26)
-      - signal_line = EMA(macd_line, 9)
-      - macd_hist = macd_line - signal_line
-    """
+    """Calcula MACD (Línea, Señal e Histograma)."""
     ema_fast = compute_ema(series, fast)
     ema_slow = compute_ema(series, slow)
     macd_line = ema_fast - ema_slow
@@ -56,13 +49,7 @@ def compute_macd(series: pd.Series, fast: int = 12, slow: int = 26, signal: int 
 
 
 def compute_bollinger_bands(series: pd.Series, period: int = 20, num_std: float = 2.0) -> pd.DataFrame:
-    """
-    Calcula las Bandas de Bollinger y el Bandwidth:
-      - bb_mid = SMA(20)
-      - bb_upper = bb_mid + 2 * STD(20)
-      - bb_lower = bb_mid - 2 * STD(20)
-      - bb_bandwidth = ((bb_upper - bb_lower) / bb_mid) * 100
-    """
+    """Calcula Bandas de Bollinger y Bandwidth."""
     bb_mid = compute_sma(series, period)
     bb_std = series.rolling(window=period, min_periods=max(1, period // 2)).std()
     bb_upper = bb_mid + (num_std * bb_std)
@@ -78,11 +65,7 @@ def compute_bollinger_bands(series: pd.Series, period: int = 20, num_std: float 
 
 
 def compute_stochastic(df: pd.DataFrame, period_k: int = 14, period_d: int = 3) -> pd.DataFrame:
-    """
-    Calcula el Oscilador Estocástico:
-      - %K (14) = (Close - Lowest Low) / (Highest High - Lowest Low) * 100
-      - %D (3) = SMA(%K, 3)
-    """
+    """Calcula el Oscilador Estocástico (%K y %D)."""
     high = df['High'] if 'High' in df.columns else df['Close']
     low = df['Low'] if 'Low' in df.columns else df['Close']
     close = df['Close']
@@ -103,10 +86,7 @@ def compute_stochastic(df: pd.DataFrame, period_k: int = 14, period_d: int = 3) 
 
 def compute_obv(df: pd.DataFrame, period_sma: int = 20) -> pd.DataFrame:
     """
-    Calcula el On-Balance Volume (OBV) y su Media Móvil de 20 períodos:
-      - Si Close[t] > Close[t-1] => OBV += Volume
-      - Si Close[t] < Close[t-1] => OBV -= Volume
-      - sma_obv_20 = SMA(OBV, 20)
+    Calcula el On-Balance Volume (OBV) y su SMA de 20 períodos.
     """
     if 'Close' not in df.columns or df.empty:
         return pd.DataFrame({'obv': pd.Series(dtype=float), 'sma_obv_20': pd.Series(dtype=float)})
@@ -125,9 +105,7 @@ def compute_obv(df: pd.DataFrame, period_sma: int = 20) -> pd.DataFrame:
 
 
 def compute_52w_high_low(df: pd.DataFrame, window: int = 252) -> pd.DataFrame:
-    """
-    Calcula el Máximo y Mínimo de 52 semanas (252 ruedas) y la distancia % al máximo.
-    """
+    """Calcula Máximo/Mínimo de 52 semanas y la distancia % al máximo."""
     high = df['High'] if 'High' in df.columns else df['Close']
     low = df['Low'] if 'Low' in df.columns else df['Close']
     close = df['Close']
@@ -153,11 +131,28 @@ def compute_percent_diff(current_price: float, reference_value: float) -> float:
 
 def evaluate_confluence_signal(df_history: pd.DataFrame, tech_data: dict) -> str:
     """
-    Algoritmo de Confluencia de John Murphy + Smart Money (OBV):
-      - 🔴 VENTA/ROTAR: Precio a < 5% de Max 52W + RSI > 70 + Estocástico bajista + MACD débil + Distribución (OBV < SMA_OBV_20).
-      - 🟢 COMPRA/SWING: SMA 50 > SMA 200 + Soporte + RSI < 35 + Estocástico alcista + Acumulación (OBV > SMA_OBV_20).
-      - 🚨 SQUEEZE: Bandwidth en mínimos de los últimos 6 meses.
-      - 🟡 NEUTRAL: Cualquier otro escenario.
+    Algoritmo de Confluencia por Sistema de Grados (John Murphy + Smart Money):
+    
+    LÓGICA DE COMPRA:
+      1. SMA 50 > SMA 200 (1 pto)
+      2. Soporte: Precio a +/- 4% de SMA 50 O por debajo de Banda Inferior (1 pto) [OBLIGATORIO]
+      3. RSI < 45 (1 pto) [OBLIGATORIO]
+      4. Estocástico alcista o %K < 30 (1 pto)
+      5. OBV > SMA_OBV_20 (1 pto)
+      --> 4-5 ptos: 🌟 COMPRA FUERTE
+      --> 3 ptos: 🟢 COMPRA MODERADA
+      
+    LÓGICA DE VENTA / ROTACIÓN:
+      1. Precio a < 6% de Máx 52S (1 pto) [OBLIGATORIO]
+      2. RSI > 65 (1 pto) [OBLIGATORIO]
+      3. Estocástico bajista O MACD hist decreciente (1 pto)
+      4. OBV < SMA_OBV_20 (1 pto)
+      --> 3-4 ptos: 🚨 VENTA FUERTE / ROTAR
+      --> 2 ptos: 🟠 VENTA MODERADA
+      
+    OTROS:
+      --> Squeeze: Bandwidth en mínimos de 6 meses (🚨 SQUEEZE)
+      --> Resto: 🟡 NEUTRAL
     """
     if df_history is None or df_history.empty or len(df_history) < 20:
         return "🟡 NEUTRAL"
@@ -182,39 +177,72 @@ def evaluate_confluence_signal(df_history: pd.DataFrame, tech_data: dict) -> str
 
     obv = tech_data.get('obv', np.nan)
     sma_obv_20 = tech_data.get('sma_obv_20', np.nan)
-    is_accumulating = (obv >= sma_obv_20) if (not np.isnan(obv) and not np.isnan(sma_obv_20)) else True
-    is_distributing = (obv < sma_obv_20) if (not np.isnan(obv) and not np.isnan(sma_obv_20)) else True
 
-    # 1. 🔴 VENTA/ROTAR (Rotación en Máximos con Distribución Institucional)
-    near_52w_high = (not np.isnan(dist_52w_high) and dist_52w_high >= -5.0)
-    rsi_overbought = (not np.isnan(rsi_14) and rsi_14 >= 68.0)
-    stoch_bearish = (
-        (not np.isnan(stoch_k) and stoch_k >= 80.0) or
-        (not np.isnan(stoch_k) and not np.isnan(stoch_d) and not np.isnan(prev_stoch_k) and not np.isnan(prev_stoch_d) and prev_stoch_k >= prev_stoch_d and stoch_k < stoch_d)
+    # ----------------------------------------------------
+    # 1. EVALUACIÓN DE COMPRA (SWING)
+    # ----------------------------------------------------
+    # Condición 1: Tendencia de fondo
+    buy_c1_trend = (not np.isnan(sma_50) and not np.isnan(sma_200) and sma_50 > sma_200 and close >= sma_200 * 0.95)
+    
+    # Condición 2 (OBLIGATORIA): Proximidad a Soporte (+/- 4% de SMA 50 o debajo de Banda Inferior)
+    buy_c2_support = False
+    if not np.isnan(close):
+        if not np.isnan(sma_50) and abs((close - sma_50) / sma_50 * 100.0) <= 4.0:
+            buy_c2_support = True
+        elif not np.isnan(bb_lower) and close <= bb_lower * 1.01:
+            buy_c2_support = True
+
+    # Condición 3 (OBLIGATORIA): Sobreventa aliviada (RSI < 45)
+    buy_c3_rsi = (not np.isnan(rsi_14) and rsi_14 < 45.0)
+
+    # Condición 4: Gatillo de Momento (Estocástico al alza o %K < 30)
+    buy_c4_stoch = (
+        (not np.isnan(stoch_k) and stoch_k < 30.0) or
+        (not np.isnan(stoch_k) and not np.isnan(stoch_d) and not np.isnan(prev_stoch_k) and not np.isnan(prev_stoch_d) and prev_stoch_k <= prev_stoch_d and stoch_k > stoch_d)
     )
-    macd_weakening = (
+
+    # Condición 5: Confirmación Institucional (OBV > SMA 20)
+    buy_c5_obv = (not np.isnan(obv) and not np.isnan(sma_obv_20) and obv > sma_obv_20)
+
+    # Si cumple las condiciones obligatorias de soporte y RSI, calculamos el puntaje
+    if buy_c2_support and buy_c3_rsi:
+        buy_score = sum([buy_c1_trend, buy_c2_support, buy_c3_rsi, buy_c4_stoch, buy_c5_obv])
+        if buy_score >= 4:
+            return "🌟 COMPRA FUERTE"
+        elif buy_score == 3:
+            return "🟢 COMPRA MODERADA"
+
+    # ----------------------------------------------------
+    # 2. EVALUACIÓN DE VENTA / ROTACIÓN
+    # ----------------------------------------------------
+    # Condición 1 (OBLIGATORIA): Proximidad a Techo (< 6% del Máximo 52S)
+    sell_c1_high = (not np.isnan(dist_52w_high) and dist_52w_high >= -6.0)
+
+    # Condición 2 (OBLIGATORIA): Sobrecompra (RSI > 65)
+    sell_c2_rsi = (not np.isnan(rsi_14) and rsi_14 > 65.0)
+
+    # Condición 3: Pérdida de Momento (Estocástico a la baja o MACD debilitándose)
+    sell_c3_momentum = (
+        (not np.isnan(stoch_k) and stoch_k >= 80.0) or
+        (not np.isnan(stoch_k) and not np.isnan(stoch_d) and not np.isnan(prev_stoch_k) and not np.isnan(prev_stoch_d) and prev_stoch_k >= prev_stoch_d and stoch_k < stoch_d) or
         (not np.isnan(macd_hist) and not np.isnan(prev_macd_hist) and macd_hist < prev_macd_hist) or
         (not np.isnan(macd_line) and not np.isnan(signal_line) and macd_line < signal_line)
     )
-    if near_52w_high and rsi_overbought and stoch_bearish and macd_weakening and is_distributing:
-        return "🔴 VENTA/ROTAR"
 
-    # 2. 🟢 COMPRA/SWING (Retroceso a soporte con Acumulación Institucional)
-    uptrend_confirmed = (not np.isnan(sma_50) and not np.isnan(sma_200) and sma_50 > sma_200 and close >= sma_200 * 0.95)
-    near_support = (
-        (not np.isnan(bb_lower) and close <= bb_lower * 1.025) or
-        (not np.isnan(sma_50) and abs((close - sma_50) / sma_50 * 100.0) <= 3.0) or
-        (not np.isnan(sma_50) and close <= sma_50 * 1.02 and close >= sma_50 * 0.96)
-    )
-    rsi_oversold = (not np.isnan(rsi_14) and rsi_14 <= 38.0)
-    stoch_bullish = (
-        (not np.isnan(stoch_k) and stoch_k <= 30.0) or
-        (not np.isnan(stoch_k) and not np.isnan(stoch_d) and not np.isnan(prev_stoch_k) and not np.isnan(prev_stoch_d) and prev_stoch_k <= prev_stoch_d and stoch_k > stoch_d)
-    )
-    if uptrend_confirmed and near_support and rsi_oversold and stoch_bullish and is_accumulating:
-        return "🟢 COMPRA/SWING"
+    # Condición 4: Distribución Institucional (OBV < SMA 20)
+    sell_c4_obv = (not np.isnan(obv) and not np.isnan(sma_obv_20) and obv < sma_obv_20)
 
-    # 3. 🚨 SQUEEZE (Compresión de Volatilidad)
+    # Si cumple techo y sobrecompra obligatorios, calculamos el puntaje de venta
+    if sell_c1_high and sell_c2_rsi:
+        sell_score = sum([sell_c1_high, sell_c2_rsi, sell_c3_momentum, sell_c4_obv])
+        if sell_score >= 3:
+            return "🚨 VENTA FUERTE / ROTAR"
+        elif sell_score == 2:
+            return "🟠 VENTA MODERADA"
+
+    # ----------------------------------------------------
+    # 3. SQUEEZE O NEUTRAL
+    # ----------------------------------------------------
     if is_bb_squeeze:
         return "🚨 SQUEEZE"
 
@@ -222,9 +250,7 @@ def evaluate_confluence_signal(df_history: pd.DataFrame, tech_data: dict) -> str
 
 
 def compute_stock_technicals(df_history: pd.DataFrame) -> dict:
-    """
-    Calcula todos los indicadores técnicos, OBV y evalúa el semáforo de confluencia.
-    """
+    """Calcula todos los indicadores técnicos, OBV y estado de acumulación/distribución."""
     if df_history is None or df_history.empty or 'Close' not in df_history.columns or len(df_history) == 0:
         return {'close': np.nan, 'confluence_signal': '🟡 NEUTRAL', 'technical_status': 'Sin datos', 'institutional_flow': 'N/A'}
     
@@ -236,28 +262,18 @@ def compute_stock_technicals(df_history: pd.DataFrame) -> dict:
     prev_close = float(close_series.iloc[-2]) if len(close_series) > 1 else current_close
     day_change_pct = ((current_close - prev_close) / prev_close * 100.0) if prev_close else 0.0
 
-    # 1. Medias Móviles y RSI
+    # Indicadores
     sma_20_series = compute_sma(close_series, 20)
     sma_50_series = compute_sma(close_series, 50)
     sma_200_series = compute_sma(close_series, 200)
     rsi_series = compute_rsi(close_series, 14)
-
-    # 2. MACD
     df_macd = compute_macd(close_series, fast=12, slow=26, signal=9)
-    
-    # 3. Bandas de Bollinger
     df_bb = compute_bollinger_bands(close_series, period=20, num_std=2.0)
-    
-    # 4. Estocástico
     df_stoch = compute_stochastic(df_history, period_k=14, period_d=3)
-    
-    # 5. On-Balance Volume (OBV)
     df_obv = compute_obv(df_history, period_sma=20)
-    
-    # 6. Máximos / Mínimos 52 Semanas
     df_52w = compute_52w_high_low(df_history, window=252)
 
-    # Valores escalares
+    # Extracción de valores
     sma_20 = float(sma_20_series.iloc[-1]) if not sma_20_series.empty else np.nan
     sma_50 = float(sma_50_series.iloc[-1]) if not sma_50_series.empty else np.nan
     sma_200 = float(sma_200_series.iloc[-1]) if not sma_200_series.empty else np.nan

@@ -1,5 +1,5 @@
 """
-components/screener_table.py - Visualización y formateo de la tabla de acciones (Sin Empresa ni Sector, con Flujo Institucional)
+components/screener_table.py - Visualización interactiva con colores condicionales (Verde para subas, Rojo para bajas)
 """
 
 import streamlit as st
@@ -7,13 +7,44 @@ import pandas as pd
 import numpy as np
 
 
+def style_percentage(val):
+    """Aplica color verde a subas/valores positivos y rojo a bajas/valores negativos."""
+    if pd.isna(val):
+        return ""
+    try:
+        num = float(val)
+        if num > 0:
+            return "color: #22c55e; font-weight: 600;"
+        elif num < 0:
+            return "color: #ef4444; font-weight: 600;"
+        else:
+            return "color: #9ca3af;"
+    except Exception:
+        return ""
+
+
+def style_semaforo(val):
+    """Resalta el semáforo según el grado de la señal."""
+    val_str = str(val)
+    if "COMPRA FUERTE" in val_str:
+        return "background-color: #052e16; color: #4ade80; font-weight: bold;"
+    elif "COMPRA MODERADA" in val_str:
+        return "background-color: #064e3b; color: #86efac; font-weight: 600;"
+    elif "VENTA FUERTE" in val_str:
+        return "background-color: #450a0a; color: #f87171; font-weight: bold;"
+    elif "VENTA MODERADA" in val_str:
+        return "background-color: #431407; color: #fdba74; font-weight: 600;"
+    elif "SQUEEZE" in val_str:
+        return "background-color: #422006; color: #fde047; font-weight: bold;"
+    return "color: #9ca3af;"
+
+
 def render_screener_table(df: pd.DataFrame, timeframe_label: str = "Diario"):
     """
-    Renderiza la tabla interactiva en Streamlit:
-      - 'Semáforo' como primera columna.
-      - 'Ticker' y 'Flujo Institucional' (🐳 Acumulación / 📉 Distribución).
-      - Ratios de valuación y métricas de momentum.
-      - Sin columnas 'Empresa' ni 'Sector' para máxima limpieza visual.
+    Renderiza la tabla interactiva en Streamlit con:
+      - 'Semáforo' con sistema de grados.
+      - Colores condicionales en TODAS las columnas de porcentaje (Verde para subas / Rojo para bajas).
+      - Ratios de valuación y métricas técnicas.
     """
     if df.empty:
         st.warning("No hay acciones que coincidan con los filtros seleccionados.")
@@ -46,12 +77,26 @@ def render_screener_table(df: pd.DataFrame, timeframe_label: str = "Diario"):
     available_cols = [c for c in display_cols if c in df.columns]
     df_display = df[available_cols].copy()
 
-    # Configuración de columnas interactivas
+    # Columnas que llevan color condicional (%)
+    pct_cols = [
+        col for col in [
+            "Var. Período (%)",
+            diff_20_col,
+            diff_50_col,
+            diff_200_col,
+            "Dif. % Máx 52S"
+        ] if col in df_display.columns
+    ]
+
+    # Aplicar estilos con Pandas Styler
+    styled_df = df_display.style.map(style_percentage, subset=pct_cols).map(style_semaforo, subset=["Semáforo"])
+
+    # Configuración de columnas
     col_configs = {
         "Semáforo": st.column_config.TextColumn(
-            "🚦 Semáforo Confluencia",
+            "🚦 Semáforo",
             width="medium",
-            help="🔴 VENTA/ROTAR | 🟢 COMPRA/SWING | 🚨 SQUEEZE | 🟡 NEUTRAL"
+            help="🌟 COMPRA FUERTE | 🟢 COMPRA MODERADA | 🚨 VENTA FUERTE / ROTAR | 🟠 VENTA MODERADA | 🚨 SQUEEZE | 🟡 NEUTRAL"
         ),
         "Ticker": st.column_config.TextColumn("Ticker", width="small"),
         "Flujo Institucional": st.column_config.TextColumn(
@@ -69,7 +114,7 @@ def render_screener_table(df: pd.DataFrame, timeframe_label: str = "Diario"):
             format="%.1f",
             min_value=0,
             max_value=100,
-            help=f"RSI 14 {timeframe_label}: <35 Sobreventa, >70 Sobrecompra"
+            help=f"RSI 14 {timeframe_label}: <45 Zona de entrada, >65 Zona de sobrecompra"
         ),
         diff_20_col: st.column_config.NumberColumn(f"vs SMA 20{tf_suffix}", format="%+.2f%%"),
         diff_50_col: st.column_config.NumberColumn(f"vs SMA 50{tf_suffix}", format="%+.2f%%"),
@@ -79,7 +124,7 @@ def render_screener_table(df: pd.DataFrame, timeframe_label: str = "Diario"):
     }
 
     st.dataframe(
-        df_display,
+        styled_df,
         use_container_width=True,
         hide_index=True,
         column_config=col_configs,

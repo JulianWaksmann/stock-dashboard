@@ -1,5 +1,5 @@
 """
-app.py - Tablero de Control Cuantitativo Top 50 Acciones (John Murphy Confluencia & Smart Money)
+app.py - Tablero de Control Cuantitativo Top 50 Acciones (Confluencia por Sistema de Grados & Smart Money)
 """
 
 import streamlit as st
@@ -52,7 +52,7 @@ def main():
     with header_col1:
         st.markdown('<div class="main-title">🚦 Tablero Cuantitativo: Confluencia & Smart Money</div>', unsafe_allow_html=True)
         current_time_str = datetime.now().strftime("%H:%M:%S")
-        st.markdown(f'<div class="sub-title">Algoritmo de Confluencia (John Murphy) + Flujo Institucional (OBV) & Valuación | 🕒 <i>Última recarga: {current_time_str}</i></div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="sub-title">Algoritmo de Confluencia por Sistema de Grados (Fuerte vs Moderada) + Smart Money (OBV) | 🕒 <i>Última recarga: {current_time_str}</i></div>', unsafe_allow_html=True)
 
     with header_col2:
         st.markdown("<div style='padding-top: 10px;'></div>", unsafe_allow_html=True)
@@ -87,7 +87,7 @@ def main():
     timeframe_label = "Semanal" if "Semanal" in timeframe_choice else "Diario"
 
     # Cargar datos
-    with st.spinner(f"⏳ Extrayendo datos en vivo ({timeframe_label}) y calculando confluencias con OBV..."):
+    with st.spinner(f"⏳ Extrayendo datos en vivo ({timeframe_label}) y evaluando grados de confluencia..."):
         df_summary, _ = load_all_stocks_data(tickers_list, timeframe=timeframe)
 
     if df_summary.empty:
@@ -100,10 +100,16 @@ def main():
     st.sidebar.markdown("---")
     st.sidebar.header("🔍 Filtros Rápidos")
 
-    # Filtro por Semáforo
+    # Filtro por Semáforo Grados
     signal_filter = st.sidebar.selectbox(
         "Filtrar por Semáforo:",
-        ["Todas las Acciones", "🔴 Solo Venta / Rotar", "🟢 Solo Compra / Swing", "🚨 Solo Squeezes"]
+        [
+            "Todas las Acciones",
+            "🌟 Solo Compra Fuerte",
+            "🟢 Solo Compras (Fuerte + Moderada)",
+            "🚨 Solo Venta / Rotar (Fuerte + Moderada)",
+            "⚡ Solo Squeezes"
+        ]
     )
 
     # Filtro por Flujo Institucional
@@ -131,12 +137,14 @@ def main():
     df_filtered = df_summary.copy()
 
     # Semáforo
-    if signal_filter == "🔴 Solo Venta / Rotar":
-        df_filtered = df_filtered[df_filtered["Semáforo"] == "🔴 VENTA/ROTAR"]
-    elif signal_filter == "🟢 Solo Compra / Swing":
-        df_filtered = df_filtered[df_filtered["Semáforo"] == "🟢 COMPRA/SWING"]
-    elif signal_filter == "🚨 Solo Squeezes":
-        df_filtered = df_filtered[df_filtered["Semáforo"] == "🚨 SQUEEZE"]
+    if signal_filter == "🌟 Solo Compra Fuerte":
+        df_filtered = df_filtered[df_filtered["Semáforo"] == "🌟 COMPRA FUERTE"]
+    elif signal_filter == "🟢 Solo Compras (Fuerte + Moderada)":
+        df_filtered = df_filtered[df_filtered["Semáforo"].isin(["🌟 COMPRA FUERTE", "🟢 COMPRA MODERADA"])]
+    elif signal_filter == "🚨 Solo Venta / Rotar (Fuerte + Moderada)":
+        df_filtered = df_filtered[df_filtered["Semáforo"].isin(["🚨 VENTA FUERTE / ROTAR", "🟠 VENTA MODERADA"])]
+    elif signal_filter == "⚡ Solo Squeezes":
+        df_filtered = df_filtered[df_filtered["Semáforo"].str.contains("SQUEEZE", na=False)]
 
     # Flujo Institucional
     if flow_filter == "🐳 Solo Acumulación (OBV > SMA 20)":
@@ -187,12 +195,23 @@ def main():
 
     render_screener_table(df_filtered, timeframe_label=timeframe_label)
 
-    with st.expander("ℹ️ Reglas del Algoritmo de Confluencia & Smart Money"):
+    with st.expander("ℹ️ Sistema de Grados del Algoritmo de Confluencia"):
         st.markdown("""
-        * **🔴 VENTA / ROTAR**: Precio a menos del **5% del Máximo de 52 semanas** + **RSI > 70** + **Estocástico bajista** (o > 80) + **MACD perdiendo fuerza** + **Distribución Institucional (OBV < SMA 20)**.
-        * **🟢 COMPRA / SWING**: Tendencia alcista confirmada (**SMA 50 > SMA 200**) + Precio en soporte (**Banda Inferior** o **SMA 50**) + **RSI < 35** + **Estocástico alcista** + **Acumulación Institucional (OBV > SMA 20)**.
-        * **🚨 SQUEEZE**: Ancho de Bandas de Bollinger (*Bandwidth*) en **mínimos de los últimos 6 meses** (alerta de movimiento explosivo).
-        * **Smart Money (OBV)**: Mide si el volumen negociado acompaña a los días de suba (acumulación institucional 🐳) o días de baja (distribución 📉).
+        **Lógica de Compra (Swing):**
+        * Exige **obligatoriamente**: Proximidad a Soporte (+/- 4% de SMA 50 o debajo de Banda Inferior) Y RSI < 45.
+        * Suma puntos por: Tendencia alcista (SMA 50 > SMA 200), Estocástico alcista (%K < 30) y Acumulación OBV.
+        * **🌟 COMPRA FUERTE**: 4 o 5 puntos cumplidos.
+        * **🟢 COMPRA MODERADA**: 3 puntos cumplidos.
+
+        **Lógica de Venta / Rotación:**
+        * Exige **obligatoriamente**: Proximidad a Techo (< 6% del Máx 52S) Y RSI > 65.
+        * Suma puntos por: Pérdida de momento (Estocástico bajista o MACD débil) y Distribución OBV.
+        * **🚨 VENTA FUERTE / ROTAR**: 3 o 4 puntos cumplidos.
+        * **🟠 VENTA MODERADA**: 2 puntos cumplidos.
+
+        **Otros Estados:**
+        * **🚨 SQUEEZE**: Ancho de Bandas de Bollinger en mínimos de 6 meses.
+        * **🟡 NEUTRAL**: No alcanza los umbrales de confluencia.
         """)
 
 
