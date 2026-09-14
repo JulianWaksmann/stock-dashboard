@@ -23,6 +23,7 @@ from bonds.catalog import BondTerms, base_ticker_of, find_terms, quote_currency_
 from bonds.flows_source import BondFlows
 from bonds.scoring import evaluate_bond_attractiveness
 from constants import (
+    BOND_MIN_YEARS_FOR_GRADING,
     BOND_SETTLEMENT_UNKNOWN,
     BOND_SIGNAL_NO_DATA,
     BOND_SOURCE_CATALOG,
@@ -236,8 +237,11 @@ def build_bonds_panel(
     # mediana de TIR del día ya calculada. Si ninguna ON tiene TIR (catálogo
     # vacío) no hay mediana que calcular: pedírsela a pandas sobre una columna
     # entera de NaN devuelve NaN pero emitiendo un RuntimeWarning de numpy.
-    known_yields = df["TIR (%)"].dropna()
-    median_ytm = known_yields.median() if not known_yields.empty else np.nan
+    # Las ONs a semanas del vencimiento quedan fuera de la mediana: su TIR
+    # anualizada es un artefacto aritmético y correría la referencia contra la
+    # que se califica a todas las demás.
+    comparable = df.loc[df["Años al Vto."] >= BOND_MIN_YEARS_FOR_GRADING, "TIR (%)"].dropna()
+    median_ytm = comparable.median() if not comparable.empty else np.nan
     df["Atractivo"] = [
         evaluate_bond_attractiveness(
             ytm_pct=record["TIR (%)"],
@@ -246,6 +250,7 @@ def build_bonds_panel(
             parity_pct=record["Paridad (%)"],
             bid_ask_spread_pct=record["Spread (%)"],
             law=record["Ley"],
+            years_to_maturity=record["Años al Vto."],
         )
         for record in df.to_dict("records")
     ]

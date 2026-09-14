@@ -98,6 +98,10 @@ reference for every yield threshold is therefore the **panel's median YTM**.
 * **Points, one each:** yield premium over the median; modified duration ≤ `BOND_SHORT_DURATION_MAX_YEARS`;
   parity below par; bid/ask spread ≤ `BOND_LIQUID_SPREAD_MAX_PCT`; New York law.
 * 4-5 points → 🌟 **MUY ATRACTIVO** · 3 → 🟢 **ATRACTIVO** · 2 → 🟡 **NEUTRAL** · 0-1 → 🟠 **POCO ATRACTIVO**.
+* **Excluded from grading:** bonds under `BOND_MIN_YEARS_FOR_GRADING` from maturity (⏳ **MUY CORTO**).
+  Annualizing a three-week return turns one cent of price into tens of points of yield, so those
+  bonds would otherwise top the panel or trigger a risk alert on pure arithmetic artifact. They are
+  also left out of the panel median, so they cannot drag the reference everything else is graded against.
 
 All labels and thresholds live in `constants.py`, same as the equity engine.
 

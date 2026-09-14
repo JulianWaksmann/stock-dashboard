@@ -177,6 +177,7 @@ BOND_SIGNAL_NEUTRAL: Final[str] = "🟡 NEUTRAL"
 BOND_SIGNAL_LOW: Final[str] = "🟠 POCO ATRACTIVO"
 BOND_SIGNAL_RISK: Final[str] = "🚨 ALERTA DE RIESGO"
 BOND_SIGNAL_NO_DATA: Final[str] = "⚪ SIN DATOS"
+BOND_SIGNAL_VERY_SHORT: Final[str] = "⏳ MUY CORTO"
 
 BOND_ATTRACTIVE_SIGNALS: Final[tuple[str, ...]] = (
     BOND_SIGNAL_VERY_ATTRACTIVE,
@@ -192,6 +193,14 @@ BOND_ATTRACTIVE_SIGNALS: Final[tuple[str, ...]] = (
 # con el riesgo argentino, así que un umbral absoluto ("TIR > 9%") diría
 # cosas opuestas en dos momentos distintos del ciclo.
 # ----------------------------------------------------------------------
+
+# Vida residual mínima para calificar una ON, en años. Por debajo de este
+# plazo la TIR sigue siendo correcta pero deja de ser comparable: anualizar
+# el retorno de tres semanas convierte un centavo de diferencia de precio en
+# decenas de puntos de "rendimiento". Esos bonos se etiquetan aparte y se
+# excluyen de la mediana del panel, para no arrastrar la referencia contra la
+# que se mide todo el resto ni disparar falsas alertas de riesgo.
+BOND_MIN_YEARS_FOR_GRADING: Final[float] = 0.25
 
 # Premio de rendimiento: cuánta TIR por encima de la mediana del panel hay
 # que ofrecer para que el bono sume el punto de "rinde más que sus pares".

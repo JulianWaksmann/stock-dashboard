@@ -20,6 +20,7 @@ import math
 from bonds.catalog import LAW_NEW_YORK
 from constants import (
     BOND_LIQUID_SPREAD_MAX_PCT,
+    BOND_MIN_YEARS_FOR_GRADING,
     BOND_PARITY_DISCOUNT_MAX,
     BOND_RISK_YIELD_PREMIUM_PP,
     BOND_SHORT_DURATION_MAX_YEARS,
@@ -29,6 +30,7 @@ from constants import (
     BOND_SIGNAL_NO_DATA,
     BOND_SIGNAL_RISK,
     BOND_SIGNAL_VERY_ATTRACTIVE,
+    BOND_SIGNAL_VERY_SHORT,
     BOND_YIELD_PREMIUM_PP,
 )
 
@@ -51,9 +53,16 @@ def evaluate_bond_attractiveness(
     parity_pct: float | None,
     bid_ask_spread_pct: float | None,
     law: str | None,
+    years_to_maturity: float | None = None,
 ) -> str:
     """
     Sistema de Grados de una ON.
+
+    PLAZO MÍNIMO (excluyente): una ON a la que le quedan semanas de vida no se
+    califica. Su TIR es correcta pero no comparable: anualizar el retorno de
+    tres semanas convierte un centavo de diferencia de precio en decenas de
+    puntos de rendimiento, y esa ON aparecería encabezando el panel o gatillando
+    una alerta de riesgo por puro artefacto aritmético.
 
     OBLIGATORIO: tener una TIR calculable. Sin flujo de fondos conocido (ON
     fuera del catálogo) o sin precio válido no hay nada que evaluar, y devolver
@@ -81,6 +90,9 @@ def evaluate_bond_attractiveness(
         return BOND_SIGNAL_NO_DATA
 
     ytm = float(ytm_pct)
+
+    if _is_number(years_to_maturity) and float(years_to_maturity) < BOND_MIN_YEARS_FOR_GRADING:
+        return BOND_SIGNAL_VERY_SHORT
 
     if _is_number(median_ytm_pct) and ytm >= float(median_ytm_pct) + BOND_RISK_YIELD_PREMIUM_PP:
         return BOND_SIGNAL_RISK
