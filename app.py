@@ -2,17 +2,24 @@
 app.py - Tablero de Control Cuantitativo Top 50 Acciones (Confluencia por Sistema de Grados & Smart Money)
 """
 
-import streamlit as st
-import pandas as pd
-import numpy as np
 from datetime import datetime
-from data_loader import (
-    load_all_stocks_data,
-    TOP_50_DEFAULT
-)
+
+import streamlit as st
+
 from components.alerts_panel import render_alerts_panel
 from components.kpi_cards import render_kpi_cards
 from components.screener_table import render_screener_table
+from constants import (
+    BUY_SIGNALS,
+    FLOW_ACCUMULATION,
+    FLOW_DISTRIBUTION,
+    SELL_SIGNALS,
+    SIGNAL_STRONG_BUY,
+)
+from data_loader import (
+    TOP_50_DEFAULT,
+    load_all_stocks_data,
+)
 
 # 1. Configuración de página
 st.set_page_config(
@@ -138,23 +145,23 @@ def main():
 
     # Semáforo
     if signal_filter == "🌟 Solo Compra Fuerte":
-        df_filtered = df_filtered[df_filtered["Semáforo"] == "🌟 COMPRA FUERTE"]
+        df_filtered = df_filtered[df_filtered["Semáforo"] == SIGNAL_STRONG_BUY]
     elif signal_filter == "🟢 Solo Compras (Fuerte + Moderada)":
-        df_filtered = df_filtered[df_filtered["Semáforo"].isin(["🌟 COMPRA FUERTE", "🟢 COMPRA MODERADA"])]
+        df_filtered = df_filtered[df_filtered["Semáforo"].isin(BUY_SIGNALS)]
     elif signal_filter == "🚨 Solo Venta / Rotar (Fuerte + Moderada)":
-        df_filtered = df_filtered[df_filtered["Semáforo"].isin(["🚨 VENTA FUERTE / ROTAR", "🟠 VENTA MODERADA"])]
+        df_filtered = df_filtered[df_filtered["Semáforo"].isin(SELL_SIGNALS)]
     elif signal_filter == "⚡ Solo Squeezes":
         df_filtered = df_filtered[df_filtered["Semáforo"].str.contains("SQUEEZE", na=False)]
 
     # Flujo Institucional
     if flow_filter == "🐳 Solo Acumulación (OBV > SMA 20)":
-        df_filtered = df_filtered[df_filtered["Flujo Institucional"] == "🐳 Acumulación"]
+        df_filtered = df_filtered[df_filtered["Flujo Institucional"] == FLOW_ACCUMULATION]
     elif flow_filter == "📉 Solo Distribución (OBV < SMA 20)":
-        df_filtered = df_filtered[df_filtered["Flujo Institucional"] == "📉 Distribución"]
+        df_filtered = df_filtered[df_filtered["Flujo Institucional"] == FLOW_DISTRIBUTION]
 
     # RSI
     df_filtered = df_filtered[
-        (df_filtered["RSI_VAL"].isna()) | 
+        (df_filtered["RSI_VAL"].isna()) |
         ((df_filtered["RSI_VAL"] >= rsi_range[0]) & (df_filtered["RSI_VAL"] <= rsi_range[1]))
     ]
 
