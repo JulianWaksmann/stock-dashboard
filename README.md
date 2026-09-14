@@ -158,10 +158,14 @@ No ticker list is typed anywhere: the universe comes from the price feed. What n
 the noise in it — species that did not trade today still quote the price of the last session they
 did, so their yield measures a different day's market.
 
-The liquidity filter defaults to bonds that actually traded, and offers top-20 / top-50 by volume.
+The liquidity filter defaults to the top 50 by volume, and offers top-20 or every bond that traded.
 Its thresholds are relative rather than absolute because the feed does not document the unit its
 volume is expressed in: "over 1,000,000" would be a made-up number, "the 20 that traded most today"
 holds without knowing the unit.
+
+Currency is filtered before the volume ranking, and the order is not cosmetic: the peso species'
+volume is denominated in pesos and the MEP species' in dollars, so ranking across both compares
+different units and the peso rows win on magnitude rather than on activity.
 
 Untraded species are also left out of the panel median for the same reason near-maturity bonds are
 — the median is the reference every bond is graded against, so it cannot be built from prices that

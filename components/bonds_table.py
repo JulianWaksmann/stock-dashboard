@@ -155,7 +155,7 @@ def render_bonds_table(df: pd.DataFrame):
         "Liquidación": st.column_config.TextColumn(
             "Liquidación",
             width="small",
-            help="Especie según la última letra del ticker: O liquida en pesos, D en dólar MEP, C en dólar cable. Es la misma ON en las tres, cambia la moneda del precio.",
+            help="Especie según la última letra del ticker. O: liquida en pesos. D: dólar MEP, los dólares quedan en tu cuenta local. C: dólar cable (contado con liquidación), los dólares quedan en una cuenta del exterior — algunas plataformas lo muestran como 'ext'. Es la misma ON en las tres: cambia dónde y en qué moneda cobrás.",
         ),
         "Fuente": st.column_config.TextColumn(
             "Fuente",

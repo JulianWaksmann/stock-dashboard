@@ -144,13 +144,13 @@ def _render_filters(df: pd.DataFrame) -> pd.DataFrame:
         liquidity_filter = st.selectbox(
             "💧 Liquidez:",
             BOND_LIQUIDITY_FILTER_OPTIONS,
-            help="El feed devuelve el panel entero, incluidas especies que no operaron hoy: su precio es el de la última rueda en que se negociaron, así que su TIR mide el mercado de otro día.",
+            help="El feed devuelve el panel entero, incluidas especies que no operaron hoy: su precio es el de la última rueda en que se negociaron, así que su TIR mide el mercado de otro día. El ranking se arma dentro de la moneda elegida.",
         )
     with col0:
         settlement_filter = st.selectbox(
             "💱 Especie de liquidación:",
             BOND_SETTLEMENT_FILTER_OPTIONS,
-            help="Cada ON cotiza en tres especies (O pesos, D MEP, C cable). Son el mismo bono: por defecto se muestran las que cotizan en dólares, que son las comparables por TIR.",
+            help="Cada ON cotiza en tres especies según la última letra del ticker: O liquida en pesos, D en dólar MEP (dólares en tu cuenta local) y C en dólar cable (dólares en el exterior). Son el mismo bono. Por defecto se muestran las dos en dólares.",
         )
     with col1:
         signal_filter = st.selectbox("🚦 Filtrar por atractivo:", BOND_SIGNAL_FILTER_OPTIONS)
@@ -174,20 +174,26 @@ def _render_filters(df: pd.DataFrame) -> pd.DataFrame:
 
     filtered = df.copy()
 
-    # La liquidez se filtra primero: el "top N por volumen" tiene que rankear
-    # contra el panel completo, no contra lo que hayan dejado los otros filtros.
-    if liquidity_filter != BOND_FILTER_LIQUIDITY_ALL:
-        filtered = filtered[filtered["Volumen"].isna() | (filtered["Volumen"] > 0)]
-    top_n = BOND_TOP_VOLUME_SIZES.get(liquidity_filter)
-    if top_n is not None:
-        filtered = filtered.nlargest(top_n, "Volumen", keep="all")
-
+    # La moneda se filtra ANTES que la liquidez, y el orden no es cosmético:
+    # el volumen de la especie en pesos está expresado en pesos y el de la
+    # especie MEP en dólares. Rankear "top N por volumen" mezclando ambas
+    # compara magnitudes de distinta unidad, y el ranking lo coparían las
+    # especies en pesos por ser el número más grande, no las más operadas.
     if settlement_filter == BOND_FILTER_SETTLEMENT_USD:
         filtered = filtered[filtered["Moneda Precio"] == "USD"]
     elif settlement_filter == BOND_FILTER_SETTLEMENT_MEP:
         filtered = filtered[filtered["Liquidación"] == BOND_SETTLEMENT_MEP]
     elif settlement_filter == BOND_FILTER_SETTLEMENT_PESOS:
         filtered = filtered[filtered["Liquidación"] == BOND_SETTLEMENT_PESOS]
+
+    # Dentro de esa moneda, el top N rankea contra todo el universo y no
+    # contra lo que dejen los filtros de abajo: "las 50 más operadas del
+    # panel" no debe depender de si además se está filtrando por ley.
+    if liquidity_filter != BOND_FILTER_LIQUIDITY_ALL:
+        filtered = filtered[filtered["Volumen"].isna() | (filtered["Volumen"] > 0)]
+    top_n = BOND_TOP_VOLUME_SIZES.get(liquidity_filter)
+    if top_n is not None:
+        filtered = filtered.nlargest(top_n, "Volumen", keep="all")
 
     if signal_filter == BOND_FILTER_SIGNAL_ATTRACTIVE:
         filtered = filtered[filtered["Atractivo"].isin(BOND_ATTRACTIVE_SIGNALS)]

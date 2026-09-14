@@ -355,10 +355,13 @@ BOND_FILTER_LIQUIDITY_TOP_20: Final[str] = "🔝 Top 20 por volumen"
 BOND_FILTER_LIQUIDITY_TOP_50: Final[str] = "🔝 Top 50 por volumen"
 BOND_FILTER_LIQUIDITY_ALL: Final[str] = "Todas, incluso sin operar"
 
+# El primero es el default del selector. Arranca en el top 50 por volumen:
+# es el recorte que deja el panel operable, porque más abajo de ahí las
+# especies negocian tan poco que su precio de pantalla no es ejecutable.
 BOND_LIQUIDITY_FILTER_OPTIONS: Final[tuple[str, ...]] = (
-    BOND_FILTER_LIQUIDITY_TRADED,
-    BOND_FILTER_LIQUIDITY_TOP_20,
     BOND_FILTER_LIQUIDITY_TOP_50,
+    BOND_FILTER_LIQUIDITY_TOP_20,
+    BOND_FILTER_LIQUIDITY_TRADED,
     BOND_FILTER_LIQUIDITY_ALL,
 )
 
