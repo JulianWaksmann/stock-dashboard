@@ -229,10 +229,13 @@ def _liquidity_subscore(spread_pct: pd.Series, volume: pd.Series) -> pd.Series:
 
 def _jurisdiction_subscore(law: pd.Series) -> pd.Series:
     """Puntaje de jurisdicción. Una ley desconocida no puntúa: se abstiene."""
+    # Se compara por prefijo para aceptar la ley inferida del ISIN, que llega
+    # marcada como "NY (ISIN)": es la misma jurisdicción, con su origen a la
+    # vista.
     normalized = law.fillna("").astype(str).str.strip().str.upper()
     scores = pd.Series(np.nan, index=law.index, dtype=float)
-    scores[normalized == LAW_NEW_YORK] = BOND_SCORE_LAW_NY
-    scores[normalized == LAW_ARGENTINA] = BOND_SCORE_LAW_ARG
+    scores[normalized.str.startswith(LAW_NEW_YORK)] = BOND_SCORE_LAW_NY
+    scores[normalized.str.startswith(LAW_ARGENTINA)] = BOND_SCORE_LAW_ARG
     return scores
 
 

@@ -34,6 +34,7 @@ from constants import (
     BOND_FILTER_SIGNAL_ATTRACTIVE,
     BOND_FILTER_SIGNAL_RISK,
     BOND_FILTER_SIGNAL_VERY_ATTRACTIVE,
+    BOND_LAW_INFERRED_SUFFIX,
     BOND_MIN_YEARS_FOR_GRADING,
     BOND_PRICE_CLEAN,
     BOND_PRICE_DIRTY,
@@ -111,6 +112,13 @@ def _can_rebuild_from_reference(reference: BondReference | None, quote_currency:
     if reference.maturity <= reference.issue_date:
         return False
     return _reference_currency(reference) == quote_currency
+
+
+def _inferred_law_label(reference: BondReference | None) -> str | None:
+    """Ley deducida del ISIN, marcada como inferencia y no como dato declarado."""
+    if reference is None or not reference.inferred_law:
+        return None
+    return f"{reference.inferred_law}{BOND_LAW_INFERRED_SUFFIX}"
 
 
 def _reference_currency(reference: BondReference) -> str | None:
@@ -279,9 +287,14 @@ def build_bonds_panel(
             ),
             "Liquidación": settlement_kind,
             "Moneda Precio": quote_currency or BOND_SETTLEMENT_UNKNOWN,
-            # La ley solo puede salir del catálogo: BYMA tiene los campos pero
-            # no los llena (`paisLey` vino vacío en las 40 fichas medidas).
-            "Ley": _first_known(terms.law if terms else None, default="—"),
+            # El catálogo declara la ley; BYMA no (sus campos vienen vacíos),
+            # así que en su lugar se infiere del prefijo del ISIN y se marca
+            # como inferida para que no se lea como dato declarado.
+            "Ley": _first_known(
+                terms.law if terms else None,
+                _inferred_law_label(reference),
+                default="—",
+            ),
             "Cupón (%)": terms.coupon_rate if terms else np.nan,
             "Vencimiento": _first_known(
                 terms.maturity if terms else None,

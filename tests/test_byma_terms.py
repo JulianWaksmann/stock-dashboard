@@ -14,7 +14,12 @@ from datetime import date
 
 import pytest
 
-from bonds.byma_terms import is_bullet_amortization, parse_coupon_rate, parse_technical_sheet
+from bonds.byma_terms import (
+    is_bullet_amortization,
+    law_from_isin,
+    parse_coupon_rate,
+    parse_technical_sheet,
+)
 
 FICHA = {
     "emisor": "YPF S.A.",
@@ -72,7 +77,8 @@ class TestLeyAplicable:
     fuente de jurisdicción, y el panel no debe pretender que lo sea.
     """
 
-    def test_la_ficha_no_aporta_ley(self):
+    def test_la_ficha_no_declara_la_ley(self):
+        # El campo existe y viene vacío; la ley del panel se infiere del ISIN.
         assert not hasattr(parse_technical_sheet("X", {"data": [FICHA]}), "law")
 
 
@@ -199,3 +205,32 @@ class TestRespuestasImperfectas:
 
     def test_normaliza_el_ticker(self):
         assert parse_technical_sheet("  ymcjd ", {"data": [FICHA]}).ticker == "YMCJD"
+
+
+class TestLeyInferidaDelIsin:
+    """
+    BYMA no publica la ley, pero sí el ISIN, y su prefijo es el país donde se
+    registró la emisión. Es un proxy —dice dónde se registró el título, no bajo
+    qué ley se litiga— y por eso el panel lo muestra marcado como inferido.
+    """
+
+    @pytest.mark.parametrize("isin", ["AR0156884063", "AR0029606974", "ar0585477562"])
+    def test_el_prefijo_argentino_implica_ley_local(self, isin):
+        assert law_from_isin(isin) == "ARG"
+
+    @pytest.mark.parametrize("isin", ["USP989MJBT72", "US984245AM45"])
+    def test_el_prefijo_estadounidense_implica_ley_extranjera(self, isin):
+        # Incluye el prefijo USP de las emisiones Reg S latinoamericanas.
+        assert law_from_isin(isin) == "NY"
+
+    @pytest.mark.parametrize("isin", ["XS1234567890", "LU0987654321", "KYG1234567"])
+    def test_un_prefijo_que_no_se_reconoce_no_se_fuerza(self, isin):
+        # La jurisdicción puntúa: clasificarla mal es peor que no informarla.
+        assert law_from_isin(isin) is None
+
+    @pytest.mark.parametrize("isin", ["", None, "A", "  "])
+    def test_sin_isin_no_hay_inferencia(self, isin):
+        assert law_from_isin(isin) is None
+
+    def test_la_ficha_expone_la_ley_inferida(self):
+        assert parse_technical_sheet("X", {"data": [FICHA]}).inferred_law == "NY"  # ISIN USP...

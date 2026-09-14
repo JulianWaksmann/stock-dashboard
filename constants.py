@@ -340,6 +340,12 @@ BOND_SOURCE_CATALOG: Final[str] = "Catálogo local"
 # de pago —el único dato del flujo que BYMA no publica—. La etiqueta dice
 # "estimada" porque esa suposición mueve la TIR unos puntos básicos.
 BOND_SOURCE_BYMA: Final[str] = "BYMA (frec. estimada)"
+
+# Etiqueta de la ley cuando se dedujo del prefijo del ISIN en lugar de venir
+# declarada. El sufijo existe para que nadie lea como dato duro algo que es
+# una inferencia: el ISIN dice dónde se registró la emisión, no bajo qué ley
+# se litiga.
+BOND_LAW_INFERRED_SUFFIX: Final[str] = " (ISIN)"
 BOND_SOURCE_NONE: Final[str] = "—"
 
 # ----------------------------------------------------------------------

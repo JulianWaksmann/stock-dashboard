@@ -35,6 +35,7 @@ import concurrent.futures
 import json
 import logging
 import re
+import time
 import unicodedata
 from dataclasses import dataclass
 from datetime import date, datetime
@@ -43,7 +44,7 @@ from typing import Final
 import requests
 
 from bonds.byma_source import BYMA_BASE_URL, BYMA_HEADERS
-from bonds.catalog import base_ticker_of
+from bonds.catalog import LAW_ARGENTINA, LAW_NEW_YORK, base_ticker_of
 
 logger = logging.getLogger(__name__)
 
@@ -58,6 +59,11 @@ REQUEST_TIMEOUT_SECONDS: Final[int] = 20
 # carga tardaría minutos. El tope es conservador a propósito: es una API
 # pública y gratuita, y no tiene sentido castigarla.
 MAX_WORKERS: Final[int] = 12
+
+# Reintentos por ficha. BYMA falla de forma intermitente: en una medición
+# sobre 60 especies no respondieron 20, y repetir la consulta las recuperó.
+FETCH_ATTEMPTS: Final[int] = 3
+RETRY_BACKOFF_SECONDS: Final[float] = 0.6
 
 # Detección de estructura de amortización a partir de `formaAmortizacion`.
 #
@@ -94,6 +100,21 @@ _RATE_PATTERN: Final[re.Pattern[str]] = re.compile(r"(\d{1,3})[,.](\d{1,4})\s*%?
 # sin TIR. Las filas calculadas así quedan marcadas como estimadas.
 ASSUMED_COUPON_FREQUENCY: Final[int] = 2
 
+# Ley aplicable inferida del prefijo del ISIN.
+#
+# BYMA no publica la ley: `paisLey` vino vacío en las 40 fichas medidas. Pero
+# sí publica el ISIN, y sus dos primeras letras son el país donde se registró
+# la emisión. Las ONs bajo ley local se registran en Argentina (AR...) y las
+# que se emiten bajo ley extranjera se registran en Estados Unidos (US...,
+# incluido el prefijo USP de las Reg S latinoamericanas).
+#
+# Es un PROXY, no la ley: el ISIN dice dónde se registró el título, no bajo qué
+# ley se litiga. Correlaciona fuerte, pero no es lo mismo, y por eso la
+# interfaz lo muestra como inferido. Cualquier otro prefijo —XS de Euroclear,
+# LU, KY— se deja sin clasificar en vez de forzarlo: la jurisdicción puntúa, y
+# clasificarla mal es peor que no informarla.
+_ISIN_LAW_PREFIXES: Final[dict[str, str]] = {"AR": LAW_ARGENTINA, "US": LAW_NEW_YORK}
+
 
 def _normalize(text: object) -> str:
     """Mayúsculas, sin acentos y con los espacios colapsados, para comparar."""
@@ -108,6 +129,9 @@ class BondReference:
     ticker: str
     issuer: str | None
     currency: str | None
+    # Ley inferida del prefijo del ISIN, no informada por BYMA. Ver
+    # `law_from_isin`: es un proxy y la interfaz lo dice.
+    inferred_law: str | None
     min_denomination: float | None
     maturity: date | None
     issue_date: date | None
@@ -148,6 +172,21 @@ def _parse_date(value: object) -> date | None:
             continue
     logger.warning("Fecha con formato inesperado en la ficha técnica: %r", text)
     return None
+
+
+def law_from_isin(isin: object) -> str | None:
+    """
+    Ley aplicable inferida del prefijo del ISIN.
+
+    Es la única señal de jurisdicción disponible: BYMA tiene los campos de ley
+    y no los llena. El prefijo identifica el país de registro de la emisión, que
+    no es la ley aplicable pero la acompaña de cerca. Un prefijo que no se
+    reconoce devuelve None en vez de una suposición.
+    """
+    text = _normalize(isin).replace(" ", "")
+    if len(text) < 2:
+        return None
+    return _ISIN_LAW_PREFIXES.get(text[:2])
 
 
 def parse_coupon_rate(raw: object) -> float | None:
@@ -224,6 +263,7 @@ def parse_technical_sheet(ticker: str, payload: object) -> BondReference | None:
         ticker=ticker.strip().upper(),
         issuer=_clean(record.get("emisor")),
         currency=_clean(record.get("moneda")),
+        inferred_law=law_from_isin(record.get("codigoIsin")),
         coupon_rate=parse_coupon_rate(record.get("interes")),
         is_bullet=is_bullet_amortization(record.get("formaAmortizacion")) and not already_amortized,
         min_denomination=_parse_number(record.get("denominacionMinima")),
@@ -238,17 +278,35 @@ def parse_technical_sheet(ticker: str, payload: object) -> BondReference | None:
 
 
 def _fetch_one(session: requests.Session, ticker: str) -> BondReference | None:
-    try:
-        response = session.post(
-            f"{BYMA_BASE_URL}/{BYMA_TECHNICAL_SHEET_PATH}",
-            data=json.dumps({"symbol": ticker}),
-            timeout=REQUEST_TIMEOUT_SECONDS,
-        )
-        response.raise_for_status()
-        return parse_technical_sheet(ticker, response.json())
-    except (requests.RequestException, ValueError):
-        logger.warning("No se pudo obtener la ficha técnica de %s", ticker, exc_info=True)
-        return None
+    """
+    Ficha técnica de una especie, con reintentos.
+
+    BYMA falla de forma intermitente bajo carga: en una medición sobre 60
+    especies no respondieron 20, y las mismas consultas repetidas sí
+    respondieron. Cada ficha que se pierde es un bono sin emisor, sin ley y
+    —si es bullet a tasa fija— sin TIR, así que el reintento recupera cobertura
+    real y no es un parche cosmético.
+    """
+    for intento in range(FETCH_ATTEMPTS):
+        try:
+            response = session.post(
+                f"{BYMA_BASE_URL}/{BYMA_TECHNICAL_SHEET_PATH}",
+                data=json.dumps({"symbol": ticker}),
+                timeout=REQUEST_TIMEOUT_SECONDS,
+            )
+            response.raise_for_status()
+            reference = parse_technical_sheet(ticker, response.json())
+            if reference is not None:
+                return reference
+        except (requests.RequestException, ValueError) as exc:
+            logger.debug("Ficha técnica de %s falló en el intento %d: %s", ticker, intento + 1, exc)
+        if intento + 1 < FETCH_ATTEMPTS:
+            # Espera creciente: si BYMA está saturado, insistir de inmediato
+            # empeora las cosas para todos los pedidos en vuelo.
+            time.sleep(RETRY_BACKOFF_SECONDS * (intento + 1))
+
+    logger.warning("No se pudo obtener la ficha técnica de %s tras %d intentos", ticker, FETCH_ATTEMPTS)
+    return None
 
 
 def fetch_byma_terms(tickers: list[str]) -> tuple[dict[str, BondReference], str | None]:
