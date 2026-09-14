@@ -123,15 +123,20 @@ def probar_byma_ficha(ticker: str) -> None:
     except Exception as exc:
         fallo(exc)
         return
-    for ruta in ("bnown/fichatecnica/especies/general", "bnown/fichatecnica/especies/cotizacion"):
-        for payload in ({"symbol": ticker}, {"especie": ticker}, {"Symbol": ticker}):
-            try:
-                datos = _post_byma(sesion, ruta, payload)
-                registros = datos.get("data", datos) if isinstance(datos, dict) else datos
-                describir(registros if isinstance(registros, list) else [registros])
-                break
-            except Exception as exc:
-                fallo(exc)
+    # Formas de pedido tomadas de PyOBD, que consume estos mismos endpoints:
+    # la ficha general pide solo el símbolo, la de cotización además el plazo
+    # de liquidación ("1" = CI, "2" = 24HS, "3" = 48HS).
+    consultas = (
+        ("bnown/fichatecnica/especies/general", {"symbol": ticker}),
+        ("bnown/fichatecnica/especies/cotizacion", {"symbol": ticker, "settlementType": "2"}),
+    )
+    for ruta, payload in consultas:
+        try:
+            datos = _post_byma(sesion, ruta, payload)
+            registros = datos.get("data", datos) if isinstance(datos, dict) else datos
+            describir(registros if isinstance(registros, list) else [registros])
+        except Exception as exc:
+            fallo(exc)
 
 
 def probar_cronogramas() -> None:
