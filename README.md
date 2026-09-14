@@ -1,6 +1,6 @@
 # Quantitative Stock Dashboard & Confluence Screener
 
-A high-performance quantitative stock screening dashboard built with **Streamlit**, **Pandas**, and **Yahoo Finance (`yfinance`)**. 
+A high-performance quantitative screening dashboard built with **Streamlit**, **Pandas**, and **Yahoo Finance (`yfinance`)**, split into two tabs: **Equities** (technical confluence screener) and **Argentine Corporate Bonds** (fixed-income analytics for Obligaciones Negociables).
 
 The platform monitors the top 50 market leaders in real-time, combining **fundamental valuation metrics** (Trailing P/E, Forward P/E, and 5-Year Historical P/E) with **John Murphy's Technical Confluence Principles** and an **On-Balance Volume "Smart Money" flow check** to identify swing trading opportunities, rotation exhaustion points, and volatility squeeze setups at a glance.
 
@@ -62,6 +62,77 @@ Every signal label and numeric threshold above lives in `constants.py`, which is
 
 ---
 
+## 💵 Argentine Corporate Bonds Tab (Obligaciones Negociables)
+
+A second tab prices the Argentine corporate hard-dollar bond panel from its **contractual cash
+flow** — not from price-momentum indicators, which say nothing useful about a bond.
+
+### What it computes
+
+For every ON whose issue terms are known, the tab derives, per 100 of original face value:
+
+| Metric | What it answers |
+| --- | --- |
+| **YTM (TIR)** | Effective annual return if held to maturity. The single comparison variable across bonds. |
+| **Current yield** | Annual coupon over price paid — this year's cash flow, ignoring capital gain/loss. |
+| **Modified duration** | Interest-rate risk: approximate % price drop per 1 pp rise in required yield. |
+| **Macaulay duration / convexity** | Time-weighted average of the discounted cash flow, and the curvature duration alone misses. |
+| **Weighted average life (WAL)** | How long, on average, until the principal comes back. Well below maturity on amortizing bonds. |
+| **Parity** | Price over technical value. Below 100 means part of the return arrives as capital gain. |
+| **Technical value / accrued interest / residual capital** | What the contract says the bond is worth today. |
+| **Spread vs UST** | Basis points over the duration-matched US Treasury — the price of Argentine + issuer risk. |
+| **Bid/ask spread, volume** | Whether the quoted yield is actually executable. |
+| **Minimum denomination** | Whether a retail investor can buy it at all (many NY-law ONs trade in 100k+ lots). |
+
+An in-app glossary explains every one of these in plain Spanish, next to the table.
+
+### Attractiveness grading
+
+Bonds are graded **against their peers on the same day**, not against their own history: an 11%
+yield is excellent or mediocre depending on where the rest of the corporate panel trades. The
+reference for every yield threshold is therefore the **panel's median YTM**.
+
+* **Mandatory:** a computable YTM. Without issue terms there is no cash flow to discount (⚪ SIN DATOS).
+* **Excluding alert:** YTM above the median + `BOND_RISK_YIELD_PREMIUM_PP` → 🚨 **ALERTA DE RIESGO**.
+  A premium that large over peers is the market pricing default risk, not a cheap bond.
+* **Points, one each:** yield premium over the median; modified duration ≤ `BOND_SHORT_DURATION_MAX_YEARS`;
+  parity below par; bid/ask spread ≤ `BOND_LIQUID_SPREAD_MAX_PCT`; New York law.
+* 4-5 points → 🌟 **MUY ATRACTIVO** · 3 → 🟢 **ATRACTIVO** · 2 → 🟡 **NEUTRAL** · 0-1 → 🟠 **POCO ATRACTIVO**.
+
+All labels and thresholds live in `constants.py`, same as the equity engine.
+
+### Where the data comes from
+
+| Data | Source | Notes |
+| --- | --- | --- |
+| Prices, bid/ask, volume | [data912](https://data912.com/live/arg_corp) | Public JSON, no API key. Educational feed cached ~2h upstream — good for yield analysis, not for execution. |
+| Issue terms | `data/ons_catalog.csv` (this repo) | Hand-maintained. **No free public source publishes these in machine-readable form** — they live in each bond's prospectus. |
+| US Treasury curve | Yahoo Finance (`^IRX`, `^FVX`, `^TNX`, `^TYX`) | Via `yfinance`, same as the equities tab. Linearly interpolated to each bond's duration. |
+
+### ⚠️ The catalog ships unverified
+
+`data/ons_catalog.csv` is seeded with the most traded hard-dollar issuers using the market's
+standard structure (bullet, semiannual coupon, 30/360). **Every row is marked `verificado=no`**
+and the table flags it with ⚠️. A wrong coupon or maturity does not break anything — it quietly
+returns a wrong YTM, which is worse.
+
+Before acting on these numbers, check each row against the issuer's prospectus (via the
+[CNV](https://www.argentina.gob.ar/cnv)), the [IAMC](https://www.iamc.com.ar) daily report (which
+publishes YTM, parity and duration already computed, so it validates both the inputs and the
+result), or the [BYMA](https://www.byma.com.ar) daily bulletin — then set `verificado=si`.
+
+### Modeling limits
+
+* **Fixed-rate bonds only.** CER, dollar-linked, Badlar and TAMAR ONs cannot be modeled here:
+  their future cash flow is not determined today. Loading one would produce a meaningless YTM.
+* No step-up coupons and no call/put schedules.
+* Accrued interest on a 30/360 basis; discounting on ACT/365 with annual compounding, so the
+  reported YTM is an **effective annual rate**, directly comparable across payment frequencies.
+* The price convention (dirty vs clean) is an explicit selector in the tab, because getting it
+  wrong silently biases YTM and parity. BYMA publishes dirty prices.
+
+---
+
 ## 📁 Repository Structure
 
 ```
@@ -71,9 +142,20 @@ stock-dashboard/
 ├── theme.py                        # Centralized color palette shared by the table and the charts
 ├── data_loader.py                  # Parallel price + fundamentals download, caching, and technicals aggregation
 ├── indicators.py                   # Indicator math (SMA/EMA/RSI/MACD/Bollinger/Stochastic/OBV/52W) and the confluence algorithm
+├── bonds/
+│   ├── __init__.py                 # Fixed-income package for Argentine corporate bonds (ONs)
+│   ├── bond_math.py                # Cash flows, YTM, duration, convexity, parity, accrued interest (pure, no I/O)
+│   ├── catalog.py                  # Parses and validates data/ons_catalog.csv into BondTerms
+│   ├── panel.py                    # Pure merge of prices + terms + metrics into the final table
+│   ├── scoring.py                  # Peer-relative attractiveness grading for ONs
+│   └── data_loader.py              # I/O only: live price feed, US Treasury curve, cached orchestration
+├── data/
+│   └── ons_catalog.csv             # Hand-maintained issue terms per ON (coupon, maturity, amortization, law)
 ├── components/
 │   ├── __init__.py                 # Marks components as a package
 │   ├── alerts_panel.py             # Top "quick alerts" cards grouped by signal grade
+│   ├── bonds_panel.py              # The whole Bonds tab: controls, KPIs, filters, glossary and methodology
+│   ├── bonds_table.py              # Comparison table of ONs with conditional formatting and per-column help
 │   ├── charts.py                   # Plotly 4-panel technical chart and the valuation-vs-momentum scatter plot
 │   ├── formatting.py               # Shared text formatting helpers (e.g. signed percentages)
 │   ├── kpi_cards.py                # Market breadth and valuation summary KPI cards
@@ -84,6 +166,10 @@ stock-dashboard/
 │   ├── conftest.py                 # Shared pytest fixtures (deterministic synthetic series)
 │   ├── test_52w_high_low.py        # Tests for compute_52w_high_low
 │   ├── test_bollinger.py           # Tests for compute_bollinger_bands
+│   ├── test_bond_catalog.py        # Tests for the ONs catalog parser and its error reporting
+│   ├── test_bond_math.py           # Tests for the fixed-income math (cash flows, YTM, duration, parity)
+│   ├── test_bond_scoring.py        # Tests for the ONs attractiveness grading
+│   ├── test_bonds_panel.py         # Tests for the price/terms merge and the Treasury curve interpolation
 │   ├── test_compute_stock_technicals.py  # Tests for the compute_stock_technicals aggregator
 │   ├── test_confluence_signal.py   # Tests for evaluate_confluence_signal
 │   ├── test_obv.py                 # Tests for compute_obv
@@ -160,6 +246,10 @@ Every push and pull request against `main` runs both `ruff check .` and `pytest`
 
 ### Where to change things
 * Confluence signal labels and numeric thresholds: `constants.py`.
+* Bond grading labels and thresholds: `constants.py` (the "BONOS CORPORATIVOS" section).
+* Issue terms of an ON (coupon, maturity, amortization schedule, law): `data/ons_catalog.csv`.
+* The bond price feed: `DATA912_CORPORATE_BONDS_URL` in `bonds/data_loader.py` — any source returning
+  the same JSON shape drops straight in.
 * Colors used across the table and the charts: `theme.py`.
 
 ---

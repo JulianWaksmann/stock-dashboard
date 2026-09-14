@@ -8,3 +8,7 @@ yfinance>=0.2.40,<0.3.0
 pandas>=2.2.0,<3.0.0
 numpy>=1.26.0,<2.0.0
 plotly>=5.20.0,<6.0.0
+# Usado por el feed de precios de ONs (bonds/data_loader.py). yfinance ya lo
+# arrastra como dependencia transitiva, pero lo declaramos explícito porque
+# el módulo de bonos lo importa de forma directa.
+requests>=2.31.0,<3.0.0
