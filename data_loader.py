@@ -4,10 +4,13 @@ data_loader.py - Descarga optimizada de datos y fundamentales con Yahoo Finance
 
 import concurrent.futures
 import logging
-import streamlit as st
-import pandas as pd
+
 import numpy as np
+import pandas as pd
+import streamlit as st
 import yfinance as yf
+
+from constants import FLOW_NOT_AVAILABLE, SIGNAL_NEUTRAL
 from indicators import compute_stock_technicals
 
 logger = logging.getLogger(__name__)
@@ -251,9 +254,9 @@ def load_all_stocks_data(tickers: list[str], timeframe: str = "1d") -> tuple[pd.
         tech = technicals_map.get(ticker, {})
         
         row = {
-            "Semáforo": tech.get("confluence_signal", "🟡 NEUTRAL"),
+            "Semáforo": tech.get("confluence_signal", SIGNAL_NEUTRAL),
             "Ticker": ticker,
-            "Flujo Institucional": tech.get("institutional_flow", "N/A"),
+            "Flujo Institucional": tech.get("institutional_flow", FLOW_NOT_AVAILABLE),
             "Precio Actual": tech.get("close", np.nan),
             "Var. Período (%)": tech.get("day_change_pct", np.nan),
             "PER Pasado (Trailing)": fund.get("trailing_pe", np.nan),
