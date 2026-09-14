@@ -5,6 +5,13 @@ components/screener_table.py - Visualización interactiva con colores condiciona
 import pandas as pd
 import streamlit as st
 
+from constants import (
+    SIGNAL_MODERATE_BUY,
+    SIGNAL_MODERATE_SELL,
+    SIGNAL_SQUEEZE,
+    SIGNAL_STRONG_BUY,
+    SIGNAL_STRONG_SELL,
+)
 from theme import (
     COLOR_NEGATIVE,
     COLOR_NEGATIVE_BG,
@@ -40,16 +47,15 @@ def style_percentage(val):
 
 def style_semaforo(val):
     """Resalta el semáforo según el grado de la señal."""
-    val_str = str(val)
-    if "COMPRA FUERTE" in val_str:
+    if val == SIGNAL_STRONG_BUY:
         return f"background-color: {COLOR_POSITIVE_BG}; color: {COLOR_POSITIVE_TEXT_STRONG}; font-weight: bold;"
-    elif "COMPRA MODERADA" in val_str:
+    elif val == SIGNAL_MODERATE_BUY:
         return f"background-color: {COLOR_POSITIVE_BG_MODERATE}; color: {COLOR_POSITIVE_TEXT_MODERATE}; font-weight: 600;"
-    elif "VENTA FUERTE" in val_str:
+    elif val == SIGNAL_STRONG_SELL:
         return f"background-color: {COLOR_NEGATIVE_BG}; color: {COLOR_NEGATIVE_TEXT_STRONG}; font-weight: bold;"
-    elif "VENTA MODERADA" in val_str:
+    elif val == SIGNAL_MODERATE_SELL:
         return f"background-color: {COLOR_NEGATIVE_BG_MODERATE}; color: {COLOR_NEGATIVE_TEXT_MODERATE}; font-weight: 600;"
-    elif "SQUEEZE" in val_str:
+    elif val == SIGNAL_SQUEEZE:
         return f"background-color: {COLOR_SQUEEZE_BG}; color: {COLOR_SQUEEZE_TEXT}; font-weight: bold;"
     return f"color: {COLOR_NEUTRAL};"
 

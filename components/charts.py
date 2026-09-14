@@ -31,6 +31,9 @@ from theme import (
     COLOR_PRICE_LINE,
     COLOR_REFERENCE_LINE,
     COLOR_RSI_LINE,
+    COLOR_SCATTER_LABEL_TEXT,
+    COLOR_SCATTER_MARKER_BORDER,
+    COLOR_SCATTER_REFERENCE_LINE,
     COLOR_SMA_50,
     COLOR_SMA_200,
     COLOR_STOCH_D,
@@ -316,14 +319,14 @@ def plot_valuation_vs_technicals(df: pd.DataFrame, timeframe_label: str = "Diari
             mode='markers+text',
             text=df_clean['Ticker'],
             textposition="top center",
-            textfont=dict(size=10, color="#FFFFFF"),
+            textfont=dict(size=10, color=COLOR_SCATTER_LABEL_TEXT),
             marker=dict(
                 size=sizes,
                 color=df_clean['RSI_VAL'],
                 colorscale="Spectral_r",
                 showscale=True,
                 colorbar=dict(title=f"RSI ({timeframe_label})", thickness=15),
-                line=dict(width=1, color="#333333")
+                line=dict(width=1, color=COLOR_SCATTER_MARKER_BORDER)
             ),
             hovertemplate=(
                 "<b>%{text}</b> - %{customdata[0]}<br>" +
@@ -340,9 +343,9 @@ def plot_valuation_vs_technicals(df: pd.DataFrame, timeframe_label: str = "Diari
         )
     )
 
-    fig.add_hline(y=0, line_dash="dash", line_color="#777777")
+    fig.add_hline(y=0, line_dash="dash", line_color=COLOR_SCATTER_REFERENCE_LINE)
     median_fpe = df_clean['PER Futuro (Forward)'].median()
-    fig.add_vline(x=median_fpe, line_dash="dash", line_color="#777777")
+    fig.add_vline(x=median_fpe, line_dash="dash", line_color=COLOR_SCATTER_REFERENCE_LINE)
 
     fig.update_layout(
         template="plotly_dark",

@@ -58,3 +58,8 @@ COLOR_REFERENCE_LINE: Final[str] = "#666666"
 COLOR_PE_TRAILING: Final[str] = "#42A5F5"
 COLOR_PE_FORWARD: Final[str] = "#66BB6A"
 COLOR_PE_HISTORICAL_AVG: Final[str] = "#FFA726"
+
+# Dispersión Valuación vs Momentum (plot_valuation_vs_technicals).
+COLOR_SCATTER_LABEL_TEXT: Final[str] = "#FFFFFF"
+COLOR_SCATTER_MARKER_BORDER: Final[str] = "#333333"
+COLOR_SCATTER_REFERENCE_LINE: Final[str] = "#777777"
