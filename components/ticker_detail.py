@@ -2,9 +2,11 @@
 components/ticker_detail.py - Vista detallada y ficha técnica de una acción individual
 """
 
-import streamlit as st
 import pandas as pd
-from components.charts import plot_stock_detail
+import streamlit as st
+
+from components.charts import compute_chart_indicators, plot_stock_detail
+from components.formatting import format_signed_pct
 
 
 def render_ticker_detail_view(ticker: str, df_summary: pd.DataFrame, dict_history: dict[str, pd.DataFrame], timeframe_label: str = "Diario"):
@@ -30,7 +32,7 @@ def render_ticker_detail_view(ticker: str, df_summary: pd.DataFrame, dict_histor
 
     # 1. Métricas de Valuación y Momentum
     c1, c2, c3, c4, c5 = st.columns(5)
-    c1.metric("Precio Actual", f"${row['Precio Actual']:.2f}", f"{row['Var. Período (%)']:+.2f}%")
+    c1.metric("Precio Actual", f"${row['Precio Actual']:.2f}", format_signed_pct(row['Var. Período (%)']))
     
     t_pe = f"{row['PER Pasado (Trailing)']:.1f}x" if pd.notna(row['PER Pasado (Trailing)']) else "N/A"
     c2.metric("PER Pasado", t_pe)
@@ -51,12 +53,12 @@ def render_ticker_detail_view(ticker: str, df_summary: pd.DataFrame, dict_histor
     m1.metric(
         f"SMA 50{tf_suffix}",
         f"${row['SMA_50_VAL']:.2f}" if pd.notna(row['SMA_50_VAL']) else "N/A",
-        f"{row['DIFF_SMA_50_VAL']:+.2f}%" if pd.notna(row['DIFF_SMA_50_VAL']) else None
+        format_signed_pct(row['DIFF_SMA_50_VAL']) if pd.notna(row['DIFF_SMA_50_VAL']) else None
     )
     m2.metric(
         f"SMA 200{tf_suffix}",
         f"${row['SMA_200_VAL']:.2f}" if pd.notna(row['SMA_200_VAL']) else "N/A",
-        f"{row['DIFF_SMA_200_VAL']:+.2f}%" if pd.notna(row['DIFF_SMA_200_VAL']) else None
+        format_signed_pct(row['DIFF_SMA_200_VAL']) if pd.notna(row['DIFF_SMA_200_VAL']) else None
     )
     
     bw_val = f"{row.get('BB_BANDWIDTH', 0):.1f}%" if pd.notna(row.get('BB_BANDWIDTH')) else "N/A"
@@ -65,12 +67,13 @@ def render_ticker_detail_view(ticker: str, df_summary: pd.DataFrame, dict_histor
     stoch_str = f"{row.get('STOCH_K', 0):.1f} / {row.get('STOCH_D', 0):.1f}" if pd.notna(row.get('STOCH_K')) else "N/A"
     m4.metric("Estocástico %K/%D", stoch_str, help="%K (14) y %D (SMA 3)")
 
-    dist_52w = f"{row.get('DIST_52W_HIGH_PCT', 0):+.2f}%" if pd.notna(row.get('DIST_52W_HIGH_PCT')) else "N/A"
+    dist_52w = format_signed_pct(row.get('DIST_52W_HIGH_PCT'))
     m5.metric("Distancia Máx 52S", dist_52w, help="Distancia porcentual al Máximo de 52 Semanas")
 
-    st.markdown(f"#### 📊 Gráfico Avanzado (4 Paneles: Velas+SMAs+Bollinger | Volumen | MACD | RSI+Estocástico)")
+    st.markdown("#### 📊 Gráfico Avanzado (4 Paneles: Velas+SMAs+Bollinger | Volumen | MACD | RSI+Estocástico)")
     if not df_hist.empty:
-        fig = plot_stock_detail(df_hist, ticker, row['Empresa'], timeframe_label)
+        indicators = compute_chart_indicators(df_hist)
+        fig = plot_stock_detail(df_hist, indicators, ticker, row['Empresa'], timeframe_label)
         st.plotly_chart(fig, use_container_width=True)
     else:
         st.info("Cargando historial para el gráfico...")

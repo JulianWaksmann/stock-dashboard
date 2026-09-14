@@ -2,9 +2,24 @@
 components/screener_table.py - Visualización interactiva con colores condicionales (Verde para subas, Rojo para bajas)
 """
 
-import streamlit as st
 import pandas as pd
-import numpy as np
+import streamlit as st
+
+from theme import (
+    COLOR_NEGATIVE,
+    COLOR_NEGATIVE_BG,
+    COLOR_NEGATIVE_BG_MODERATE,
+    COLOR_NEGATIVE_TEXT_MODERATE,
+    COLOR_NEGATIVE_TEXT_STRONG,
+    COLOR_NEUTRAL,
+    COLOR_POSITIVE,
+    COLOR_POSITIVE_BG,
+    COLOR_POSITIVE_BG_MODERATE,
+    COLOR_POSITIVE_TEXT_MODERATE,
+    COLOR_POSITIVE_TEXT_STRONG,
+    COLOR_SQUEEZE_BG,
+    COLOR_SQUEEZE_TEXT,
+)
 
 
 def style_percentage(val):
@@ -14,11 +29,11 @@ def style_percentage(val):
     try:
         num = float(val)
         if num > 0:
-            return "color: #22c55e; font-weight: 600;"
+            return f"color: {COLOR_POSITIVE}; font-weight: 600;"
         elif num < 0:
-            return "color: #ef4444; font-weight: 600;"
+            return f"color: {COLOR_NEGATIVE}; font-weight: 600;"
         else:
-            return "color: #9ca3af;"
+            return f"color: {COLOR_NEUTRAL};"
     except Exception:
         return ""
 
@@ -27,16 +42,16 @@ def style_semaforo(val):
     """Resalta el semáforo según el grado de la señal."""
     val_str = str(val)
     if "COMPRA FUERTE" in val_str:
-        return "background-color: #052e16; color: #4ade80; font-weight: bold;"
+        return f"background-color: {COLOR_POSITIVE_BG}; color: {COLOR_POSITIVE_TEXT_STRONG}; font-weight: bold;"
     elif "COMPRA MODERADA" in val_str:
-        return "background-color: #064e3b; color: #86efac; font-weight: 600;"
+        return f"background-color: {COLOR_POSITIVE_BG_MODERATE}; color: {COLOR_POSITIVE_TEXT_MODERATE}; font-weight: 600;"
     elif "VENTA FUERTE" in val_str:
-        return "background-color: #450a0a; color: #f87171; font-weight: bold;"
+        return f"background-color: {COLOR_NEGATIVE_BG}; color: {COLOR_NEGATIVE_TEXT_STRONG}; font-weight: bold;"
     elif "VENTA MODERADA" in val_str:
-        return "background-color: #431407; color: #fdba74; font-weight: 600;"
+        return f"background-color: {COLOR_NEGATIVE_BG_MODERATE}; color: {COLOR_NEGATIVE_TEXT_MODERATE}; font-weight: 600;"
     elif "SQUEEZE" in val_str:
-        return "background-color: #422006; color: #fde047; font-weight: bold;"
-    return "color: #9ca3af;"
+        return f"background-color: {COLOR_SQUEEZE_BG}; color: {COLOR_SQUEEZE_TEXT}; font-weight: bold;"
+    return f"color: {COLOR_NEUTRAL};"
 
 
 def render_screener_table(df: pd.DataFrame, timeframe_label: str = "Diario"):
