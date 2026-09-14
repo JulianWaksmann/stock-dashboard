@@ -34,18 +34,4 @@ jobs:
         run: ruff check .
 
       - name: Run pytest
-        run: |
-          # The tests/ directory does not exist yet in this repository, and
-          # pytest exits with status 5 ("no tests collected") in that case.
-          # Treat "no tests collected" as a pass so the build stays green
-          # until a test suite is added, while still failing the build on
-          # any other non-zero exit code (collection errors, failures, etc).
-          set +e
-          pytest
-          status=$?
-          set -e
-          if [ "$status" -eq 5 ]; then
-            echo "No tests were collected yet; treating as a pass."
-            exit 0
-          fi
-          exit "$status"
+        run: pytest
