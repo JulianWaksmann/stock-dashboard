@@ -90,3 +90,71 @@ SQUEEZE_LOOKBACK_BARS: Final[int] = 126
 # squeeze si el Bandwidth actual está hasta un 8% por encima del mínimo
 # de los últimos 6 meses (no exige que sea el mínimo exacto).
 SQUEEZE_BANDWIDTH_TOLERANCE: Final[float] = 1.08
+
+# ----------------------------------------------------------------------
+# Opciones de los selectores de filtros en app.py.
+#
+# Cada selector define su lista de opciones y luego compara la opción
+# elegida contra ese mismo texto en un if/elif. Si esos textos se escriben
+# como literales sueltos en dos lugares distintos, alcanza con editar uno
+# y olvidarse del otro para que el filtro deje de funcionar en silencio
+# (sin ningún error). Centralizar el texto acá evita esa desincronización:
+# la definición del selector y la comparación siempre leen la misma fuente.
+# ----------------------------------------------------------------------
+
+# --- Filtro por Semáforo (Sistema de Grados) ---
+FILTER_SIGNAL_ALL: Final[str] = "Todas las Acciones"
+FILTER_SIGNAL_STRONG_BUY: Final[str] = "🌟 Solo Compra Fuerte"
+FILTER_SIGNAL_BUY: Final[str] = "🟢 Solo Compras (Fuerte + Moderada)"
+FILTER_SIGNAL_SELL: Final[str] = "🚨 Solo Venta / Rotar (Fuerte + Moderada)"
+FILTER_SIGNAL_SQUEEZE: Final[str] = "⚡ Solo Squeezes"
+
+SIGNAL_FILTER_OPTIONS: Final[tuple[str, ...]] = (
+    FILTER_SIGNAL_ALL,
+    FILTER_SIGNAL_STRONG_BUY,
+    FILTER_SIGNAL_BUY,
+    FILTER_SIGNAL_SELL,
+    FILTER_SIGNAL_SQUEEZE,
+)
+
+# --- Filtro por Flujo Institucional / Smart Money (OBV) ---
+FILTER_FLOW_ALL: Final[str] = "Todos los Flujos"
+FILTER_FLOW_ACCUMULATION: Final[str] = "🐳 Solo Acumulación (OBV > SMA 20)"
+FILTER_FLOW_DISTRIBUTION: Final[str] = "📉 Solo Distribución (OBV < SMA 20)"
+
+FLOW_FILTER_OPTIONS: Final[tuple[str, ...]] = (
+    FILTER_FLOW_ALL,
+    FILTER_FLOW_ACCUMULATION,
+    FILTER_FLOW_DISTRIBUTION,
+)
+
+# --- Filtro por Tendencia vs SMA 200 ---
+FILTER_SMA200_ALL: Final[str] = "Todos"
+FILTER_SMA200_BULLISH: Final[str] = "Solo Alcistas (> SMA 200)"
+FILTER_SMA200_BEARISH: Final[str] = "Solo Bajistas (< SMA 200)"
+
+SMA200_FILTER_OPTIONS: Final[tuple[str, ...]] = (
+    FILTER_SMA200_ALL,
+    FILTER_SMA200_BULLISH,
+    FILTER_SMA200_BEARISH,
+)
+
+# --- Selector de Temporalidad (Diario vs Semanal) ---
+TIMEFRAME_CHOICE_DAILY: Final[str] = "☀️ Diario (1D)"
+TIMEFRAME_CHOICE_WEEKLY: Final[str] = "📅 Semanal (1W)"
+
+TIMEFRAME_CHOICE_OPTIONS: Final[tuple[str, ...]] = (
+    TIMEFRAME_CHOICE_DAILY,
+    TIMEFRAME_CHOICE_WEEKLY,
+)
+
+# --- Selector de Mercado ---
+MARKET_USA_STOCKS: Final[str] = "Acciones USA (S&P 500)"
+MARKET_CRYPTO: Final[str] = "Criptomonedas"
+MARKET_ARGENTINA: Final[str] = "Acciones Argentinas (Merval)"
+
+MARKET_OPTIONS: Final[tuple[str, ...]] = (
+    MARKET_USA_STOCKS,
+    MARKET_CRYPTO,
+    MARKET_ARGENTINA,
+)
