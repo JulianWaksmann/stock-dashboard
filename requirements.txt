@@ -1,5 +1,10 @@
-streamlit>=1.35.0
-yfinance>=0.2.40
-pandas>=2.2.0
-numpy>=1.26.0
-plotly>=5.20.0
+# Pinning policy: lower bound is the version we developed/tested against;
+# upper bound caps at the next major version so a breaking release can't
+# silently pull in and break the dashboard. yfinance is the exception -
+# it wraps an undocumented, frequently-changing Yahoo Finance API, so its
+# ceiling is tightened to the next minor release instead of the next major.
+streamlit>=1.35.0,<2.0.0
+yfinance>=0.2.40,<0.3.0
+pandas>=2.2.0,<3.0.0
+numpy>=1.26.0,<2.0.0
+plotly>=5.20.0,<6.0.0
