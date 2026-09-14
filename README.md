@@ -1,6 +1,6 @@
 # Quantitative Stock Dashboard & Confluence Screener
 
-A high-performance quantitative screening dashboard built with **Streamlit**, **Pandas**, and **Yahoo Finance (`yfinance`)**, split into two tabs: **Equities** (technical confluence screener) and **Argentine Corporate Bonds** (fixed-income analytics for Obligaciones Negociables).
+A high-performance quantitative screening dashboard built with **Streamlit**, **Pandas**, and **Yahoo Finance (`yfinance`)**, split into two sections: **Equities** (technical confluence screener) and **Argentine Corporate Bonds** (fixed-income analytics for Obligaciones Negociables). Sections are selected rather than tabbed, so each one queries its data sources only when it is actually opened.
 
 The platform monitors the top 50 market leaders in real-time, combining **fundamental valuation metrics** (Trailing P/E, Forward P/E, and 5-Year Historical P/E) with **John Murphy's Technical Confluence Principles** and an **On-Balance Volume "Smart Money" flow check** to identify swing trading opportunities, rotation exhaustion points, and volatility squeeze setups at a glance.
 
@@ -62,14 +62,14 @@ Every signal label and numeric threshold above lives in `constants.py`, which is
 
 ---
 
-## 💵 Argentine Corporate Bonds Tab (Obligaciones Negociables)
+## 💵 Argentine Corporate Bonds (Obligaciones Negociables)
 
-A second tab prices the Argentine corporate hard-dollar bond panel from its **contractual cash
+A second section prices the Argentine corporate hard-dollar bond panel from its **contractual cash
 flow** — not from price-momentum indicators, which say nothing useful about a bond.
 
 ### What it computes
 
-For every ON whose issue terms are known, the tab derives, per 100 of original face value:
+For every ON whose issue terms are known, the section derives, per 100 of original face value:
 
 | Metric | What it answers |
 | --- | --- |
@@ -107,7 +107,7 @@ All labels and thresholds live in `constants.py`, same as the equity engine.
 | --- | --- | --- |
 | Prices, bid/ask, volume | [data912](https://data912.com/live/arg_corp) | Public JSON, no API key. Educational feed cached ~2h upstream — good for yield analysis, not for execution. |
 | Issue terms | `data/ons_catalog.csv` (this repo) | Hand-maintained. **No free public source publishes these in machine-readable form** — they live in each bond's prospectus. |
-| US Treasury curve | Yahoo Finance (`^IRX`, `^FVX`, `^TNX`, `^TYX`) | Via `yfinance`, same as the equities tab. Linearly interpolated to each bond's duration. |
+| US Treasury curve | Yahoo Finance (`^IRX`, `^FVX`, `^TNX`, `^TYX`) | Via `yfinance`, same as the equities section. Linearly interpolated to each bond's duration. |
 
 ### ⚠️ The catalog ships unverified
 
@@ -121,6 +121,24 @@ Before acting on these numbers, check each row against the issuer's prospectus (
 publishes YTM, parity and duration already computed, so it validates both the inputs and the
 result), or the [BYMA](https://www.byma.com.ar) daily bulletin — then set `verificado=si`.
 
+### Settlement species
+
+The last letter of a BYMA ticker is the settlement species, not decoration: **O** settles in pesos,
+**D** in MEP dollars, **C** in cable. `YMCJO`, `YMCJD` and `YMCJC` are the same YPF bond, but the
+first quotes around 152,000 pesos where the others quote around 105 dollars.
+
+Two consequences, both handled:
+
+* A yield is computed only when the species' quote currency matches the bond's currency of issue.
+  Discounting a dollar cash flow against a peso price does not give a slightly wrong yield, it
+  gives a meaningless one — the peso species shows price and liquidity with no yield instead.
+* The catalog is matched by ticker root, so one row loaded as `YMCJO` also covers `YMCJD` and
+  `YMCJC`. An exact ticker still wins over the root, leaving room to load a single species with
+  different terms.
+
+The panel quotes 600+ species against a catalog covering a handful, so the species filter defaults
+to the dollar ones and the uncatalogued list sits behind an expander rather than in the warning.
+
 ### Modeling limits
 
 * **Fixed-rate bonds only.** CER, dollar-linked, Badlar and TAMAR ONs cannot be modeled here:
@@ -128,7 +146,7 @@ result), or the [BYMA](https://www.byma.com.ar) daily bulletin — then set `ver
 * No step-up coupons and no call/put schedules.
 * Accrued interest on a 30/360 basis; discounting on ACT/365 with annual compounding, so the
   reported YTM is an **effective annual rate**, directly comparable across payment frequencies.
-* The price convention (dirty vs clean) is an explicit selector in the tab, because getting it
+* The price convention (dirty vs clean) is an explicit selector, because getting it
   wrong silently biases YTM and parity. BYMA publishes dirty prices.
 
 ---
@@ -154,7 +172,7 @@ stock-dashboard/
 ├── components/
 │   ├── __init__.py                 # Marks components as a package
 │   ├── alerts_panel.py             # Top "quick alerts" cards grouped by signal grade
-│   ├── bonds_panel.py              # The whole Bonds tab: controls, KPIs, filters, glossary and methodology
+│   ├── bonds_panel.py              # The whole Bonds section: controls, KPIs, filters, glossary and methodology
 │   ├── bonds_table.py              # Comparison table of ONs with conditional formatting and per-column help
 │   ├── charts.py                   # Plotly 4-panel technical chart and the valuation-vs-momentum scatter plot
 │   ├── formatting.py               # Shared text formatting helpers (e.g. signed percentages)

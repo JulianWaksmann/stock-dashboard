@@ -23,6 +23,9 @@ from constants import (
     BOND_ATTRACTIVE_SIGNALS,
     BOND_FILTER_LAW_ARG,
     BOND_FILTER_LAW_NY,
+    BOND_FILTER_SETTLEMENT_MEP,
+    BOND_FILTER_SETTLEMENT_PESOS,
+    BOND_FILTER_SETTLEMENT_USD,
     BOND_FILTER_SIGNAL_ATTRACTIVE,
     BOND_FILTER_SIGNAL_RISK,
     BOND_FILTER_SIGNAL_VERY_ATTRACTIVE,
@@ -32,6 +35,9 @@ from constants import (
     BOND_PRICE_CONVENTION_OPTIONS,
     BOND_PRICE_DIRTY,
     BOND_RISK_YIELD_PREMIUM_PP,
+    BOND_SETTLEMENT_FILTER_OPTIONS,
+    BOND_SETTLEMENT_MEP,
+    BOND_SETTLEMENT_PESOS,
     BOND_SHORT_DURATION_MAX_YEARS,
     BOND_SIGNAL_FILTER_OPTIONS,
     BOND_SIGNAL_RISK,
@@ -127,8 +133,14 @@ def _render_kpis(df: pd.DataFrame):
 
 def _render_filters(df: pd.DataFrame) -> pd.DataFrame:
     """Filtros rápidos del panel. Devuelve el DataFrame ya filtrado."""
-    col1, col2, col3, col4 = st.columns([2, 2, 2, 2])
+    col0, col1, col2, col3, col4 = st.columns([2, 2, 2, 2, 2])
 
+    with col0:
+        settlement_filter = st.selectbox(
+            "💱 Especie de liquidación:",
+            BOND_SETTLEMENT_FILTER_OPTIONS,
+            help="Cada ON cotiza en tres especies (O pesos, D MEP, C cable). Son el mismo bono: por defecto se muestran las que cotizan en dólares, que son las comparables por TIR.",
+        )
     with col1:
         signal_filter = st.selectbox("🚦 Filtrar por atractivo:", BOND_SIGNAL_FILTER_OPTIONS)
     with col2:
@@ -150,6 +162,13 @@ def _render_filters(df: pd.DataFrame) -> pd.DataFrame:
         )
 
     filtered = df.copy()
+
+    if settlement_filter == BOND_FILTER_SETTLEMENT_USD:
+        filtered = filtered[filtered["Moneda Precio"] == "USD"]
+    elif settlement_filter == BOND_FILTER_SETTLEMENT_MEP:
+        filtered = filtered[filtered["Liquidación"] == BOND_SETTLEMENT_MEP]
+    elif settlement_filter == BOND_FILTER_SETTLEMENT_PESOS:
+        filtered = filtered[filtered["Liquidación"] == BOND_SETTLEMENT_PESOS]
 
     if signal_filter == BOND_FILTER_SIGNAL_ATTRACTIVE:
         filtered = filtered[filtered["Atractivo"].isin(BOND_ATTRACTIVE_SIGNALS)]
@@ -343,6 +362,17 @@ def render_bonds_panel():
         _render_glossary()
         _render_sources()
         return
+
+    uncatalogued = sorted(df_bonds.loc[~df_bonds["En Catálogo"], "Ticker"])
+    if uncatalogued:
+        st.info(
+            f"📗 **{len(uncatalogued)} de {len(df_bonds)} especies cotizan sin condiciones de emisión cargadas.** "
+            "Se les muestra precio, puntas y volumen, pero no se les puede calcular TIR ni duration. "
+            "Para incorporarlas, agregá una fila por bono en `data/ons_catalog.csv`: alcanza con cargar "
+            "una especie (por ejemplo la O) y el panel la aplica también a las especies D y C del mismo bono."
+        )
+        with st.expander(f"Ver las {len(uncatalogued)} especies sin condiciones cargadas"):
+            st.write(", ".join(uncatalogued))
 
     unverified = int((~df_bonds["Verificado"] & df_bonds["En Catálogo"]).sum())
     if unverified:

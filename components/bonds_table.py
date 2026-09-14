@@ -44,6 +44,8 @@ DISPLAY_COLUMNS = [
     "Ticker",
     "Emisor",
     "Ley",
+    "Calificación",
+    "Liquidación",
     "Verif.",
     "Precio",
     "Var. (%)",
@@ -144,6 +146,16 @@ def render_bonds_table(df: pd.DataFrame):
             width="small",
             help="Jurisdicción aplicable. NY = se litiga en tribunales de Nueva York; ARG = tribunales argentinos.",
         ),
+        "Calificación": st.column_config.TextColumn(
+            "Calificación",
+            width="small",
+            help="Calificación crediticia local del emisor (FIX SCR, Moody's Local, etc.). 's/c' = sin cargar en el catálogo.",
+        ),
+        "Liquidación": st.column_config.TextColumn(
+            "Liquidación",
+            width="small",
+            help="Especie según la última letra del ticker: O liquida en pesos, D en dólar MEP, C en dólar cable. Es la misma ON en las tres, cambia la moneda del precio.",
+        ),
         "Verif.": st.column_config.TextColumn(
             "Condiciones",
             width="small",
@@ -152,7 +164,7 @@ def render_bonds_table(df: pd.DataFrame):
         "Precio": st.column_config.NumberColumn(
             "Precio",
             format="%.2f",
-            help="Precio por cada 100 VN (valor nominal), en la moneda de emisión.",
+            help="Precio por cada 100 VN (valor nominal), en la moneda de la especie: pesos para la especie O, dólares para D y C.",
         ),
         "Var. (%)": st.column_config.NumberColumn("Var. (%)", format="%+.2f%%"),
         "TIR (%)": st.column_config.NumberColumn(

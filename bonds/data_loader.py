@@ -156,8 +156,14 @@ def load_bonds_data(
     Punto de entrada de la pestaña: descarga, cruza y devuelve `(panel, avisos)`.
 
     Los avisos son mensajes ya redactados para el usuario (catálogo con filas
-    inválidas, feed caído, ONs sin condiciones cargadas). La pestaña los
-    muestra tal cual: acá es donde se sabe qué pasó, no en la capa de dibujo.
+    inválidas, feed caído): acá es donde se sabe qué pasó, no en la capa de
+    dibujo.
+
+    Lo que **no** vuelve por acá es el detalle de qué ONs quedaron sin
+    condiciones cargadas. El panel lista más de 600 especies y el catálogo
+    cubre un puñado, así que enumerarlas en un aviso escupe una pared de
+    tickers que nadie lee; la pestaña las cuenta y las ofrece dentro de un
+    desplegable a partir de la columna "En Catálogo".
     """
     warnings: list[str] = []
 
@@ -177,13 +183,5 @@ def load_bonds_data(
         price_is_dirty=price_is_dirty,
         treasury_curve=fetch_us_treasury_curve(),
     )
-
-    uncatalogued = panel.loc[~panel["En Catálogo"], "Ticker"].tolist() if not panel.empty else []
-    if uncatalogued:
-        warnings.append(
-            f"{len(uncatalogued)} ON(s) cotizan pero no tienen condiciones de emisión cargadas, "
-            f"así que no se les puede calcular TIR ni duration: {', '.join(sorted(uncatalogued))}. "
-            "Agregalas en data/ons_catalog.csv."
-        )
 
     return panel, warnings
