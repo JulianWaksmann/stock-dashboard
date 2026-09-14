@@ -171,6 +171,112 @@ def probar_tesoro() -> None:
             print(f"  ❌ {simbolo} ({tramo}): {type(exc).__name__}: {exc}")
 
 
+
+# Nombres candidatos del ticker y del precio en la respuesta de BYMA. La API
+# no está documentada, así que en vez de asumir uno se prueban los habituales
+# y se informa cuál se encontró: si ninguno aparece, el problema es que cambió
+# el esquema y conviene verlo dicho, no deducirlo de una comparación vacía.
+_CAMPOS_TICKER = ("symbol", "securityDesc", "denominationCcy", "ticker")
+_CAMPOS_PRECIO = ("settlementPrice", "trade", "closingPrice", "last", "price")
+
+
+def _primer_campo(registro: dict, candidatos: tuple[str, ...]) -> str | None:
+    return next((campo for campo in candidatos if campo in registro), None)
+
+
+def _indexar_byma(registros: list[dict]) -> tuple[dict[str, float], str | None, str | None]:
+    if not registros:
+        return {}, None, None
+    campo_ticker = _primer_campo(registros[0], _CAMPOS_TICKER)
+    campo_precio = _primer_campo(registros[0], _CAMPOS_PRECIO)
+    if not campo_ticker or not campo_precio:
+        return {}, campo_ticker, campo_precio
+
+    indexado: dict[str, float] = {}
+    for registro in registros:
+        try:
+            indexado[str(registro[campo_ticker]).strip().upper()] = float(registro[campo_precio])
+        except (KeyError, TypeError, ValueError):
+            continue
+    return indexado, campo_ticker, campo_precio
+
+
+def comparar_fuentes() -> None:
+    """
+    Cruza los precios de data912 contra los de BYMA, especie por especie.
+
+    La pregunta que responde es si data912 es un espejo de BYMA o una fuente
+    distinta. Importa por dos motivos: si son iguales, conviene ir directo a
+    BYMA y dejar data912 de respaldo; si difieren, hay que saber en qué, porque
+    una diferencia sistemática de precio suele significar que cada uno publica
+    un plazo de liquidación distinto (24 hs contra 48 hs), no que uno esté mal.
+    """
+    titulo("6. data912 vs BYMA — ¿son la misma data?")
+    try:
+        respuesta = requests.get("https://data912.com/live/arg_corp", timeout=TIMEOUT)
+        respuesta.raise_for_status()
+        d912 = {
+            str(r["symbol"]).strip().upper(): float(r["c"])
+            for r in respuesta.json()
+            if r.get("symbol") and r.get("c") is not None
+        }
+        print(f"  data912: {len(d912)} especies con precio")
+    except Exception as exc:
+        fallo(exc)
+        return
+
+    try:
+        sesion = _sesion_byma()
+    except Exception as exc:
+        fallo(exc)
+        return
+
+    # Se prueban los tres plazos de liquidación por separado: si data912 calza
+    # con uno y no con los otros, eso identifica qué plazo está publicando.
+    for etiqueta, plazo in (("48 hs (T2)", "T2"), ("24 hs (T1)", "T1"), ("contado inmediato (T0)", "T0")):
+        payload = {"excludeZeroPxAndQty": False, "T2": False, "T1": False, "T0": False}
+        payload[plazo] = True
+        print(f"\n  --- BYMA a {etiqueta} ---")
+        try:
+            datos = _post_byma(sesion, "negociable-obligations", payload)
+            registros = datos.get("data", datos) if isinstance(datos, dict) else datos
+            byma, campo_ticker, campo_precio = _indexar_byma(registros)
+        except Exception as exc:
+            fallo(exc)
+            continue
+
+        if not byma:
+            print(f"  ⚠️  no se reconocieron los campos (ticker={campo_ticker}, precio={campo_precio})")
+            print(f"      campos disponibles: {sorted(registros[0]) if registros else 'sin registros'}")
+            continue
+
+        print(f"  campos usados: ticker={campo_ticker}, precio={campo_precio}")
+        comunes = sorted(set(d912) & set(byma))
+        print(f"  BYMA: {len(byma)} especies | en común: {len(comunes)}")
+        print(f"  solo en data912: {len(set(d912) - set(byma))} | solo en BYMA: {len(set(byma) - set(d912))}")
+
+        if not comunes:
+            continue
+
+        iguales = 0
+        diferencias: list[tuple[str, float, float, float]] = []
+        for ticker in comunes:
+            a, b = d912[ticker], byma[ticker]
+            if a == b:
+                iguales += 1
+            elif b:
+                diferencias.append((ticker, a, b, abs(a - b) / abs(b) * 100.0))
+
+        print(f"  precios idénticos: {iguales}/{len(comunes)}")
+        if diferencias:
+            brechas = sorted(d for *_, d in diferencias)
+            mediana = brechas[len(brechas) // 2]
+            print(f"  diferencia mediana: {mediana:.3f}%  |  máxima: {brechas[-1]:.3f}%")
+            print("  mayores diferencias:")
+            for ticker, a, b, brecha in sorted(diferencias, key=lambda x: -x[3])[:5]:
+                print(f"    {ticker:8} data912={a:>12.4f}  byma={b:>12.4f}  ({brecha:.2f}%)")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -188,6 +294,7 @@ def main() -> int:
     probar_byma_ficha(argumentos.ticker)
     probar_cronogramas()
     probar_tesoro()
+    comparar_fuentes()
 
     print("\nListo. Pegame la salida y ajusto el código a lo que devuelvan de verdad.")
     return 0
