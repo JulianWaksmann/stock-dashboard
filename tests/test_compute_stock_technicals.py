@@ -5,7 +5,6 @@ e integración básica con institutional_flow / confluence_signal.
 
 import numpy as np
 import pandas as pd
-import pytest
 
 from constants import FLOW_ACCUMULATION, FLOW_DISTRIBUTION, FLOW_NOT_AVAILABLE, SIGNAL_NEUTRAL
 from indicators import compute_stock_technicals
@@ -53,19 +52,6 @@ class TestContratoDeClaves:
         assert 'confluence_signal' in resultado
         assert 'institutional_flow' in resultado
 
-    @pytest.mark.xfail(
-        reason=(
-            "BUG: compute_stock_technicals no devuelve siempre el mismo "
-            "conjunto de claves. Con df_history totalmente vacío (sin filas "
-            "ni columnas) devuelve un dict chico de 4 claves (close, "
-            "confluence_signal, technical_status, institutional_flow); con "
-            "df_history que tiene la columna 'Close' pero todos sus valores "
-            "en NaN devuelve directamente {} (dict vacío); y con cualquier "
-            "otro dato válido devuelve un dict de ~30 claves. La UI que "
-            "indexa por clave (ej. tech_data['rsi_14']) puede romper con "
-            "KeyError según qué camino tomó el ticker."
-        )
-    )
     def test_mismo_conjunto_de_claves_sin_importar_la_cantidad_de_datos(self):
         vacio = pd.DataFrame()
         pocos_datos = pd.DataFrame({'Close': [10.0, 11.0, 12.0]})

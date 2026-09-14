@@ -4,7 +4,6 @@ Tests de compute_52w_high_low.
 
 import numpy as np
 import pandas as pd
-import pytest
 
 from indicators import compute_52w_high_low
 
@@ -38,14 +37,6 @@ class TestCasosBorde:
         df_52w = compute_52w_high_low(df, window=252)
         assert len(df_52w) == 1
 
-    @pytest.mark.xfail(
-        reason=(
-            "BUG: compute_52w_high_low asume la columna 'Close' incluso "
-            "cuando el DataFrame está completamente vacío (sin columnas). "
-            "pd.DataFrame() hace explotar 'High' if 'High' in df.columns "
-            "else df['Close'] con KeyError en vez de devolver vacío/NaN."
-        )
-    )
     def test_dataframe_completamente_vacio_no_lanza_excepcion(self):
         vacio = pd.DataFrame()
         df_52w = compute_52w_high_low(vacio, window=252)

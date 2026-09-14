@@ -96,6 +96,9 @@ def compute_bollinger_bands(series: pd.Series, period: int = 20, num_std: float 
 
 def compute_stochastic(df: pd.DataFrame, period_k: int = 14, period_d: int = 3) -> pd.DataFrame:
     """Calcula el Oscilador Estocástico (%K y %D)."""
+    if df is None or df.empty or 'Close' not in df.columns:
+        return pd.DataFrame({'stoch_k': pd.Series(dtype=float), 'stoch_d': pd.Series(dtype=float)})
+
     high = df['High'] if 'High' in df.columns else df['Close']
     low = df['Low'] if 'Low' in df.columns else df['Close']
     close = df['Close']
@@ -140,6 +143,13 @@ def compute_obv(df: pd.DataFrame, period_sma: int = 20) -> pd.DataFrame:
 
 def compute_52w_high_low(df: pd.DataFrame, window: int = 252) -> pd.DataFrame:
     """Calcula Máximo/Mínimo de 52 semanas y la distancia % al máximo."""
+    if df is None or df.empty or 'Close' not in df.columns:
+        return pd.DataFrame({
+            'high_52w': pd.Series(dtype=float),
+            'low_52w': pd.Series(dtype=float),
+            'dist_52w_high_pct': pd.Series(dtype=float),
+        })
+
     high = df['High'] if 'High' in df.columns else df['Close']
     low = df['Low'] if 'Low' in df.columns else df['Close']
     close = df['Close']
@@ -283,14 +293,58 @@ def evaluate_confluence_signal(df_history: pd.DataFrame, tech_data: dict) -> str
     return SIGNAL_NEUTRAL
 
 
+def _empty_stock_technicals() -> dict:
+    """
+    Diccionario por defecto de compute_stock_technicals, usado cuando no hay
+    datos utilizables (histórico vacío, sin columna 'Close' o con todos sus
+    valores en NaN). Mantiene siempre el mismo conjunto de claves que el
+    cálculo completo, para que la UI que indexa por clave nunca reciba un
+    dict parcial o vacío.
+    """
+    return {
+        'close': np.nan,
+        'prev_close': np.nan,
+        'day_change_pct': np.nan,
+        'sma_20': np.nan,
+        'sma_50': np.nan,
+        'sma_200': np.nan,
+        'diff_sma_20_pct': np.nan,
+        'diff_sma_50_pct': np.nan,
+        'diff_sma_200_pct': np.nan,
+        'rsi_14': np.nan,
+        'macd_line': np.nan,
+        'signal_line': np.nan,
+        'macd_hist': np.nan,
+        'prev_macd_hist': np.nan,
+        'bb_mid': np.nan,
+        'bb_upper': np.nan,
+        'bb_lower': np.nan,
+        'bb_bandwidth': np.nan,
+        'is_bb_squeeze': False,
+        'stoch_k': np.nan,
+        'stoch_d': np.nan,
+        'prev_stoch_k': np.nan,
+        'prev_stoch_d': np.nan,
+        'obv': np.nan,
+        'sma_obv_20': np.nan,
+        'institutional_flow': FLOW_NOT_AVAILABLE,
+        'high_52w': np.nan,
+        'low_52w': np.nan,
+        'dist_52w_high_pct': np.nan,
+        'confluence_signal': SIGNAL_NEUTRAL,
+        'technical_status': SIGNAL_NEUTRAL,
+    }
+
+
 def compute_stock_technicals(df_history: pd.DataFrame) -> dict:
     """Calcula todos los indicadores técnicos, OBV y estado de acumulación/distribución."""
-    if df_history is None or df_history.empty or 'Close' not in df_history.columns or len(df_history) == 0:
-        return {'close': np.nan, 'confluence_signal': SIGNAL_NEUTRAL, 'technical_status': 'Sin datos', 'institutional_flow': FLOW_NOT_AVAILABLE}
-    
-    close_series = df_history['Close'].dropna()
+    if df_history is not None and not df_history.empty and 'Close' in df_history.columns:
+        close_series = df_history['Close'].dropna()
+    else:
+        close_series = pd.Series(dtype=float)
+
     if len(close_series) == 0:
-        return {}
+        return _empty_stock_technicals()
 
     current_close = float(close_series.iloc[-1])
     prev_close = float(close_series.iloc[-2]) if len(close_series) > 1 else current_close

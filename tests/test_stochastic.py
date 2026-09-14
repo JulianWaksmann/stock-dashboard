@@ -5,7 +5,6 @@ con 50.0 y propiedades generales del oscilador.
 
 import numpy as np
 import pandas as pd
-import pytest
 
 from indicators import compute_stochastic
 
@@ -94,16 +93,6 @@ class TestCasosBorde:
         assert len(df_stoch) == 1
         assert df_stoch['stoch_k'].isna().all()
 
-    @pytest.mark.xfail(
-        reason=(
-            "BUG: compute_stochastic asume que df tiene la columna 'Close' "
-            "incluso cuando el DataFrame está completamente vacío (sin "
-            "columnas). Un DataFrame vacío 'de verdad' (pd.DataFrame()) "
-            "hace explotar 'High' if 'High' in df.columns else df['Close'] "
-            "con un KeyError en lugar de devolver un resultado vacío/NaN "
-            "de forma predecible."
-        )
-    )
     def test_dataframe_completamente_vacio_no_lanza_excepcion(self):
         vacio = pd.DataFrame()
         df_stoch = compute_stochastic(vacio, period_k=14, period_d=3)
