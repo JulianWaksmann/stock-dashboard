@@ -20,12 +20,20 @@ def compute_rsi(series: pd.Series, period: int = 14) -> pd.Series:
     
     rs = avg_gain / avg_loss.replace(0, np.nan)
     rsi = 100 - (100 / (1 + rs))
-    return rsi.fillna(100.0 * (gain > 0))
+
+    # Solo corregimos la división por cero genuina (avg_loss == 0) en
+    # posiciones con datos válidos, sin tocar el calentamiento inicial
+    # (donde avg_gain/avg_loss son NaN por min_periods=period y el RSI
+    # debe seguir siendo NaN).
+    valid = avg_gain.notna() & avg_loss.notna()
+    rsi = rsi.mask(valid & (avg_loss == 0) & (avg_gain > 0), 100.0)
+    rsi = rsi.mask(valid & (avg_loss == 0) & (avg_gain == 0), 50.0)
+    return rsi
 
 
 def compute_sma(series: pd.Series, period: int) -> pd.Series:
     """Calcula la Media Móvil Simple (SMA)."""
-    return series.rolling(window=period, min_periods=max(1, period // 2)).mean()
+    return series.rolling(window=period, min_periods=period).mean()
 
 
 def compute_ema(series: pd.Series, period: int) -> pd.Series:
@@ -75,7 +83,11 @@ def compute_stochastic(df: pd.DataFrame, period_k: int = 14, period_d: int = 3) 
     
     denom = (highest_high - lowest_low).replace(0, np.nan)
     stoch_k = ((close - lowest_low) / denom) * 100.0
-    stoch_k = stoch_k.fillna(50.0)
+
+    # 50.0 solo cuando el rango high-low es genuinamente cero con datos
+    # válidos; el calentamiento (highest_high/lowest_low en NaN) queda en NaN.
+    valid = highest_high.notna() & lowest_low.notna()
+    stoch_k = stoch_k.mask(valid & (highest_high == lowest_low), 50.0)
     stoch_d = stoch_k.rolling(window=period_d, min_periods=1).mean()
     
     return pd.DataFrame({
@@ -297,7 +309,10 @@ def compute_stock_technicals(df_history: pd.DataFrame) -> dict:
 
     obv = float(df_obv['obv'].iloc[-1]) if not df_obv.empty else np.nan
     sma_obv_20 = float(df_obv['sma_obv_20'].iloc[-1]) if not df_obv.empty else np.nan
-    institutional_flow = "🐳 Acumulación" if (not np.isnan(obv) and not np.isnan(sma_obv_20) and obv >= sma_obv_20) else "📉 Distribución"
+    if not np.isnan(obv) and not np.isnan(sma_obv_20):
+        institutional_flow = "🐳 Acumulación" if obv >= sma_obv_20 else "📉 Distribución"
+    else:
+        institutional_flow = "N/A"
 
     high_52w = float(df_52w['high_52w'].iloc[-1]) if not df_52w.empty else np.nan
     low_52w = float(df_52w['low_52w'].iloc[-1]) if not df_52w.empty else np.nan
