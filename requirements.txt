@@ -1,10 +1,18 @@
-# Pinning policy: lower bound is the version we developed/tested against;
-# upper bound caps at the next major version so a breaking release can't
-# silently pull in and break the dashboard. yfinance is the exception -
-# it wraps an undocumented, frequently-changing Yahoo Finance API, so its
-# ceiling is tightened to the next minor release instead of the next major.
+# Pinning policy: the lower bound is the oldest version we test against; the
+# upper bound caps at the next major after the newest one we test against, so
+# a breaking release cannot silently pull in and break the dashboard.
+#
+# Ceilings must not be tighter than the Python the app is deployed on. numpy
+# and pandas ship compiled wheels per Python version: capping numpy below 2.0
+# left only releases without a cp314 wheel, so installing on Python 3.14 fell
+# back to building from source and failed. The test suite is run against both
+# ends of the numpy and pandas ranges below.
+#
+# yfinance is the exception - it wraps an undocumented, frequently-changing
+# Yahoo Finance API, so its ceiling is the next minor rather than the next
+# major release.
 streamlit>=1.35.0,<2.0.0
 yfinance>=0.2.40,<0.3.0
-pandas>=2.2.0,<3.0.0
-numpy>=1.26.0,<2.0.0
+pandas>=2.2.0,<4.0.0
+numpy>=1.26.0,<3.0.0
 plotly>=5.20.0,<6.0.0
