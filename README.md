@@ -135,6 +135,7 @@ columnas no se lee, se escanea.
 | Dato | Fuente | Notas |
 | --- | --- | --- |
 | Precios, puntas, volumen | [BYMA Open Data](https://open.bymadata.com.ar) | El mercado donde las ONs cotizan. Pública y sin API key, pero sin documentar: es POST y valida cookie de navegador. Trae además vencimiento y moneda de cada especie. |
+| Emisor, ley, lámina mínima, garantía, ISIN, flag de default | BYMA — ficha técnica (`fichatecnica/especies/general`) | Una llamada por especie, así que se piden solo las más operadas de cada moneda y se cachean por un día: esos datos se fijan en la emisión y no cambian. |
 | Cronogramas de pago | [rendimientos-ar](https://github.com/arisbdar/rendimientos-ar) (`public/config.json`) | Se descarga en cada carga. Es un **dataset comunitario** mantenido a mano por terceros (licencia ISC), no una fuente oficial. Publica el total de cada pago, sin separar renta de capital. |
 | Condiciones de emisión | `data/ons_catalog.csv` (este repo) | Opcional y vacío por defecto. Solo hace falta para las métricas que necesitan el desglose renta/capital, o para una ON que el dataset comunitario no cubra. |
 | Curva del Tesoro de EE.UU. | Yahoo Finance (`^IRX`, `^FVX`, `^TNX`, `^TYX`) | Vía `yfinance`, igual que la sección de acciones. Interpolada linealmente al plazo de duration de cada ON. |
@@ -155,8 +156,10 @@ Las condiciones de emisión de una ON no se descargan. El cupón, el cronograma 
 ley aplicable viven en su prospecto, y ni BYMA ni la CNV los publican en formato consultable por
 máquina. Así que el panel trabaja con la fuente que tenga, y dice cuál en cada fila:
 
-* **Cronograma de pagos** (dataset comunitario, descargado en vivo) — cubre el universo operado sin
-  mantenimiento manual, pero informa solo el total de cada pago. Alcanza para TIR, duration y
+* **Cronograma de pagos** (dataset comunitario, descargado en vivo) — informa solo el total de cada
+  pago. Su cobertura es su límite real: son 54 emisiones, y ninguna de las más operadas del panel.
+  Tiene las series vecinas —CP36 y CP37 donde se opera CP38 y CP40, YM34 a YM40 donde se opera
+  YM39 y YM43—, así que las ONs con más volumen quedan sin TIR. Alcanza para TIR, duration y
   convexidad, y no alcanza para paridad, valor técnico, interés corrido ni vida promedio, que
   necesitan saber cuánto de cada pago es capital. Esas columnas quedan vacías en vez de adivinar.
 * **Condiciones de emisión** (`data/ons_catalog.csv`) — permite calcular todo, y hay que cargarlas a
@@ -245,6 +248,7 @@ stock-dashboard/
 │   ├── __init__.py                 # Paquete de renta fija para ONs argentinas
 │   ├── bond_math.py                # Flujo de fondos, TIR, duration, convexidad, paridad, interés corrido (puro, sin I/O)
 │   ├── byma_source.py              # Precios de BYMA Open Data; el parseo es una función pura
+│   ├── byma_terms.py               # Ficha técnica por especie: emisor, ley, lámina, garantía, default
 │   ├── catalog.py                  # Lee y valida data/ons_catalog.csv; helpers de especie de liquidación
 │   ├── flows_source.py             # Descarga los cronogramas de pago publicados (dataset comunitario)
 │   ├── panel.py                    # Cruce puro de precios + condiciones + métricas, y los filtros del panel
@@ -275,7 +279,8 @@ stock-dashboard/
 │   ├── test_bond_score.py          # Puntaje de Oportunidad ponderado
 │   ├── test_bond_scoring.py        # Etiquetas de atractivo y casos excluyentes
 │   ├── test_bonds_panel.py         # Cruce precios/condiciones, prioridad de fuentes e interpolación de la curva
-│   ├── test_byma_source.py         # Parseo de la respuesta de BYMA
+│   ├── test_byma_source.py         # Parseo de la respuesta de precios de BYMA
+│   ├── test_byma_terms.py          # Parseo de la ficha técnica de BYMA
 │   ├── test_flows_source.py        # Parser de los cronogramas publicados
 │   ├── test_compute_stock_technicals.py
 │   ├── test_confluence_signal.py   # evaluate_confluence_signal

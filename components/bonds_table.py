@@ -96,6 +96,8 @@ FULL_COLUMNS = [
     "Spread (%)",
     "Volumen",
     "Lámina Mínima",
+    "Garantía",
+    "ISIN",
 ]
 
 def style_bond_signal(val):
@@ -265,6 +267,12 @@ def render_bonds_table(df: pd.DataFrame, full: bool = False, breakdown: bool = F
             help="Diferencia entre punta vendedora y compradora sobre el punto medio. Es el costo de entrar y salir: la medida práctica de liquidez.",
         ),
         "Volumen": st.column_config.NumberColumn("Volumen", format="%.0f"),
+        "Garantía": st.column_config.TextColumn(
+            "Garantía",
+            width="small",
+            help="Tipo de garantía de la emisión, según la ficha técnica de BYMA.",
+        ),
+        "ISIN": st.column_config.TextColumn("ISIN", width="small"),
         "Cobertura": st.column_config.NumberColumn(
             "Cobertura",
             format="%.0f%%",

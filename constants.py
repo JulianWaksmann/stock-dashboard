@@ -442,3 +442,14 @@ BOND_SCORE_MIN_DIMENSION_COVERAGE: Final[float] = 0.5
 BOND_SCORE_VERY_ATTRACTIVE_MIN: Final[float] = 70.0
 BOND_SCORE_ATTRACTIVE_MIN: Final[float] = 55.0
 BOND_SCORE_NEUTRAL_MIN: Final[float] = 40.0
+
+
+# ----------------------------------------------------------------------
+# Cuántas especies se enriquecen con la ficha técnica de BYMA.
+#
+# La ficha técnica se pide de a una especie por llamada, y el panel trae más
+# de 2700: pedirlas todas serían miles de pedidos a una API pública por cada
+# carga. Se piden solo las más operadas de cada moneda, que son las únicas
+# que el panel muestra por defecto y las únicas cuyo precio es ejecutable.
+# ----------------------------------------------------------------------
+BYMA_TERMS_FETCH_LIMIT: Final[int] = 150

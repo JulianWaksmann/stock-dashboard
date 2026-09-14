@@ -134,7 +134,15 @@ def probar_byma_ficha(ticker: str) -> None:
         try:
             datos = _post_byma(sesion, ruta, payload)
             registros = datos.get("data", datos) if isinstance(datos, dict) else datos
-            describir(registros if isinstance(registros, list) else [registros])
+            registros = registros if isinstance(registros, list) else [registros]
+            describir(registros)
+            # La ficha general se imprime COMPLETA: sus campos de texto (cupón,
+            # forma de amortización) son los que deciden si el flujo de fondos
+            # se puede reconstruir, y recortarlos deja la pregunta sin responder.
+            if registros and ruta.endswith("general"):
+                print("  --- registro completo ---")
+                for campo, valor in sorted(registros[0].items()):
+                    print(f"    {campo}: {valor!r}")
         except Exception as exc:
             fallo(exc)
 
