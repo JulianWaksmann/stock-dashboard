@@ -1,14 +1,19 @@
 """
 bonds/data_loader.py - Entrada/salida de la pestaña de ONs.
 
-Este módulo es la capa de I/O y nada más: baja precios del feed público, baja
-la curva del Tesoro de Yahoo Finance, lee el catálogo y le pasa todo a
+Este módulo es la capa de I/O y nada más: baja precios de BYMA, baja la curva
+del Tesoro de Yahoo Finance, lee el catálogo y le pasa todo a
 `bonds.panel.build_bonds_panel`, que es quien hace las cuentas.
 
 Separación deliberada de responsabilidades:
 
-  * **Precios**: se descargan. Son públicos, cambian todo el tiempo y no tiene
-    sentido versionarlos en el repo.
+  * **Precios**: se descargan de BYMA, que es el mercado donde las ONs
+    cotizan. Hubo un feed alternativo (data912) y se descartó al medirlo:
+    listaba 616 especies contra 2727 y la mitad de sus precios llegaban con
+    atraso, hasta 2,75% de diferencia sobre el mismo título. Un 0,17% de
+    diferencia de precio ya mueve la TIR varios puntos básicos; en el extremo,
+    casi un punto porcentual. Para comparar rendimientos entre bonos eso no es
+    ruido tolerable.
   * **Condiciones de emisión**: se leen del catálogo (`bonds/catalog.py`). No
     existe una fuente pública y gratuita que las publique en formato
     consultable por máquina.
@@ -27,41 +32,15 @@ from typing import Final
 
 import numpy as np
 import pandas as pd
-import requests
 import streamlit as st
 import yfinance as yf
 
+from bonds.byma_source import fetch_byma_bond_prices
 from bonds.catalog import load_catalog
 from bonds.flows_source import BondFlows, fetch_community_flows
 from bonds.panel import build_bonds_panel
 
 logger = logging.getLogger(__name__)
-
-# Fuente de precios por defecto: data912, un feed público y sin API key del
-# panel argentino. Es dato educativo con caché de alrededor de 2 horas del
-# lado del proveedor: sirve para analizar rendimientos, no para operar al
-# segundo. Cambiar esta URL es todo lo que hace falta para usar otro feed que
-# devuelva la misma forma de JSON.
-DATA912_CORPORATE_BONDS_URL: Final[str] = "https://data912.com/live/arg_corp"
-
-# Timeout de la llamada HTTP. Corto a propósito: si el feed no responde,
-# preferimos degradar el panel a "sin precios" antes que colgar la interfaz.
-REQUEST_TIMEOUT_SECONDS: Final[int] = 15
-
-# Mapeo de los campos del feed a los nombres internos. Se declara explícito
-# para que un cambio de esquema del proveedor se note al leer este diccionario
-# y no como columnas vacías tres módulos más abajo.
-_PRICE_FIELD_MAP: Final[dict[str, str]] = {
-    "symbol": "Ticker",
-    "c": "Precio",
-    "px_bid": "Punta Compra",
-    "px_ask": "Punta Venta",
-    "q_bid": "Cant. Compra",
-    "q_ask": "Cant. Venta",
-    "v": "Volumen",
-    "q_op": "Operaciones",
-    "pct_change": "Var. (%)",
-}
 
 # Curva de referencia del Tesoro de EE.UU. para medir el spread crediticio.
 # Son los cuatro tramos que Yahoo Finance publica como índice de rendimiento,
@@ -75,53 +54,29 @@ _UST_TENORS: Final[dict[str, float]] = {
 
 
 @st.cache_data(ttl=600, show_spinner=False)
-def fetch_live_bond_prices(url: str = DATA912_CORPORATE_BONDS_URL) -> pd.DataFrame:
+def fetch_live_bond_prices() -> pd.DataFrame:
     """
-    Descarga los precios en vivo del panel de ONs.
+    Descarga el panel de ONs de BYMA.
 
-    Nunca propaga la excepción: ante cualquier fallo (red cortada, feed caído,
-    JSON con otra forma) devuelve un DataFrame vacío con el motivo en
-    `df.attrs['error']`, para que la pestaña muestre un mensaje concreto en vez
-    de una traza de error.
+    Fuente única a propósito. Hubo un feed alternativo como respaldo y se
+    quitó después de medirlo contra BYMA con `scripts/verificar_fuentes.py`:
+    sobre las 614 especies en común, la mitad de los precios llegaba con
+    atraso —mediana de 0,17% de diferencia, máximo 2,75% sobre el mismo
+    título—. Un respaldo que devuelve otro número no es un respaldo, es una
+    segunda respuesta a la misma pregunta, y en un panel que compara
+    rendimientos entre bonos esa diferencia se convierte en decenas de puntos
+    básicos de TIR.
+
+    Si BYMA no responde, el panel queda sin precios y lo dice. Es preferible a
+    mostrar números que no son los del mercado sin que se note.
+
+    Nunca propaga la excepción: el motivo del fallo queda en
+    `df.attrs['error']`.
     """
-    try:
-        response = requests.get(url, timeout=REQUEST_TIMEOUT_SECONDS)
-        response.raise_for_status()
-        payload = response.json()
-    except requests.RequestException as exc:
-        logger.warning("No se pudo consultar el feed de ONs en %s: %s", url, exc)
-        df = pd.DataFrame()
-        df.attrs["error"] = f"No se pudo consultar el feed de precios ({exc})."
-        return df
-    except ValueError as exc:
-        logger.warning("El feed de ONs devolvió una respuesta que no es JSON: %s", exc)
-        df = pd.DataFrame()
-        df.attrs["error"] = "El feed de precios devolvió una respuesta ilegible."
-        return df
-
-    if not isinstance(payload, list) or not payload:
-        df = pd.DataFrame()
-        df.attrs["error"] = "El feed de precios no devolvió ninguna especie."
-        return df
-
-    raw = pd.DataFrame(payload)
-    missing = [field for field in ("symbol", "c") if field not in raw.columns]
-    if missing:
-        df = pd.DataFrame()
-        df.attrs["error"] = f"El feed cambió de formato: faltan los campos {', '.join(missing)}."
-        return df
-
-    available = {src: dst for src, dst in _PRICE_FIELD_MAP.items() if src in raw.columns}
-    df = raw[list(available)].rename(columns=available)
-    df["Ticker"] = df["Ticker"].astype(str).str.strip().str.upper()
-
-    for column in df.columns:
-        if column != "Ticker":
-            df[column] = pd.to_numeric(df[column], errors="coerce")
-
-    # Una misma especie puede venir repetida con distintos plazos de
-    # liquidación; nos quedamos con la primera aparición para no duplicar filas.
-    return df.drop_duplicates(subset="Ticker", keep="first").reset_index(drop=True)
+    prices, error = fetch_byma_bond_prices()
+    if error:
+        prices.attrs["error"] = error
+    return prices
 
 
 @st.cache_data(ttl=3600, show_spinner=False)
@@ -192,6 +147,10 @@ def load_bonds_data(
     if feed_error:
         warnings.append(feed_error)
         return pd.DataFrame(), warnings
+
+    degraded = prices.attrs.get("degraded")
+    if degraded:
+        warnings.append(degraded)
 
     panel = build_bonds_panel(
         prices=prices,

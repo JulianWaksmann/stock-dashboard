@@ -17,7 +17,8 @@ import numpy as np
 import pandas as pd
 import streamlit as st
 
-from bonds.data_loader import DATA912_CORPORATE_BONDS_URL, load_bonds_data
+from bonds.byma_source import BYMA_BASE_URL
+from bonds.data_loader import load_bonds_data
 from bonds.flows_source import COMMUNITY_FLOWS_URL
 from bonds.panel import apply_bond_filters
 from components.bonds_table import render_bonds_table
@@ -295,7 +296,7 @@ def _render_sources():
             f"""
 | Dato | Fuente | Cómo se obtiene |
 | --- | --- | --- |
-| Precios, puntas, volumen | [data912]({DATA912_CORPORATE_BONDS_URL}) | API pública sin API key. Es dato educativo con caché de ~2 hs del lado del proveedor: sirve para analizar rendimientos, no para operar al segundo. |
+| Precios, puntas, volumen | [BYMA Open Data]({BYMA_BASE_URL}) | El mercado donde las ONs cotizan. API pública sin API key, pero sin documentar: es POST y valida cookie de navegador. Trae además vencimiento y moneda de cada especie. |
 | Cronogramas de pago | [rendimientos-ar]({COMMUNITY_FLOWS_URL}) | Se descarga en cada carga. Es un dataset **comunitario** mantenido a mano por terceros (licencia ISC), no una fuente oficial. Publica el total de cada pago, sin separar renta de capital. |
 | Condiciones de emisión | `data/ons_catalog.csv` (este repo) | Opcional y vacío por defecto. Solo hace falta para las métricas que necesitan el desglose renta/capital, o para una ON que la fuente comunitaria no cubra. |
 | Curva del Tesoro de EE.UU. | Yahoo Finance (`^IRX`, `^FVX`, `^TNX`, `^TYX`) | Vía `yfinance`, igual que el panel de acciones. |
@@ -314,9 +315,15 @@ este, o bien scraping del Informe Diario del IAMC.
   los datos cargados *y* el resultado del cálculo.
 * **[BYMA](https://www.byma.com.ar)** — boletín diario oficial y datos de la especie.
 
-**Otras fuentes de precios**, si querés reemplazar el feed: BYMA Open Data
-(`open.bymadata.com.ar`, sin key pero sin documentar), la API de BYMA para socios, o el broker
-donde operás (IOL, Bull Market, Cocos, etc. exponen API con cuenta).
+**Por qué BYMA y no un feed alternativo:** se comparó contra data912 con
+`scripts/verificar_fuentes.py`. BYMA lista 2727 especies contra 616, y sobre las 614 en común la
+mitad de los precios del feed alternativo llegaba con atraso: 0,17% de diferencia mediana y hasta
+2,75% en el mismo título. Sobre un bono de duration 3 eso son entre 6 y 90 puntos básicos de TIR,
+que es justamente lo que el panel compara. No se dejó como respaldo porque un respaldo que
+devuelve otro número no es un respaldo.
+
+**Si necesitás precios ejecutables**, la fuente es el broker donde operás (IOL, Bull Market,
+Cocos, etc. exponen API con cuenta).
             """
         )
 

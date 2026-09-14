@@ -109,10 +109,20 @@ All labels and thresholds live in `constants.py`, same as the equity engine.
 
 | Data | Source | Notes |
 | --- | --- | --- |
-| Prices, bid/ask, volume | [data912](https://data912.com/live/arg_corp) | Public JSON, no API key. Educational feed cached ~2h upstream — good for yield analysis, not for execution. |
+| Prices, bid/ask, volume | [BYMA Open Data](https://open.bymadata.com.ar) | The exchange the bonds actually trade on. Public, no API key, but undocumented: POST only, and it validates a browser cookie. Also carries each species' maturity and currency. |
 | Payment schedules | [rendimientos-ar](https://github.com/arisbdar/rendimientos-ar) (`public/config.json`) | Fetched on every load. A **community dataset** hand-kept by third parties (ISC), not an official source. Publishes each payment's total, without splitting interest from principal. |
 | Issue terms | `data/ons_catalog.csv` (this repo) | Optional, empty by default. Only needed for the metrics that require the interest/principal split, or for a bond the community dataset does not cover. |
 | US Treasury curve | Yahoo Finance (`^IRX`, `^FVX`, `^TNX`, `^TYX`) | Via `yfinance`, same as the equities section. Linearly interpolated to each bond's duration. |
+
+### One price source, on purpose
+
+Prices come from BYMA alone. A second feed (data912) was measured against it with
+`scripts/verificar_fuentes.py` and dropped: BYMA lists 2727 species against 616, and across the 614
+they share, half the alternative's prices arrived stale — 0.17% median difference, up to 2.75% on
+the same bond. On a duration-3 bond that is 6 to 90 basis points of yield, which is exactly what
+this panel compares. It was not kept as a fallback either: a fallback that returns a different
+number is not a fallback, it is a second answer to the same question. If BYMA is down the panel
+says so rather than quietly showing something else.
 
 ### Two ways to know a bond
 
@@ -306,8 +316,8 @@ Every push and pull request against `main` runs both `ruff check .` and `pytest`
 * Bond grading labels and thresholds: `constants.py` (the "BONOS CORPORATIVOS" section).
 * Issue terms of an ON (coupon, maturity, amortization schedule, law): `data/ons_catalog.csv`.
 * The payment-schedule dataset: `COMMUNITY_FLOWS_URL` in `bonds/flows_source.py`.
-* The bond price feed: `DATA912_CORPORATE_BONDS_URL` in `bonds/data_loader.py` — any source returning
-  the same JSON shape drops straight in.
+* The bond price feed: `bonds/byma_source.py`. Its parsing is a pure function, so another source
+  slots in by normalizing to the same columns.
 * Colors used across the table and the charts: `theme.py`.
 
 ---
