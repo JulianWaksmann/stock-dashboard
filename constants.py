@@ -158,3 +158,99 @@ MARKET_OPTIONS: Final[tuple[str, ...]] = (
     MARKET_CRYPTO,
     MARKET_ARGENTINA,
 )
+
+# ======================================================================
+# BONOS CORPORATIVOS ARGENTINOS (OBLIGACIONES NEGOCIABLES)
+#
+# Mismo criterio que arriba: las etiquetas y umbrales del panel de ONs
+# viven acá para que el motor (`bonds/scoring.py`), la tabla
+# (`components/bonds_table.py`) y los filtros (`components/bonds_panel.py`)
+# lean siempre el mismo texto y el mismo número.
+# ======================================================================
+
+# ----------------------------------------------------------------------
+# Etiquetas de atractivo de una ON (columna "Atractivo")
+# ----------------------------------------------------------------------
+BOND_SIGNAL_VERY_ATTRACTIVE: Final[str] = "🌟 MUY ATRACTIVO"
+BOND_SIGNAL_ATTRACTIVE: Final[str] = "🟢 ATRACTIVO"
+BOND_SIGNAL_NEUTRAL: Final[str] = "🟡 NEUTRAL"
+BOND_SIGNAL_LOW: Final[str] = "🟠 POCO ATRACTIVO"
+BOND_SIGNAL_RISK: Final[str] = "🚨 ALERTA DE RIESGO"
+BOND_SIGNAL_NO_DATA: Final[str] = "⚪ SIN DATOS"
+
+BOND_ATTRACTIVE_SIGNALS: Final[tuple[str, ...]] = (
+    BOND_SIGNAL_VERY_ATTRACTIVE,
+    BOND_SIGNAL_ATTRACTIVE,
+)
+
+# ----------------------------------------------------------------------
+# Umbrales del scoring de ONs (evaluate_bond_attractiveness)
+#
+# A diferencia de las acciones, un bono no se puntúa contra su propio
+# pasado sino **contra sus pares**: la referencia de todos los umbrales de
+# rendimiento es la mediana de TIR del panel del día. Esa mediana se mueve
+# con el riesgo argentino, así que un umbral absoluto ("TIR > 9%") diría
+# cosas opuestas en dos momentos distintos del ciclo.
+# ----------------------------------------------------------------------
+
+# Premio de rendimiento: cuánta TIR por encima de la mediana del panel hay
+# que ofrecer para que el bono sume el punto de "rinde más que sus pares".
+BOND_YIELD_PREMIUM_PP: Final[float] = 1.0
+
+# Alerta de riesgo: una TIR tan por encima de la mediana no es una
+# oportunidad, es el mercado descontando estrés crediticio del emisor.
+# Se etiqueta aparte para que no se cuele como "muy atractivo".
+BOND_RISK_YIELD_PREMIUM_PP: Final[float] = 8.0
+
+# Riesgo de tasa acotado: duration modificada por debajo de este valor
+# (en años) significa que una suba de 1 pp en la tasa de descuento pega
+# menos de ~3% en el precio.
+BOND_SHORT_DURATION_MAX_YEARS: Final[float] = 3.0
+
+# Cotizar bajo la par (paridad < 100) implica que parte del retorno llega
+# como ganancia de capital al vencimiento y no solo vía cupón.
+BOND_PARITY_DISCOUNT_MAX: Final[float] = 100.0
+
+# Liquidez: spread entre punta compradora y vendedora, en % del punto
+# medio. Por encima de este valor, entrar y salir se come el rendimiento.
+BOND_LIQUID_SPREAD_MAX_PCT: Final[float] = 1.0
+
+# ----------------------------------------------------------------------
+# Opciones de los filtros de la pestaña de Bonos
+# ----------------------------------------------------------------------
+
+# --- Filtro por Atractivo ---
+BOND_FILTER_SIGNAL_ALL: Final[str] = "Todas las ONs"
+BOND_FILTER_SIGNAL_ATTRACTIVE: Final[str] = "🟢 Solo Atractivas (Muy + Atractivo)"
+BOND_FILTER_SIGNAL_VERY_ATTRACTIVE: Final[str] = "🌟 Solo Muy Atractivas"
+BOND_FILTER_SIGNAL_RISK: Final[str] = "🚨 Solo Alertas de Riesgo"
+
+BOND_SIGNAL_FILTER_OPTIONS: Final[tuple[str, ...]] = (
+    BOND_FILTER_SIGNAL_ALL,
+    BOND_FILTER_SIGNAL_ATTRACTIVE,
+    BOND_FILTER_SIGNAL_VERY_ATTRACTIVE,
+    BOND_FILTER_SIGNAL_RISK,
+)
+
+# --- Filtro por Ley aplicable ---
+BOND_FILTER_LAW_ALL: Final[str] = "Todas las leyes"
+BOND_FILTER_LAW_NY: Final[str] = "🇺🇸 Solo Ley Nueva York"
+BOND_FILTER_LAW_ARG: Final[str] = "🇦🇷 Solo Ley Argentina"
+
+BOND_LAW_FILTER_OPTIONS: Final[tuple[str, ...]] = (
+    BOND_FILTER_LAW_ALL,
+    BOND_FILTER_LAW_NY,
+    BOND_FILTER_LAW_ARG,
+)
+
+# --- Selector de convención de precio ---
+# BYMA publica los precios de renta fija "sucios" (con el interés corrido
+# incluido). El selector existe porque no todas las fuentes siguen esa
+# convención, y confundirlas sesga la TIR y la paridad de forma silenciosa.
+BOND_PRICE_DIRTY: Final[str] = "Sucio (incluye interés corrido) — BYMA"
+BOND_PRICE_CLEAN: Final[str] = "Limpio (sin interés corrido)"
+
+BOND_PRICE_CONVENTION_OPTIONS: Final[tuple[str, ...]] = (
+    BOND_PRICE_DIRTY,
+    BOND_PRICE_CLEAN,
+)

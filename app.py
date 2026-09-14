@@ -7,6 +7,7 @@ from datetime import datetime
 import streamlit as st
 
 from components.alerts_panel import render_alerts_panel
+from components.bonds_panel import render_bonds_panel
 from components.kpi_cards import render_kpi_cards
 from components.screener_table import render_screener_table
 from constants import (
@@ -65,9 +66,16 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 
-def main():
+def _render_stocks_tab():
+    """
+    Pestaña de acciones: el tablero de confluencia técnica + Smart Money.
+
+    Vive en `app.py` y no en `components/` porque es la que orquesta los
+    filtros de la barra lateral, que son globales a la aplicación. La pestaña
+    de bonos, en cambio, es autocontenida y vive en `components/bonds_panel.py`.
+    """
     # ----------------------------------------------------
-    # CABECERA SUPERIOR CON BOTÓN DE REFRESH GENERAL
+    # CABECERA CON BOTÓN DE REFRESH GENERAL
     # ----------------------------------------------------
     header_col1, header_col2 = st.columns([4, 1])
 
@@ -86,6 +94,7 @@ def main():
     # SIDEBAR: Selección de Mercado, Temporalidad y Filtros
     # ----------------------------------------------------
     st.sidebar.header("🌐 Mercados")
+    st.sidebar.caption("Estos controles aplican a la pestaña **Acciones**. La pestaña de Bonos tiene sus propios filtros.")
 
     market_option = st.sidebar.selectbox(
         "Seleccionar Mercado (Dashboard):",
@@ -246,6 +255,27 @@ def main():
         * **🚨 SQUEEZE**: Ancho de Bandas de Bollinger en mínimos de 6 meses.
         * **🟡 NEUTRAL**: No alcanza los umbrales de confluencia.
         """)
+
+
+def main():
+    """
+    Punto de entrada: reparte la aplicación en pestañas por clase de activo.
+
+    Streamlit ejecuta el cuerpo de **todas** las pestañas en cada corrida, no
+    solo el de la visible, así que ambas descargan datos aunque se esté mirando
+    una sola. Es aceptable porque las dos cargas están cacheadas con
+    `st.cache_data`, pero explica por qué la primera carga tarda más.
+    """
+    tab_stocks, tab_bonds = st.tabs([
+        "📈 Acciones (Confluencia & Smart Money)",
+        "💵 Bonos Corporativos Argentinos (ONs)",
+    ])
+
+    with tab_stocks:
+        _render_stocks_tab()
+
+    with tab_bonds:
+        render_bonds_panel()
 
 
 if __name__ == "__main__":
