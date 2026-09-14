@@ -1,0 +1,24 @@
+# Minimal, pragmatic config for a codebase that has never run a linter.
+# Goal: be adoptable now (few blocking errors) and tightenable later,
+# not a strict style enforcer on day one.
+target-version = "py311"
+line-length = 100
+
+[lint]
+# E/F/W: pycodestyle + pyflakes core (bugs, unused code, basic style).
+# I: import sorting. UP: pyupgrade (modernize syntax for py311).
+# B: bugbear (common correctness pitfalls beyond pyflakes).
+select = ["E", "F", "W", "I", "UP", "B"]
+
+ignore = [
+    # E501 (line-too-long): 59 hits across the repo, none auto-fixable -
+    # fixing means manually re-wrapping dense boolean/dict expressions in
+    # every file. Not worth blocking adoption over; revisit once the
+    # codebase gets a dedicated formatting pass.
+    "E501",
+    # W293 (blank-line-with-whitespace): 37 hits, purely cosmetic
+    # (whitespace on otherwise-empty lines), no behavioral risk. Ignored so
+    # the first linter run doesn't bury real findings under whitespace noise;
+    # safe to re-enable and auto-fix in a dedicated formatting pass.
+    "W293",
+]

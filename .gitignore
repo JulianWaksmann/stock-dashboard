@@ -1,5 +1,17 @@
 .venv/
+.venv*/
 __pycache__/
 *.pyc
 .DS_Store
-.streamlit/
+
+# Only ignore the local secrets file; .streamlit/config.toml (theme, no
+# secrets) should be tracked so the dashboard's appearance ships with the repo.
+.streamlit/secrets.toml
+
+.env
+.env.*
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+build/
+dist/

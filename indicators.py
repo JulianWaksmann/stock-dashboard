@@ -5,6 +5,28 @@ indicators.py - Cálculos matemáticos en Pandas, OBV y Algoritmo de Confluencia
 import numpy as np
 import pandas as pd
 
+from constants import (
+    BUY_BB_LOWER_TOLERANCE,
+    BUY_RSI_MAX,
+    BUY_SMA50_PROXIMITY_PCT,
+    BUY_SMA200_TREND_TOLERANCE,
+    BUY_STOCH_K_OVERSOLD,
+    FLOW_ACCUMULATION,
+    FLOW_DISTRIBUTION,
+    FLOW_NOT_AVAILABLE,
+    SELL_DIST_52W_HIGH_MIN_PCT,
+    SELL_RSI_MIN,
+    SELL_STOCH_K_OVERBOUGHT,
+    SIGNAL_MODERATE_BUY,
+    SIGNAL_MODERATE_SELL,
+    SIGNAL_NEUTRAL,
+    SIGNAL_SQUEEZE,
+    SIGNAL_STRONG_BUY,
+    SIGNAL_STRONG_SELL,
+    SQUEEZE_BANDWIDTH_TOLERANCE,
+    SQUEEZE_LOOKBACK_BARS,
+)
+
 
 def compute_rsi(series: pd.Series, period: int = 14) -> pd.Series:
     """Calcula el RSI utilizando el método de suavizado de Wilder."""
@@ -20,12 +42,20 @@ def compute_rsi(series: pd.Series, period: int = 14) -> pd.Series:
     
     rs = avg_gain / avg_loss.replace(0, np.nan)
     rsi = 100 - (100 / (1 + rs))
-    return rsi.fillna(100.0 * (gain > 0))
+
+    # Solo corregimos la división por cero genuina (avg_loss == 0) en
+    # posiciones con datos válidos, sin tocar el calentamiento inicial
+    # (donde avg_gain/avg_loss son NaN por min_periods=period y el RSI
+    # debe seguir siendo NaN).
+    valid = avg_gain.notna() & avg_loss.notna()
+    rsi = rsi.mask(valid & (avg_loss == 0) & (avg_gain > 0), 100.0)
+    rsi = rsi.mask(valid & (avg_loss == 0) & (avg_gain == 0), 50.0)
+    return rsi
 
 
 def compute_sma(series: pd.Series, period: int) -> pd.Series:
     """Calcula la Media Móvil Simple (SMA)."""
-    return series.rolling(window=period, min_periods=max(1, period // 2)).mean()
+    return series.rolling(window=period, min_periods=period).mean()
 
 
 def compute_ema(series: pd.Series, period: int) -> pd.Series:
@@ -66,6 +96,9 @@ def compute_bollinger_bands(series: pd.Series, period: int = 20, num_std: float 
 
 def compute_stochastic(df: pd.DataFrame, period_k: int = 14, period_d: int = 3) -> pd.DataFrame:
     """Calcula el Oscilador Estocástico (%K y %D)."""
+    if df is None or df.empty or 'Close' not in df.columns:
+        return pd.DataFrame({'stoch_k': pd.Series(dtype=float), 'stoch_d': pd.Series(dtype=float)})
+
     high = df['High'] if 'High' in df.columns else df['Close']
     low = df['Low'] if 'Low' in df.columns else df['Close']
     close = df['Close']
@@ -75,7 +108,11 @@ def compute_stochastic(df: pd.DataFrame, period_k: int = 14, period_d: int = 3) 
     
     denom = (highest_high - lowest_low).replace(0, np.nan)
     stoch_k = ((close - lowest_low) / denom) * 100.0
-    stoch_k = stoch_k.fillna(50.0)
+
+    # 50.0 solo cuando el rango high-low es genuinamente cero con datos
+    # válidos; el calentamiento (highest_high/lowest_low en NaN) queda en NaN.
+    valid = highest_high.notna() & lowest_low.notna()
+    stoch_k = stoch_k.mask(valid & (highest_high == lowest_low), 50.0)
     stoch_d = stoch_k.rolling(window=period_d, min_periods=1).mean()
     
     return pd.DataFrame({
@@ -106,6 +143,13 @@ def compute_obv(df: pd.DataFrame, period_sma: int = 20) -> pd.DataFrame:
 
 def compute_52w_high_low(df: pd.DataFrame, window: int = 252) -> pd.DataFrame:
     """Calcula Máximo/Mínimo de 52 semanas y la distancia % al máximo."""
+    if df is None or df.empty or 'Close' not in df.columns:
+        return pd.DataFrame({
+            'high_52w': pd.Series(dtype=float),
+            'low_52w': pd.Series(dtype=float),
+            'dist_52w_high_pct': pd.Series(dtype=float),
+        })
+
     high = df['High'] if 'High' in df.columns else df['Close']
     low = df['Low'] if 'Low' in df.columns else df['Close']
     close = df['Close']
@@ -155,7 +199,7 @@ def evaluate_confluence_signal(df_history: pd.DataFrame, tech_data: dict) -> str
       --> Resto: 🟡 NEUTRAL
     """
     if df_history is None or df_history.empty or len(df_history) < 20:
-        return "🟡 NEUTRAL"
+        return SIGNAL_NEUTRAL
 
     close = tech_data.get('close', np.nan)
     dist_52w_high = tech_data.get('dist_52w_high_pct', np.nan)
@@ -182,22 +226,22 @@ def evaluate_confluence_signal(df_history: pd.DataFrame, tech_data: dict) -> str
     # 1. EVALUACIÓN DE COMPRA (SWING)
     # ----------------------------------------------------
     # Condición 1: Tendencia de fondo
-    buy_c1_trend = (not np.isnan(sma_50) and not np.isnan(sma_200) and sma_50 > sma_200 and close >= sma_200 * 0.95)
-    
+    buy_c1_trend = (not np.isnan(sma_50) and not np.isnan(sma_200) and sma_50 > sma_200 and close >= sma_200 * BUY_SMA200_TREND_TOLERANCE)
+
     # Condición 2 (OBLIGATORIA): Proximidad a Soporte (+/- 4% de SMA 50 o debajo de Banda Inferior)
     buy_c2_support = False
     if not np.isnan(close):
-        if not np.isnan(sma_50) and abs((close - sma_50) / sma_50 * 100.0) <= 4.0:
+        if not np.isnan(sma_50) and abs((close - sma_50) / sma_50 * 100.0) <= BUY_SMA50_PROXIMITY_PCT:
             buy_c2_support = True
-        elif not np.isnan(bb_lower) and close <= bb_lower * 1.01:
+        elif not np.isnan(bb_lower) and close <= bb_lower * BUY_BB_LOWER_TOLERANCE:
             buy_c2_support = True
 
     # Condición 3 (OBLIGATORIA): Sobreventa aliviada (RSI < 45)
-    buy_c3_rsi = (not np.isnan(rsi_14) and rsi_14 < 45.0)
+    buy_c3_rsi = (not np.isnan(rsi_14) and rsi_14 < BUY_RSI_MAX)
 
     # Condición 4: Gatillo de Momento (Estocástico al alza o %K < 30)
     buy_c4_stoch = (
-        (not np.isnan(stoch_k) and stoch_k < 30.0) or
+        (not np.isnan(stoch_k) and stoch_k < BUY_STOCH_K_OVERSOLD) or
         (not np.isnan(stoch_k) and not np.isnan(stoch_d) and not np.isnan(prev_stoch_k) and not np.isnan(prev_stoch_d) and prev_stoch_k <= prev_stoch_d and stoch_k > stoch_d)
     )
 
@@ -208,22 +252,22 @@ def evaluate_confluence_signal(df_history: pd.DataFrame, tech_data: dict) -> str
     if buy_c2_support and buy_c3_rsi:
         buy_score = sum([buy_c1_trend, buy_c2_support, buy_c3_rsi, buy_c4_stoch, buy_c5_obv])
         if buy_score >= 4:
-            return "🌟 COMPRA FUERTE"
+            return SIGNAL_STRONG_BUY
         elif buy_score == 3:
-            return "🟢 COMPRA MODERADA"
+            return SIGNAL_MODERATE_BUY
 
     # ----------------------------------------------------
     # 2. EVALUACIÓN DE VENTA / ROTACIÓN
     # ----------------------------------------------------
     # Condición 1 (OBLIGATORIA): Proximidad a Techo (< 6% del Máximo 52S)
-    sell_c1_high = (not np.isnan(dist_52w_high) and dist_52w_high >= -6.0)
+    sell_c1_high = (not np.isnan(dist_52w_high) and dist_52w_high >= SELL_DIST_52W_HIGH_MIN_PCT)
 
     # Condición 2 (OBLIGATORIA): Sobrecompra (RSI > 65)
-    sell_c2_rsi = (not np.isnan(rsi_14) and rsi_14 > 65.0)
+    sell_c2_rsi = (not np.isnan(rsi_14) and rsi_14 > SELL_RSI_MIN)
 
     # Condición 3: Pérdida de Momento (Estocástico a la baja o MACD debilitándose)
     sell_c3_momentum = (
-        (not np.isnan(stoch_k) and stoch_k >= 80.0) or
+        (not np.isnan(stoch_k) and stoch_k >= SELL_STOCH_K_OVERBOUGHT) or
         (not np.isnan(stoch_k) and not np.isnan(stoch_d) and not np.isnan(prev_stoch_k) and not np.isnan(prev_stoch_d) and prev_stoch_k >= prev_stoch_d and stoch_k < stoch_d) or
         (not np.isnan(macd_hist) and not np.isnan(prev_macd_hist) and macd_hist < prev_macd_hist) or
         (not np.isnan(macd_line) and not np.isnan(signal_line) and macd_line < signal_line)
@@ -236,27 +280,71 @@ def evaluate_confluence_signal(df_history: pd.DataFrame, tech_data: dict) -> str
     if sell_c1_high and sell_c2_rsi:
         sell_score = sum([sell_c1_high, sell_c2_rsi, sell_c3_momentum, sell_c4_obv])
         if sell_score >= 3:
-            return "🚨 VENTA FUERTE / ROTAR"
+            return SIGNAL_STRONG_SELL
         elif sell_score == 2:
-            return "🟠 VENTA MODERADA"
+            return SIGNAL_MODERATE_SELL
 
     # ----------------------------------------------------
     # 3. SQUEEZE O NEUTRAL
     # ----------------------------------------------------
     if is_bb_squeeze:
-        return "🚨 SQUEEZE"
+        return SIGNAL_SQUEEZE
 
-    return "🟡 NEUTRAL"
+    return SIGNAL_NEUTRAL
+
+
+def _empty_stock_technicals() -> dict:
+    """
+    Diccionario por defecto de compute_stock_technicals, usado cuando no hay
+    datos utilizables (histórico vacío, sin columna 'Close' o con todos sus
+    valores en NaN). Mantiene siempre el mismo conjunto de claves que el
+    cálculo completo, para que la UI que indexa por clave nunca reciba un
+    dict parcial o vacío.
+    """
+    return {
+        'close': np.nan,
+        'prev_close': np.nan,
+        'day_change_pct': np.nan,
+        'sma_20': np.nan,
+        'sma_50': np.nan,
+        'sma_200': np.nan,
+        'diff_sma_20_pct': np.nan,
+        'diff_sma_50_pct': np.nan,
+        'diff_sma_200_pct': np.nan,
+        'rsi_14': np.nan,
+        'macd_line': np.nan,
+        'signal_line': np.nan,
+        'macd_hist': np.nan,
+        'prev_macd_hist': np.nan,
+        'bb_mid': np.nan,
+        'bb_upper': np.nan,
+        'bb_lower': np.nan,
+        'bb_bandwidth': np.nan,
+        'is_bb_squeeze': False,
+        'stoch_k': np.nan,
+        'stoch_d': np.nan,
+        'prev_stoch_k': np.nan,
+        'prev_stoch_d': np.nan,
+        'obv': np.nan,
+        'sma_obv_20': np.nan,
+        'institutional_flow': FLOW_NOT_AVAILABLE,
+        'high_52w': np.nan,
+        'low_52w': np.nan,
+        'dist_52w_high_pct': np.nan,
+        'confluence_signal': SIGNAL_NEUTRAL,
+        'technical_status': SIGNAL_NEUTRAL,
+    }
 
 
 def compute_stock_technicals(df_history: pd.DataFrame) -> dict:
     """Calcula todos los indicadores técnicos, OBV y estado de acumulación/distribución."""
-    if df_history is None or df_history.empty or 'Close' not in df_history.columns or len(df_history) == 0:
-        return {'close': np.nan, 'confluence_signal': '🟡 NEUTRAL', 'technical_status': 'Sin datos', 'institutional_flow': 'N/A'}
-    
-    close_series = df_history['Close'].dropna()
+    if df_history is not None and not df_history.empty and 'Close' in df_history.columns:
+        close_series = df_history['Close'].dropna()
+    else:
+        close_series = pd.Series(dtype=float)
+
     if len(close_series) == 0:
-        return {}
+        return _empty_stock_technicals()
 
     current_close = float(close_series.iloc[-1])
     prev_close = float(close_series.iloc[-2]) if len(close_series) > 1 else current_close
@@ -285,9 +373,9 @@ def compute_stock_technicals(df_history: pd.DataFrame) -> dict:
     bb_bandwidth = float(df_bb['bb_bandwidth'].iloc[-1]) if not df_bb.empty else np.nan
 
     # Squeeze en mínimos de 6 meses (126 ruedas)
-    bandwidth_6m = df_bb['bb_bandwidth'].tail(126).dropna()
+    bandwidth_6m = df_bb['bb_bandwidth'].tail(SQUEEZE_LOOKBACK_BARS).dropna()
     is_bb_squeeze = False
-    if len(bandwidth_6m) >= 20 and bb_bandwidth <= bandwidth_6m.min() * 1.08:
+    if len(bandwidth_6m) >= 20 and bb_bandwidth <= bandwidth_6m.min() * SQUEEZE_BANDWIDTH_TOLERANCE:
         is_bb_squeeze = True
 
     stoch_k = float(df_stoch['stoch_k'].iloc[-1]) if not df_stoch.empty else np.nan
@@ -297,7 +385,10 @@ def compute_stock_technicals(df_history: pd.DataFrame) -> dict:
 
     obv = float(df_obv['obv'].iloc[-1]) if not df_obv.empty else np.nan
     sma_obv_20 = float(df_obv['sma_obv_20'].iloc[-1]) if not df_obv.empty else np.nan
-    institutional_flow = "🐳 Acumulación" if (not np.isnan(obv) and not np.isnan(sma_obv_20) and obv >= sma_obv_20) else "📉 Distribución"
+    if not np.isnan(obv) and not np.isnan(sma_obv_20):
+        institutional_flow = FLOW_ACCUMULATION if obv >= sma_obv_20 else FLOW_DISTRIBUTION
+    else:
+        institutional_flow = FLOW_NOT_AVAILABLE
 
     high_52w = float(df_52w['high_52w'].iloc[-1]) if not df_52w.empty else np.nan
     low_52w = float(df_52w['low_52w'].iloc[-1]) if not df_52w.empty else np.nan

@@ -1,0 +1,6 @@
+-r requirements.txt
+
+# Same pinning policy as requirements.txt: capped at the next major version
+# so CI/dev tooling doesn't shift underfoot.
+pytest>=8.0.0,<9.0.0
+ruff>=0.4.0,<1.0.0

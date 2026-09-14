@@ -3,11 +3,17 @@ data_loader.py - Descarga optimizada de datos y fundamentales con Yahoo Finance
 """
 
 import concurrent.futures
-import streamlit as st
-import pandas as pd
+import logging
+
 import numpy as np
+import pandas as pd
+import streamlit as st
 import yfinance as yf
+
+from constants import FLOW_NOT_AVAILABLE, SIGNAL_NEUTRAL
 from indicators import compute_stock_technicals
+
+logger = logging.getLogger(__name__)
 
 # Listas de Tickers Predefinidos
 TOP_50_DEFAULT = [
@@ -64,13 +70,44 @@ def calculate_historical_avg_pe(t_obj: yf.Ticker, history_df: pd.DataFrame = Non
         if pes:
             return float(np.mean(pes))
         return np.nan
-    except Exception:
+    except (KeyError, ValueError, TypeError) as e:
+        logger.warning("Datos de balances con formato inesperado para %s: %s", getattr(t_obj, "ticker", "?"), e)
         return np.nan
+    except Exception:
+        logger.exception("Error inesperado calculando el PER promedio histórico para %s", getattr(t_obj, "ticker", "?"))
+        return np.nan
+
+
+def _empty_fundamentals(ticker: str) -> dict:
+    """
+    Diccionario de fundamentales por defecto, usado cuando la descarga falla.
+    Centraliza las claves para que el fallback nunca quede desalineado con
+    el resultado normal de fetch_single_ticker_info.
+    """
+    return {
+        "ticker": ticker,
+        "name": ticker,
+        "sector": "Desconocido",
+        "industry": "Desconocido",
+        "trailing_pe": np.nan,
+        "forward_pe": np.nan,
+        "hist_avg_pe": np.nan,
+        "peg_ratio": np.nan,
+        "market_cap": np.nan,
+        "dividend_yield": np.nan,
+        "fifty_two_week_high": np.nan,
+        "fifty_two_week_low": np.nan,
+        "currency": "USD"
+    }
 
 
 def fetch_single_ticker_info(ticker: str) -> dict:
     """
     Obtiene los metadatos fundamentales de una acción individual (P/E Pasado, P/E Futuro, P/E Promedio Histórico, etc.).
+
+    Si la descarga falla (rate limit de Yahoo, timeout, ticker inexistente, etc.)
+    devuelve el diccionario de _empty_fundamentals con la clave interna "_fetch_ok"
+    en False, para que el llamador pueda registrar el ticker como fallido.
     """
     try:
         t = yf.Ticker(ticker)
@@ -112,37 +149,35 @@ def fetch_single_ticker_info(ticker: str) -> dict:
             "dividend_yield": dividend_yield,
             "fifty_two_week_high": fifty_two_week_high,
             "fifty_two_week_low": fifty_two_week_low,
-            "currency": info.get("currency", "USD")
+            "currency": info.get("currency", "USD"),
+            "_fetch_ok": True
         }
+    except (KeyError, ValueError, TypeError) as e:
+        logger.warning("Datos fundamentales con formato inesperado para %s: %s", ticker, e)
+        return {**_empty_fundamentals(ticker), "_fetch_ok": False}
     except Exception:
-        return {
-            "ticker": ticker,
-            "name": ticker,
-            "sector": "Desconocido",
-            "industry": "Desconocido",
-            "trailing_pe": np.nan,
-            "forward_pe": np.nan,
-            "hist_avg_pe": np.nan,
-            "peg_ratio": np.nan,
-            "market_cap": np.nan,
-            "dividend_yield": np.nan,
-            "fifty_two_week_high": np.nan,
-            "fifty_two_week_low": np.nan,
-            "currency": "USD"
-        }
+        logger.exception("No se pudieron obtener los fundamentales de %s (posible rate limit o timeout)", ticker)
+        return {**_empty_fundamentals(ticker), "_fetch_ok": False}
 
 
 @st.cache_data(ttl=300, show_spinner=False)
 def load_all_stocks_data(tickers: list[str], timeframe: str = "1d") -> tuple[pd.DataFrame, dict[str, pd.DataFrame]]:
     """
     Descarga en paralelo los datos históricos y fundamentales según la temporalidad.
+
+    Los tickers que fallan (rate limit de Yahoo, timeout de red, ticker inexistente,
+    etc.) no interrumpen la carga del resto: se registran con logger.warning/exception
+    y se acumulan. La lista resultante se expone en df_summary.attrs['failed_tickers']
+    (no se cambia la firma pública de la función para no afectar a app.py).
     """
     tickers = list(dict.fromkeys([t.strip().upper() for t in tickers if t.strip()]))
     if not tickers:
         return pd.DataFrame(), {}
-    
+
     period = "5y" if timeframe == "1wk" else "2y"
     interval = "1wk" if timeframe == "1wk" else "1d"
+
+    failed_tickers = set()
 
     # 1. Descarga masiva de datos de precios
     try:
@@ -156,6 +191,7 @@ def load_all_stocks_data(tickers: list[str], timeframe: str = "1d") -> tuple[pd.
             progress=False
         )
     except Exception:
+        logger.exception("Fallo la descarga masiva de precios para los tickers: %s", tickers)
         df_download = pd.DataFrame()
 
     dict_history = {}
@@ -171,7 +207,7 @@ def load_all_stocks_data(tickers: list[str], timeframe: str = "1d") -> tuple[pd.
                     df_t = pd.DataFrame()
             else:
                 df_t = df_download.copy()
-            
+
             if not df_t.empty and 'Close' in df_t.columns:
                 df_t = df_t.sort_index()
                 dict_history[ticker] = df_t
@@ -183,8 +219,16 @@ def load_all_stocks_data(tickers: list[str], timeframe: str = "1d") -> tuple[pd.
                     dict_history[ticker] = df_single
                     technicals_map[ticker] = compute_stock_technicals(df_single)
                 else:
+                    logger.warning("Sin datos históricos disponibles para %s (¿ticker inexistente o deslistado?)", ticker)
+                    failed_tickers.add(ticker)
                     technicals_map[ticker] = compute_stock_technicals(pd.DataFrame())
+        except (KeyError, ValueError) as e:
+            logger.warning("Datos históricos con formato inesperado para %s: %s", ticker, e)
+            failed_tickers.add(ticker)
+            technicals_map[ticker] = compute_stock_technicals(pd.DataFrame())
         except Exception:
+            logger.exception("Error inesperado obteniendo el historial de precios de %s", ticker)
+            failed_tickers.add(ticker)
             technicals_map[ticker] = compute_stock_technicals(pd.DataFrame())
 
     # 2. Descarga multithreading de datos fundamentales
@@ -195,17 +239,12 @@ def load_all_stocks_data(tickers: list[str], timeframe: str = "1d") -> tuple[pd.
             t = future_to_ticker[future]
             try:
                 res = future.result()
-                fundamentals_map[t] = res
             except Exception:
-                fundamentals_map[t] = {
-                    "ticker": t,
-                    "name": t,
-                    "sector": "Desconocido",
-                    "trailing_pe": np.nan,
-                    "forward_pe": np.nan,
-                    "hist_avg_pe": np.nan,
-                    "market_cap": np.nan
-                }
+                logger.exception("El hilo a cargo de los fundamentales de %s terminó con un error", t)
+                res = {**_empty_fundamentals(t), "_fetch_ok": False}
+            if not res.pop("_fetch_ok", True):
+                failed_tickers.add(t)
+            fundamentals_map[t] = res
 
     # 3. Consolidar en un solo DataFrame con 'Semáforo' al inicio y 'Flujo Institucional'
     tf_suffix = " (Sem)" if timeframe == "1wk" else " (Día)"
@@ -215,9 +254,9 @@ def load_all_stocks_data(tickers: list[str], timeframe: str = "1d") -> tuple[pd.
         tech = technicals_map.get(ticker, {})
         
         row = {
-            "Semáforo": tech.get("confluence_signal", "🟡 NEUTRAL"),
+            "Semáforo": tech.get("confluence_signal", SIGNAL_NEUTRAL),
             "Ticker": ticker,
-            "Flujo Institucional": tech.get("institutional_flow", "N/A"),
+            "Flujo Institucional": tech.get("institutional_flow", FLOW_NOT_AVAILABLE),
             "Precio Actual": tech.get("close", np.nan),
             "Var. Período (%)": tech.get("day_change_pct", np.nan),
             "PER Pasado (Trailing)": fund.get("trailing_pe", np.nan),
@@ -249,4 +288,5 @@ def load_all_stocks_data(tickers: list[str], timeframe: str = "1d") -> tuple[pd.
         rows.append(row)
 
     df_summary = pd.DataFrame(rows)
+    df_summary.attrs["failed_tickers"] = sorted(failed_tickers)
     return df_summary, dict_history
