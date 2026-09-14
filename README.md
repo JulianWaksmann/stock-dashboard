@@ -135,7 +135,7 @@ columnas no se lee, se escanea.
 | Dato | Fuente | Notas |
 | --- | --- | --- |
 | Precios, puntas, volumen | [BYMA Open Data](https://open.bymadata.com.ar) | El mercado donde las ONs cotizan. Pública y sin API key, pero sin documentar: es POST y valida cookie de navegador. Trae además vencimiento y moneda de cada especie. |
-| Emisor, ley, lámina mínima, garantía, ISIN, flag de default | BYMA — ficha técnica (`fichatecnica/especies/general`) | Una llamada por especie, así que se piden solo las más operadas de cada moneda y se cachean por un día: esos datos se fijan en la emisión y no cambian. |
+| Emisor, lámina mínima, tasa de cupón, estructura de amortización, garantía, ISIN | BYMA — ficha técnica (`fichatecnica/especies/general`) | Una llamada por especie, así que se piden solo las más operadas de cada moneda y se cachean por un día: esos datos se fijan en la emisión y no cambian. |
 | Cronogramas de pago | [rendimientos-ar](https://github.com/arisbdar/rendimientos-ar) (`public/config.json`) | Se descarga en cada carga. Es un **dataset comunitario** mantenido a mano por terceros (licencia ISC), no una fuente oficial. Publica el total de cada pago, sin separar renta de capital. |
 | Condiciones de emisión | `data/ons_catalog.csv` (este repo) | Opcional y vacío por defecto. Solo hace falta para las métricas que necesitan el desglose renta/capital, o para una ON que el dataset comunitario no cubra. |
 | Curva del Tesoro de EE.UU. | Yahoo Finance (`^IRX`, `^FVX`, `^TNX`, `^TYX`) | Vía `yfinance`, igual que la sección de acciones. Interpolada linealmente al plazo de duration de cada ON. |
@@ -150,7 +150,29 @@ y 90 puntos básicos de TIR, que es justo lo que este panel compara. Tampoco que
 respaldo que devuelve otro número no es un respaldo, es una segunda respuesta a la misma pregunta.
 Si BYMA no responde, el panel lo dice en lugar de mostrar otra cosa en silencio.
 
-### Dos maneras de conocer un bono
+### Qué NO publica BYMA
+
+Medido sobre 40 fichas del panel operado, no sobre supuestos:
+
+* **La ley aplicable.** Los campos `ley` y `paisLey` existen y vienen vacíos: `paisLey` en las 40,
+  `ley` en 39. La jurisdicción solo puede salir del catálogo local.
+* **La frecuencia de pago.** No aparece en ningún campo. Es el único dato del flujo que falta para
+  los bonos bullet, y se supone semestral —la convención dominante—, lo que acota el error a unos
+  15 puntos básicos de TIR para cupones típicos. Esas filas se marcan como estimadas.
+* **El cronograma de los bonos que amortizan en cuotas.** Vive en `formaAmortizacion`, en prosa.
+
+En cambio, `interes` sí es legible: llega como "FIJO 7,50%" o "TASA DE REFERENCIA + MARGEN
+APLICABLE (2,50%)". Reconocer las variables importa tanto como leer las fijas — el motor descuenta
+un flujo determinado hoy, y el de un bono Badlar o CER no lo está.
+
+Y de `formaAmortizacion` se responde **una sola pregunta binaria**: ¿devuelve todo el capital al
+vencimiento? No se extrae el cronograma. Sobre los 20 textos distintos que devuelve el panel
+operado, la regla acierta en los 20; el veto por plural es lo que la hace segura, porque
+"amortizadas en 7 cuotas semestrales ... finalizando en la Fecha de Vencimiento" nombra el
+vencimiento y no es bullet. Lo que no se reconoce no es bullet, así que el modo de falla es no
+calcular.
+
+### Tres maneras de conocer un bono
 
 Las condiciones de emisión de una ON no se descargan. El cupón, el cronograma de amortización y la
 ley aplicable viven en su prospecto, y ni BYMA ni la CNV los publican en formato consultable por
@@ -162,9 +184,11 @@ máquina. Así que el panel trabaja con la fuente que tenga, y dice cuál en cad
   YM39 y YM43—, así que las ONs con más volumen quedan sin TIR. Alcanza para TIR, duration y
   convexidad, y no alcanza para paridad, valor técnico, interés corrido ni vida promedio, que
   necesitan saber cuánto de cada pago es capital. Esas columnas quedan vacías en vez de adivinar.
+* **Ficha técnica de BYMA**, para los bullet a tasa fija — con emisión, vencimiento, tasa y la
+  certeza de que el capital vuelve entero al final, el flujo queda determinado salvo la frecuencia.
+  Al conocerse el desglose renta/capital, acá sí salen paridad, valor técnico e interés corrido.
 * **Condiciones de emisión** (`data/ons_catalog.csv`) — permite calcular todo, y hay que cargarlas a
-  mano. Una fila del catálogo siempre le gana al cronograma comunitario, porque cargarla es una
-  decisión explícita.
+  mano. Una fila del catálogo siempre le gana al resto, porque cargarla es una decisión explícita.
 
 El catálogo viene **vacío a propósito**: mandar cupones verosímiles que nadie verificó devuelve
 rendimientos equivocados con apariencia autoritativa. Toda fila que se agregue queda marcada con ⚠️

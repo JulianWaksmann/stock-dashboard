@@ -19,7 +19,7 @@ import numpy as np
 import pandas as pd
 
 from bonds.bond_math import analyze_bond, analyze_cashflows, year_fraction
-from bonds.byma_terms import BondReference
+from bonds.byma_terms import ASSUMED_COUPON_FREQUENCY, BondReference
 from bonds.catalog import BondTerms, base_ticker_of, find_terms, quote_currency_of, settlement_of
 from bonds.flows_source import BondFlows
 from bonds.scoring import compute_opportunity_scores, evaluate_bond_attractiveness, label_from_score
@@ -44,6 +44,7 @@ from constants import (
     BOND_SIGNAL_RISK,
     BOND_SIGNAL_VERY_ATTRACTIVE,
     BOND_SIGNAL_VERY_SHORT,
+    BOND_SOURCE_BYMA,
     BOND_SOURCE_CATALOG,
     BOND_SOURCE_NONE,
     BOND_TOP_VOLUME_SIZES,
@@ -90,6 +91,65 @@ def _num(value) -> float:
         return float(value)
     except (TypeError, ValueError):
         return np.nan
+
+
+def _can_rebuild_from_reference(reference: BondReference | None, quote_currency: str | None) -> bool:
+    """
+    True si el flujo de un bono se puede reconstruir desde su ficha técnica.
+
+    Exige las cuatro cosas sin las cuales el flujo no queda determinado: tasa
+    fija (una variable no se puede descontar, su cupón futuro no existe
+    todavía), amortización bullet, fechas de emisión y vencimiento, y que la
+    moneda de la especie coincida con la del bono.
+    """
+    if reference is None or quote_currency is None:
+        return False
+    if reference.coupon_rate is None or not reference.is_bullet:
+        return False
+    if reference.issue_date is None or reference.maturity is None:
+        return False
+    if reference.maturity <= reference.issue_date:
+        return False
+    return _reference_currency(reference) == quote_currency
+
+
+def _reference_currency(reference: BondReference) -> str | None:
+    """
+    Moneda de emisión según la ficha técnica, que la escribe en castellano.
+
+    BYMA devuelve "Dólares" o "Pesos" acá, y los códigos ISO en el panel de
+    precios. Se traduce en un solo lugar para que la comparación con la moneda
+    de la especie sea entre iguales.
+    """
+    text = (reference.currency or "").strip().upper()
+    if text.startswith("DOLAR") or text.startswith("DÓLAR") or text == "USD":
+        return "USD"
+    if text.startswith("PESO") or text == "ARS":
+        return "ARS"
+    return None
+
+
+def _metrics_from_reference(
+    reference: BondReference,
+    price: float,
+    settlement: date,
+    price_is_dirty: bool,
+) -> dict:
+    """Corre el análisis completo sobre el flujo reconstruido de un bullet."""
+    try:
+        return analyze_bond(
+            issue_date=reference.issue_date,
+            maturity=reference.maturity,
+            coupon_rate=reference.coupon_rate,
+            frequency=ASSUMED_COUPON_FREQUENCY,
+            settlement=settlement,
+            price=price,
+            amortizations=(),
+            price_is_dirty=price_is_dirty,
+        )
+    except (ValueError, ZeroDivisionError, OverflowError):
+        logger.warning("No se pudo reconstruir el flujo de %s", reference.ticker, exc_info=True)
+        return {}
 
 
 def _first_known(*values, default=None):
@@ -191,7 +251,12 @@ def build_bonds_panel(
         flows = flows_by_base.get(base_ticker_of(ticker))
         reference = references.get(base_ticker_of(ticker))
         settlement_kind = settlement_of(ticker)
-        quote_currency = quote_currency_of(ticker)
+        # La moneda del precio sale del feed cuando la informa, y del sufijo del
+        # ticker cuando no: el dato le gana a la convención.
+        quote_currency = _first_known(
+            quote.get("Moneda Precio") if "Moneda Precio" in quote.index else None,
+            quote_currency_of(ticker),
+        )
         price = float(quote.get("Precio", np.nan))
         bid = float(quote.get("Punta Compra", np.nan))
         ask = float(quote.get("Punta Venta", np.nan))
@@ -214,11 +279,9 @@ def build_bonds_panel(
             ),
             "Liquidación": settlement_kind,
             "Moneda Precio": quote_currency or BOND_SETTLEMENT_UNKNOWN,
-            "Ley": _first_known(
-                terms.law if terms else None,
-                reference.law if reference else None,
-                default="—",
-            ),
+            # La ley solo puede salir del catálogo: BYMA tiene los campos pero
+            # no los llena (`paisLey` vino vacío en las 40 fichas medidas).
+            "Ley": _first_known(terms.law if terms else None, default="—"),
             "Cupón (%)": terms.coupon_rate if terms else np.nan,
             "Vencimiento": _first_known(
                 terms.maturity if terms else None,
@@ -270,6 +333,18 @@ def build_bonds_panel(
         metrics: dict = {}
         if priceable and terms is not None and quote_currency == terms.currency:
             metrics = _metrics_for_bond(terms, price, settlement, price_is_dirty)
+        elif priceable and _can_rebuild_from_reference(reference, quote_currency):
+            # Bullet a tasa fija: con emisión, vencimiento, tasa y la certeza
+            # de que el capital vuelve entero al final, el flujo queda
+            # determinado salvo la frecuencia de pago, que BYMA no publica. Al
+            # conocerse el desglose renta/capital, acá sí salen paridad, valor
+            # técnico e interés corrido, que el cronograma comunitario no
+            # permite calcular.
+            metrics = _metrics_from_reference(reference, price, settlement, price_is_dirty)
+            if metrics:
+                row["Fuente"] = BOND_SOURCE_BYMA
+                row["Convención Aplicada"] = BOND_PRICE_DIRTY if price_is_dirty else BOND_PRICE_CLEAN
+
         elif priceable and flows is not None and quote_currency == flows.currency:
             # El cronograma comunitario publica pagos totales, así que solo se
             # piden las métricas que no necesitan el desglose renta/capital.

@@ -335,6 +335,11 @@ BOND_SETTLEMENT_FILTER_OPTIONS: Final[tuple[str, ...]] = (
 # tener que explicar por qué a unas les faltan columnas.
 # ----------------------------------------------------------------------
 BOND_SOURCE_CATALOG: Final[str] = "Catálogo local"
+# Flujo reconstruido de la ficha técnica de BYMA. Solo se usa en bonos
+# bullet a tasa fija, donde lo único que hay que suponer es la frecuencia
+# de pago —el único dato del flujo que BYMA no publica—. La etiqueta dice
+# "estimada" porque esa suposición mueve la TIR unos puntos básicos.
+BOND_SOURCE_BYMA: Final[str] = "BYMA (frec. estimada)"
 BOND_SOURCE_NONE: Final[str] = "—"
 
 # ----------------------------------------------------------------------

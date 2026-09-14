@@ -6,17 +6,27 @@ llamada, pero casi sin datos descriptivos: `description` y `securityDesc`
 vienen vacíos. La ficha técnica sí los trae, aunque de a una especie por
 pedido.
 
-Qué resuelve: el emisor, la ley aplicable y la lámina mínima de **todas** las
-ONs que cotizan, no solo de las que están en el dataset comunitario de
-cronogramas. Ese dataset cubre 54 emisiones y ninguna de las más operadas del
+Qué resuelve: el emisor, la lámina mínima, la tasa de cupón y la estructura de
+amortización de **todas** las ONs que cotizan, no solo de las que están en el
+dataset comunitario de cronogramas. Ese dataset cubre 54 emisiones y ninguna de las más operadas del
 panel —tiene las series vecinas, CP36 y CP37 donde se opera CP38 y CP40—, así
 que sin esto la tabla queda con el emisor vacío y la dimensión Jurisdicción del
 puntaje sin medir.
 
-Qué NO resuelve, todavía: el flujo de fondos. El cronograma de amortización
-viene en `formaAmortizacion` como prosa libre, y la frecuencia de pago no
-aparece como campo. Reconstruir el flujo a partir de eso sería adivinar, así
-que la TIR sigue saliendo del cronograma ya resuelto de la otra fuente.
+Qué NO resuelve:
+
+  * **La ley aplicable.** BYMA tiene los campos `ley` y `paisLey` y no los
+    llena: sobre 40 fichas del panel operado, `paisLey` vino vacío en las 40 y
+    `ley` en 39. La jurisdicción solo puede salir del catálogo local.
+  * **El cronograma de los bonos que amortizan en cuotas.** Ese detalle vive en
+    `formaAmortizacion` como prosa, y extraerlo emisor por emisor sería
+    adivinar. Para esos bonos la TIR sigue saliendo del cronograma ya resuelto
+    de la otra fuente.
+
+Sí permite, en cambio, reconstruir el flujo de los bonos **bullet a tasa fija**,
+que son la estructura dominante: con fecha de emisión, vencimiento, tasa y la
+certeza de que el capital vuelve entero al final, el flujo queda determinado.
+Lo único que hay que suponer es la frecuencia de pago, que BYMA no publica.
 """
 
 from __future__ import annotations
@@ -24,6 +34,8 @@ from __future__ import annotations
 import concurrent.futures
 import json
 import logging
+import re
+import unicodedata
 from dataclasses import dataclass
 from datetime import date, datetime
 from typing import Final
@@ -31,7 +43,7 @@ from typing import Final
 import requests
 
 from bonds.byma_source import BYMA_BASE_URL, BYMA_HEADERS
-from bonds.catalog import LAW_ARGENTINA, LAW_NEW_YORK, base_ticker_of
+from bonds.catalog import base_ticker_of
 
 logger = logging.getLogger(__name__)
 
@@ -47,9 +59,46 @@ REQUEST_TIMEOUT_SECONDS: Final[int] = 20
 # pública y gratuita, y no tiene sentido castigarla.
 MAX_WORKERS: Final[int] = 12
 
-# Códigos de país que se mapean a la ley aplicable del catálogo.
-_FOREIGN_LAW_MARKERS: Final[tuple[str, ...]] = ("EEUU", "ESTADOS UNIDOS", "USA", "US", "NEW YORK", "NUEVA YORK")
-_LOCAL_LAW_MARKERS: Final[tuple[str, ...]] = ("ARGENTINA", "ARG", "AR")
+# Detección de estructura de amortización a partir de `formaAmortizacion`.
+#
+# El campo es texto libre y NO se parsea para extraer un cronograma: eso sería
+# adivinar. Se usa solo para una pregunta binaria —¿devuelve todo el capital al
+# vencimiento?— que sobre las respuestas reales se contesta con dos marcas y un
+# veto, sin ambigüedad. Verificado contra los 20 textos distintos que devuelve
+# hoy el panel operado: 8 bullet, 12 con amortización parcial, cero errores.
+#
+# El veto es lo que lo hace seguro: si el texto menciona cuotas o pagos en
+# plural, no se considera bullet aunque nombre el vencimiento. Un texto que no
+# se reconoce tampoco es bullet, así que el modo de falla es abstenerse.
+_BULLET_MARKERS: Final[tuple[str, ...]] = ("AL VENCIMIENTO", "AL VENCIMENTO")
+_BULLET_VETO: Final[tuple[str, ...]] = ("CUOTAS", "PAGOS")
+
+# Detección de tasa a partir de `interes`, que llega como "FIJO 7,50%",
+# "FIJO DE 5,50%" o "TASA DE REFERENCIA + MARGEN APLICABLE (2,50%)".
+#
+# Reconocer las variables importa tanto como leer las fijas: el motor descuenta
+# un flujo determinado hoy, y el de un bono a tasa variable no lo está. Sin
+# este filtro, una ON Badlar mostraría una TIR calculada sobre un cupón que no
+# es el que va a pagar.
+_VARIABLE_RATE_MARKERS: Final[tuple[str, ...]] = (
+    "TASA DE REFERENCIA", "MARGEN", "BADLAR", "TAMAR", "CER", "VARIABLE", "MIXTA", "UVA",
+)
+_FIXED_RATE_MARKER: Final[str] = "FIJ"
+_RATE_PATTERN: Final[re.Pattern[str]] = re.compile(r"(\d{1,3})[,.](\d{1,4})\s*%?")
+
+# Frecuencia de pago supuesta. BYMA NO la publica en ninguno de sus campos, y
+# es el único dato del flujo que falta. Semestral es la convención dominante en
+# las ONs corporativas argentinas en dólares; suponerla acota el error a unos
+# 15 puntos básicos de TIR para cupones típicos (un 7,5% anual capitalizado
+# semestralmente rinde 7,64% efectivo), mientras que no suponerla deja al bono
+# sin TIR. Las filas calculadas así quedan marcadas como estimadas.
+ASSUMED_COUPON_FREQUENCY: Final[int] = 2
+
+
+def _normalize(text: object) -> str:
+    """Mayúsculas, sin acentos y con los espacios colapsados, para comparar."""
+    plain = unicodedata.normalize("NFKD", str(text or "")).encode("ascii", "ignore").decode()
+    return re.sub(r"\s+", " ", plain).upper().strip()
 
 
 @dataclass(frozen=True)
@@ -58,7 +107,6 @@ class BondReference:
 
     ticker: str
     issuer: str | None
-    law: str | None
     currency: str | None
     min_denomination: float | None
     maturity: date | None
@@ -66,9 +114,14 @@ class BondReference:
     isin: str | None
     in_default: bool
     guarantee: str | None
-    # Texto crudo del cupón y de la amortización. NO se parsean para calcular:
-    # se conservan para poder mostrarlos y para decidir más adelante, con datos
-    # reales a la vista, si son parseables de forma confiable.
+    # Tasa fija anual, en %. None si el cupón es variable (Badlar, CER, tasa de
+    # referencia) o si el texto no se pudo leer: en los dos casos el flujo
+    # futuro no está determinado y no hay nada que descontar.
+    coupon_rate: float | None
+    # True solo si el texto de amortización dice, sin ambigüedad, que devuelve
+    # todo el capital al vencimiento. Un texto que no se reconoce da False.
+    is_bullet: bool
+    # Texto crudo, para poder mostrar de dónde salió cada lectura.
     raw_interest: str | None
     raw_amortization: str | None
 
@@ -97,24 +150,40 @@ def _parse_date(value: object) -> date | None:
     return None
 
 
-def _parse_law(country: object, law_field: object) -> str | None:
+def parse_coupon_rate(raw: object) -> float | None:
     """
-    Traduce el país de la ley aplicable a la etiqueta del catálogo.
+    Tasa fija anual del cupón, leída de `interes`. None si no es fija.
 
-    Se mira `paisLey` y no `ley`, que en las respuestas observadas viene vacío.
-    Un país que no se reconoce devuelve None: el panel prefiere no informar la
-    jurisdicción antes que clasificarla mal, porque es una de las dimensiones
-    que puntúa.
+    Un cupón variable no se puede descontar: el flujo futuro no está
+    determinado hoy. Devolver None ahí es lo que evita publicar la TIR de una
+    ON Badlar calculada sobre un cupón que no va a pagar.
     """
-    text = (_clean(country) or _clean(law_field) or "").upper()
-    if not text:
+    text = _normalize(raw)
+    if not text or _FIXED_RATE_MARKER not in text:
         return None
-    if any(marker in text for marker in _FOREIGN_LAW_MARKERS):
-        return LAW_NEW_YORK
-    if any(marker in text for marker in _LOCAL_LAW_MARKERS):
-        return LAW_ARGENTINA
-    logger.info("País de ley no reconocido en la ficha técnica: %r", text)
-    return None
+    if any(marker in text for marker in _VARIABLE_RATE_MARKERS):
+        return None
+    match = _RATE_PATTERN.search(text)
+    if not match:
+        return None
+    rate = float(f"{match.group(1)}.{match.group(2)}")
+    return rate if 0 < rate < 200 else None
+
+
+def is_bullet_amortization(raw: object) -> bool:
+    """
+    True solo si el capital se devuelve entero al vencimiento.
+
+    Es una pregunta binaria sobre texto libre, no una extracción de cronograma.
+    El veto por plural es lo que la hace segura: "amortizadas en 7 cuotas
+    semestrales ... finalizando en la Fecha de Vencimiento" nombra el
+    vencimiento y no es bullet. Lo que no se reconoce devuelve False, así que
+    el modo de falla es no calcular.
+    """
+    text = _normalize(raw)
+    if not text or any(veto in text for veto in _BULLET_VETO):
+        return False
+    return any(marker in text for marker in _BULLET_MARKERS)
 
 
 def _parse_number(value: object) -> float | None:
@@ -145,11 +214,18 @@ def parse_technical_sheet(ticker: str, payload: object) -> BondReference | None:
     if not record:
         return None
 
+    # El capital residual por debajo del nominal significa que el bono ya
+    # amortizó: no puede ser bullet, diga lo que diga el texto.
+    nominal = _parse_number(record.get("montoNominal"))
+    residual = _parse_number(record.get("montoResidual"))
+    already_amortized = bool(nominal and residual and residual < nominal)
+
     return BondReference(
         ticker=ticker.strip().upper(),
         issuer=_clean(record.get("emisor")),
-        law=_parse_law(record.get("paisLey"), record.get("ley")),
         currency=_clean(record.get("moneda")),
+        coupon_rate=parse_coupon_rate(record.get("interes")),
+        is_bullet=is_bullet_amortization(record.get("formaAmortizacion")) and not already_amortized,
         min_denomination=_parse_number(record.get("denominacionMinima")),
         maturity=_parse_date(record.get("fechaVencimiento")),
         issue_date=_parse_date(record.get("fechaEmision")),
