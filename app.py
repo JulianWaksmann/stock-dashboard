@@ -25,6 +25,8 @@ from constants import (
     FLOW_FILTER_OPTIONS,
     MARKET_OPTIONS,
     MARKET_USA_STOCKS,
+    SECTION_OPTIONS,
+    SECTION_STOCKS,
     SELL_SIGNALS,
     SIGNAL_FILTER_OPTIONS,
     SIGNAL_STRONG_BUY,
@@ -259,22 +261,25 @@ def _render_stocks_tab():
 
 def main():
     """
-    Punto de entrada: reparte la aplicación en pestañas por clase de activo.
+    Punto de entrada: reparte la aplicación en secciones por clase de activo.
 
-    Streamlit ejecuta el cuerpo de **todas** las pestañas en cada corrida, no
-    solo el de la visible, así que ambas descargan datos aunque se esté mirando
-    una sola. Es aceptable porque las dos cargas están cacheadas con
-    `st.cache_data`, pero explica por qué la primera carga tarda más.
+    Es un selector y no `st.tabs` a propósito. Streamlit ejecuta el cuerpo de
+    **todas** las pestañas en cada corrida, no solo el de la visible: con
+    `st.tabs`, abrir el tablero de acciones dispararía también la descarga de
+    precios de ONs y la curva del Tesoro sin que nadie haya entrado a esa
+    sección. Un selector dibuja únicamente la sección elegida, así que cada
+    fuente de datos se consulta recién cuando se la mira.
     """
-    tab_stocks, tab_bonds = st.tabs([
-        "📈 Acciones (Confluencia & Smart Money)",
-        "💵 Bonos Corporativos Argentinos (ONs)",
-    ])
+    section = st.radio(
+        "Sección",
+        SECTION_OPTIONS,
+        horizontal=True,
+        label_visibility="collapsed",
+    )
 
-    with tab_stocks:
+    if section == SECTION_STOCKS:
         _render_stocks_tab()
-
-    with tab_bonds:
+    else:
         render_bonds_panel()
 
 

@@ -27,6 +27,11 @@ from pathlib import Path
 from typing import Final
 
 from bonds.bond_math import VALID_FREQUENCIES
+from constants import (
+    BOND_SETTLEMENT_BY_SUFFIX,
+    BOND_SETTLEMENT_CURRENCY,
+    BOND_SETTLEMENT_UNKNOWN,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -48,6 +53,10 @@ _AMORTIZATION_SUM_TOLERANCE: Final[float] = 0.05
 LAW_NEW_YORK: Final[str] = "NY"
 LAW_ARGENTINA: Final[str] = "ARG"
 VALID_LAWS: Final[tuple[str, ...]] = (LAW_NEW_YORK, LAW_ARGENTINA)
+
+# Largo de un ticker de ON en BYMA. La última letra es la especie de
+# liquidación, así que las cuatro primeras identifican al bono.
+TICKER_LENGTH: Final[int] = 5
 
 REQUIRED_COLUMNS: Final[tuple[str, ...]] = (
     "ticker",
@@ -90,6 +99,67 @@ class BondTerms:
     def is_bullet(self) -> bool:
         """True si devuelve todo el capital de una sola vez al vencimiento."""
         return len(self.amortizations) <= 1
+
+
+def settlement_of(ticker: str) -> str:
+    """
+    Especie de liquidación de un ticker, según su última letra.
+
+    En BYMA una misma ON cotiza en tres especies: O (pesos), D (dólar MEP) y
+    C (dólar cable). Es la convención del mercado, no una regla del feed, así
+    que se aplica solo a tickers de 5 caracteres terminados en esas letras;
+    cualquier otra cosa devuelve "desconocida" en vez de adivinar.
+    """
+    ticker = (ticker or "").strip().upper()
+    if len(ticker) == TICKER_LENGTH and ticker[-1] in BOND_SETTLEMENT_BY_SUFFIX:
+        return BOND_SETTLEMENT_BY_SUFFIX[ticker[-1]]
+    return BOND_SETTLEMENT_UNKNOWN
+
+
+def quote_currency_of(ticker: str) -> str | None:
+    """
+    Moneda en la que está expresado el precio de pantalla de un ticker.
+
+    No es la moneda de emisión del bono: una ON en dólares cotiza en pesos si
+    se la opera en la especie O. Descontar un flujo en dólares contra ese
+    precio devuelve una TIR sin sentido, así que el panel compara ambas
+    monedas antes de calcular.
+    """
+    return BOND_SETTLEMENT_CURRENCY.get(settlement_of(ticker))
+
+
+def base_ticker_of(ticker: str) -> str:
+    """
+    Raíz del ticker, sin la letra de especie (YMCJD -> YMCJ).
+
+    Es lo que identifica al bono en sí: las tres especies comparten cupón,
+    vencimiento y cronograma, así que una sola fila del catálogo alcanza para
+    las tres y no hace falta triplicar cada emisión.
+    """
+    ticker = (ticker or "").strip().upper()
+    if len(ticker) == TICKER_LENGTH and ticker[-1] in BOND_SETTLEMENT_BY_SUFFIX:
+        return ticker[:-1]
+    return ticker
+
+
+def find_terms(catalog: dict[str, BondTerms], ticker: str) -> BondTerms | None:
+    """
+    Busca las condiciones de emisión de un ticker en el catálogo.
+
+    Primero por ticker exacto y después por raíz, de modo que una fila cargada
+    como YMCJO cubra también YMCJD e YMCJC. El orden importa: una fila cargada
+    con el ticker completo siempre gana, lo que deja la puerta abierta a cargar
+    una especie puntual con condiciones distintas si alguna vez hiciera falta.
+    """
+    ticker = (ticker or "").strip().upper()
+    exact = catalog.get(ticker)
+    if exact is not None:
+        return exact
+    base = base_ticker_of(ticker)
+    for candidate, terms in catalog.items():
+        if base_ticker_of(candidate) == base:
+            return terms
+    return None
 
 
 def _parse_amortizations(raw: str, maturity: date, line: int) -> tuple[tuple[date, float], ...]:

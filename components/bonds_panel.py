@@ -17,27 +17,42 @@ import numpy as np
 import pandas as pd
 import streamlit as st
 
-from bonds.data_loader import DATA912_CORPORATE_BONDS_URL, load_bonds_data
+from bonds.byma_source import BYMA_BASE_URL
+from bonds.data_loader import load_bonds_data
+from bonds.flows_source import COMMUNITY_FLOWS_URL
+from bonds.panel import apply_bond_filters
 from components.bonds_table import render_bonds_table
 from constants import (
-    BOND_ATTRACTIVE_SIGNALS,
-    BOND_FILTER_LAW_ARG,
-    BOND_FILTER_LAW_NY,
-    BOND_FILTER_SIGNAL_ATTRACTIVE,
-    BOND_FILTER_SIGNAL_RISK,
-    BOND_FILTER_SIGNAL_VERY_ATTRACTIVE,
     BOND_LAW_FILTER_OPTIONS,
-    BOND_LIQUID_SPREAD_MAX_PCT,
+    BOND_LIQUIDITY_FILTER_OPTIONS,
+    BOND_MIN_YEARS_FOR_GRADING,
     BOND_PARITY_DISCOUNT_MAX,
     BOND_PRICE_CONVENTION_OPTIONS,
     BOND_PRICE_DIRTY,
     BOND_RISK_YIELD_PREMIUM_PP,
-    BOND_SHORT_DURATION_MAX_YEARS,
+    BOND_SCORE_ATTRACTIVE_MIN,
+    BOND_SCORE_JURISDICTION,
+    BOND_SCORE_LIQUIDITY,
+    BOND_SCORE_MIN_COVERAGE,
+    BOND_SCORE_NEUTRAL_MIN,
+    BOND_SCORE_PARITY,
+    BOND_SCORE_RATE_RISK,
+    BOND_SCORE_VERY_ATTRACTIVE_MIN,
+    BOND_SCORE_WEIGHTS,
+    BOND_SCORE_YIELD,
+    BOND_SETTLEMENT_FILTER_OPTIONS,
     BOND_SIGNAL_FILTER_OPTIONS,
-    BOND_SIGNAL_RISK,
-    BOND_SIGNAL_VERY_ATTRACTIVE,
-    BOND_YIELD_PREMIUM_PP,
+    BOND_SOURCE_NONE,
 )
+
+# Qué mide cada dimensión del puntaje, para la tabla de la metodología.
+_EXPLICACION_DIMENSION = {
+    BOND_SCORE_YIELD: "Cuánto rinde frente a sus pares, con castigo por prima excesiva.",
+    BOND_SCORE_LIQUIDITY: "Spread de puntas y volumen operado: si el rendimiento es ejecutable.",
+    BOND_SCORE_RATE_RISK: "Duration modificada: cuánto cae el precio si suben las tasas.",
+    BOND_SCORE_PARITY: "Si cotiza bajo la par, parte del retorno llega como ganancia de capital.",
+    BOND_SCORE_JURISDICTION: "Ley aplicable: dónde se litiga un default.",
+}
 
 # Tope del filtro de duration. 15 años cubre con margen el tramo más largo del
 # universo corporativo argentino en dólares.
@@ -60,7 +75,7 @@ def _render_controls() -> tuple[date, bool]:
             "💲 Convención del precio de pantalla",
             BOND_PRICE_CONVENTION_OPTIONS,
             horizontal=True,
-            help="BYMA publica precios sucios (con interés corrido incluido). Elegir mal esta opción sesga la TIR y la paridad.",
+            help="BYMA publica precios sucios (con interés corrido incluido). Elegir mal esta opción sesga la TIR y la paridad. Solo tiene efecto sobre las ONs con condiciones de emisión cargadas: pasar de limpio a sucio exige el interés corrido, y para eso hay que saber qué parte de cada pago es renta.",
         )
 
     with col3:
@@ -114,21 +129,40 @@ def _render_kpis(df: pd.DataFrame):
         )
 
     with columns[4]:
-        spreads = df["Spread (%)"].dropna()
-        liquid = (spreads <= BOND_LIQUID_SPREAD_MAX_PCT).sum() if not spreads.empty else 0
+        scores = df["Puntaje"].dropna() if "Puntaje" in df.columns else pd.Series(dtype=float)
+        best = int((scores >= BOND_SCORE_VERY_ATTRACTIVE_MIN).sum()) if not scores.empty else 0
         st.metric(
-            "ONs Líquidas",
-            f"{liquid}",
-            delta=f"spread ≤ {BOND_LIQUID_SPREAD_MAX_PCT:.0f}%",
+            "Puntaje Mediano",
+            f"{scores.median():.0f}" if not scores.empty else "N/A",
+            delta=f"{best} por encima de {BOND_SCORE_VERY_ATTRACTIVE_MIN:.0f}",
             delta_color="off",
-            help="Especies con las dos puntas cerca entre sí: se puede entrar y salir sin regalar rendimiento.",
+            help="El puntaje es relativo al panel del día, así que la mediana ronda 50 por construcción. Lo informativo es cuántas ONs se despegan.",
         )
 
 
 def _render_filters(df: pd.DataFrame) -> pd.DataFrame:
-    """Filtros rápidos del panel. Devuelve el DataFrame ya filtrado."""
-    col1, col2, col3, col4 = st.columns([2, 2, 2, 2])
+    """
+    Dibuja los filtros rápidos y devuelve el DataFrame ya filtrado.
 
+    Esta función solo recoge lo que el usuario eligió; el filtrado en sí lo
+    hace `apply_bond_filters`, que es código puro y testeado: el orden en que
+    se aplican los filtros cambia el resultado y no puede vivir enterrado en
+    la capa de dibujo.
+    """
+    col_liq, col0, col1, col2, col3, col4 = st.columns([2, 2, 2, 2, 2, 2])
+
+    with col_liq:
+        liquidity_filter = st.selectbox(
+            "💧 Liquidez:",
+            BOND_LIQUIDITY_FILTER_OPTIONS,
+            help="El feed devuelve el panel entero, incluidas especies que no operaron hoy: su precio es el de la última rueda en que se negociaron, así que su TIR mide el mercado de otro día. El ranking se arma dentro de la moneda elegida.",
+        )
+    with col0:
+        settlement_filter = st.selectbox(
+            "💱 Especie de liquidación:",
+            BOND_SETTLEMENT_FILTER_OPTIONS,
+            help="Cada ON cotiza en tres especies según la última letra del ticker: O liquida en pesos, D en dólar MEP (dólares en tu cuenta local) y C en dólar cable (dólares en el exterior). Son el mismo bono. La opción por defecto trae las dos en dólares y muestra una sola fila por bono, la de la especie más operada.",
+        )
     with col1:
         signal_filter = st.selectbox("🚦 Filtrar por atractivo:", BOND_SIGNAL_FILTER_OPTIONS)
     with col2:
@@ -146,34 +180,19 @@ def _render_filters(df: pd.DataFrame) -> pd.DataFrame:
         only_with_yield = st.checkbox(
             "Solo ONs con TIR calculada",
             value=True,
-            help="Oculta las especies que cotizan pero no tienen condiciones de emisión cargadas en el catálogo.",
+            help="Oculta las especies que cotizan pero no tienen cronograma de pagos conocido.",
         )
 
-    filtered = df.copy()
-
-    if signal_filter == BOND_FILTER_SIGNAL_ATTRACTIVE:
-        filtered = filtered[filtered["Atractivo"].isin(BOND_ATTRACTIVE_SIGNALS)]
-    elif signal_filter == BOND_FILTER_SIGNAL_VERY_ATTRACTIVE:
-        filtered = filtered[filtered["Atractivo"] == BOND_SIGNAL_VERY_ATTRACTIVE]
-    elif signal_filter == BOND_FILTER_SIGNAL_RISK:
-        filtered = filtered[filtered["Atractivo"] == BOND_SIGNAL_RISK]
-
-    if law_filter == BOND_FILTER_LAW_NY:
-        filtered = filtered[filtered["Ley"] == "NY"]
-    elif law_filter == BOND_FILTER_LAW_ARG:
-        filtered = filtered[filtered["Ley"] == "ARG"]
-
-    # El filtro de duration no debe descartar las filas sin duration calculada
-    # salvo que el usuario haya pedido explícitamente solo ONs con TIR: una ON
-    # sin condiciones cargadas no es "de duration alta", es de duration
-    # desconocida, y esa distinción la decide el checkbox de al lado.
-    if max_duration < _MAX_DURATION_FILTER_YEARS:
-        filtered = filtered[filtered["Duration Mod."].isna() | (filtered["Duration Mod."] <= max_duration)]
-
-    if only_with_yield:
-        filtered = filtered[filtered["TIR (%)"].notna()]
-
-    return filtered
+    return apply_bond_filters(
+        df,
+        settlement_filter=settlement_filter,
+        liquidity_filter=liquidity_filter,
+        signal_filter=signal_filter,
+        law_filter=law_filter,
+        # El tope del slider significa "sin límite", no "duration 15".
+        max_duration=None if max_duration >= _MAX_DURATION_FILTER_YEARS else max_duration,
+        only_with_yield=only_with_yield,
+    )
 
 
 def _render_glossary():
@@ -246,31 +265,49 @@ def _render_glossary():
 
 
 def _render_methodology():
-    """Documenta el sistema de grados y los supuestos de cálculo."""
-    with st.expander("ℹ️ Cómo se calcula el Atractivo (Sistema de Grados)"):
+    """Documenta cómo se arma el puntaje y con qué supuestos se calcula."""
+    with st.expander("ℹ️ Cómo se calcula el Puntaje de Oportunidad"):
+        pesos = "\n".join(
+            f"| **{dimension}** | {peso:.0f}% | {_EXPLICACION_DIMENSION[dimension]} |"
+            for dimension, peso in BOND_SCORE_WEIGHTS.items()
+        )
         st.markdown(
             f"""
-Un bono no se compara contra su propio pasado sino **contra sus pares del mismo día**: una TIR
-del 11% es excelente o mediocre según dónde esté cotizando el resto del panel corporativo
-argentino. Por eso la referencia de todos los umbrales de rendimiento es la **mediana de TIR del
-panel**, no un número fijo.
+Cada ON recibe un puntaje de **0 a 100**. No es una nota absoluta: mide cómo se compara con **el
+resto del panel del día**. Una TIR del 11% es excelente o mediocre según dónde esté cotizando todo
+lo demás, así que cada dimensión se puntúa por su posición dentro del panel y no contra un umbral
+fijo que diría cosas opuestas en dos momentos del ciclo.
 
-**Requisito obligatorio:** tener una TIR calculable. Sin condiciones de emisión en el catálogo
-no hay flujo de fondos y no hay nada que evaluar (⚪ SIN DATOS).
+Por construcción, **un bono promedio ronda 50**. Lo informativo es quién se despega.
 
-**Alerta excluyente:** TIR por encima de la mediana + {BOND_RISK_YIELD_PREMIUM_PP:.0f} puntos
-porcentuales → **🚨 ALERTA DE RIESGO**. Una prima así sobre los pares no es un bono barato: es el
-mercado poniéndole precio a una probabilidad de default o de reestructuración.
+| Dimensión | Peso | Qué mide |
+| --- | --- | --- |
+{pesos}
 
-**Puntos (1 cada uno):**
+**Tres reglas que hacen honesto al número:**
 
-1. **Premio de rendimiento** — TIR ≥ mediana del panel + {BOND_YIELD_PREMIUM_PP:.0f} pp.
-2. **Riesgo de tasa acotado** — Duration modificada ≤ {BOND_SHORT_DURATION_MAX_YEARS:.0f} años.
-3. **Cotiza bajo la par** — Paridad < {BOND_PARITY_DISCOUNT_MAX:.0f}%.
-4. **Liquidez** — Spread de puntas ≤ {BOND_LIQUID_SPREAD_MAX_PCT:.0f}%.
-5. **Jurisdicción** — Ley Nueva York.
+1. **Más TIR no es siempre mejor.** Pasada una prima de {BOND_RISK_YIELD_PREMIUM_PP:.0f} puntos
+   porcentuales sobre la mediana del panel, el puntaje de rendimiento empieza a caer y llega a
+   cero al doble de esa prima. Ahí el mercado no regala rendimiento: le está poniendo precio a una
+   probabilidad de default. Esos bonos se marcan 🚨 **ALERTA DE RIESGO** y no compiten por el
+   primer puesto.
+2. **Lo que no se puede medir no puntúa cero: se excluye.** Si de una ON no se conoce la ley
+   aplicable, esa dimensión sale del cálculo y su peso se reparte entre las demás. Puntuar cero
+   castigaría al bono por un dato que falta en nuestra fuente, no por algo que le pase al bono.
+   La columna **Cobertura** dice qué fracción del peso se pudo medir de verdad.
+3. **Con muy poco medido no hay puntaje.** Por debajo del {BOND_SCORE_MIN_COVERAGE:.0%} de
+   cobertura no se publica número: saldría casi solo de la TIR y diría más sobre lo que falta que
+   sobre la oportunidad.
 
-**Resultado:** 4-5 puntos → 🌟 MUY ATRACTIVO | 3 → 🟢 ATRACTIVO | 2 → 🟡 NEUTRAL | 0-1 → 🟠 POCO ATRACTIVO.
+**Del puntaje a la etiqueta:** ≥ {BOND_SCORE_VERY_ATTRACTIVE_MIN:.0f} 🌟 MUY ATRACTIVO ·
+≥ {BOND_SCORE_ATTRACTIVE_MIN:.0f} 🟢 ATRACTIVO · ≥ {BOND_SCORE_NEUTRAL_MIN:.0f} 🟡 NEUTRAL ·
+por debajo 🟠 POCO ATRACTIVO. Dos casos ganan sobre el puntaje: la alerta de riesgo de arriba, y
+⏳ **MUY CORTO** para las ONs a menos de {BOND_MIN_YEARS_FOR_GRADING:.2f} años del vencimiento,
+donde anualizar el retorno de unas semanas convierte un centavo de precio en decenas de puntos de
+TIR.
+
+Los pesos están en `constants.py` (`BOND_SCORE_WEIGHTS`). Son un criterio de inversión explícito,
+no una verdad: si para vos la liquidez pesa más que el rendimiento, cambialos ahí.
 
 ---
 
@@ -294,9 +331,15 @@ def _render_sources():
             f"""
 | Dato | Fuente | Cómo se obtiene |
 | --- | --- | --- |
-| Precios, puntas, volumen | [data912]({DATA912_CORPORATE_BONDS_URL}) | API pública sin API key. Es dato educativo con caché de ~2 hs del lado del proveedor: sirve para analizar rendimientos, no para operar al segundo. |
-| Condiciones de emisión | `data/ons_catalog.csv` (este repo) | Cargadas a mano. **Ninguna fuente pública y gratuita las publica en formato consultable por máquina**: viven en el prospecto de cada emisión. |
+| Precios, puntas, volumen | [BYMA Open Data]({BYMA_BASE_URL}) | El mercado donde las ONs cotizan. API pública sin API key, pero sin documentar: es POST y valida cookie de navegador. Trae además vencimiento y moneda de cada especie. |
+| Cronogramas de pago | [rendimientos-ar]({COMMUNITY_FLOWS_URL}) | Se descarga en cada carga. Es un dataset **comunitario** mantenido a mano por terceros (licencia ISC), no una fuente oficial. Publica el total de cada pago, sin separar renta de capital. |
+| Condiciones de emisión | `data/ons_catalog.csv` (este repo) | Opcional y vacío por defecto. Solo hace falta para las métricas que necesitan el desglose renta/capital, o para una ON que la fuente comunitaria no cubra. |
 | Curva del Tesoro de EE.UU. | Yahoo Finance (`^IRX`, `^FVX`, `^TNX`, `^TYX`) | Vía `yfinance`, igual que el panel de acciones. |
+
+**Por qué el cronograma no sale de una fuente oficial:** las condiciones de emisión de una ON
+(cupón, amortizaciones, ley) viven en su prospecto. Ni BYMA ni la CNV las publican en un formato
+consultable por máquina, así que todas las alternativas son o bien datasets mantenidos a mano como
+este, o bien scraping del Informe Diario del IAMC.
 
 **Para verificar o completar el catálogo:**
 
@@ -307,9 +350,15 @@ def _render_sources():
   los datos cargados *y* el resultado del cálculo.
 * **[BYMA](https://www.byma.com.ar)** — boletín diario oficial y datos de la especie.
 
-**Otras fuentes de precios**, si querés reemplazar el feed: BYMA Open Data
-(`open.bymadata.com.ar`, sin key pero sin documentar), la API de BYMA para socios, o el broker
-donde operás (IOL, Bull Market, Cocos, etc. exponen API con cuenta).
+**Por qué BYMA y no un feed alternativo:** se comparó contra data912 con
+`scripts/verificar_fuentes.py`. BYMA lista 2727 especies contra 616, y sobre las 614 en común la
+mitad de los precios del feed alternativo llegaba con atraso: 0,17% de diferencia mediana y hasta
+2,75% en el mismo título. Sobre un bono de duration 3 eso son entre 6 y 90 puntos básicos de TIR,
+que es justamente lo que el panel compara. No se dejó como respaldo porque un respaldo que
+devuelve otro número no es un respaldo.
+
+**Si necesitás precios ejecutables**, la fuente es el broker donde operás (IOL, Bull Market,
+Cocos, etc. exponen API con cuenta).
             """
         )
 
@@ -344,13 +393,36 @@ def render_bonds_panel():
         _render_sources()
         return
 
+    without_schedule = sorted(df_bonds.loc[df_bonds["Fuente"] == BOND_SOURCE_NONE, "Ticker"])
+    if without_schedule:
+        st.info(
+            f"📗 **{len(without_schedule)} de {len(df_bonds)} especies cotizan sin cronograma de pagos conocido.** "
+            "Se les muestra precio, puntas y volumen, pero no se les puede calcular TIR ni duration. "
+            "El cronograma de las ONs más operadas se descarga solo; para incorporar una que la fuente "
+            "no cubra, agregá una fila en `data/ons_catalog.csv`: alcanza con cargar una especie "
+            "(por ejemplo la O) y el panel la aplica también a las especies D y C del mismo bono."
+        )
+        with st.expander(f"Ver las {len(without_schedule)} especies sin cronograma"):
+            st.write(", ".join(without_schedule))
+
+    # El selector de convención de precio no puede aplicarse sobre las ONs que
+    # solo tienen cronograma publicado. Decirlo es mejor que dejar un control
+    # que no hace nada en la mayoría de las filas.
+    if not price_is_dirty and "Convención Aplicada" in df_bonds.columns:
+        ignoradas = int((df_bonds["Convención Aplicada"] == BOND_PRICE_DIRTY).sum())
+        if ignoradas:
+            st.caption(
+                f"ℹ️ La convención de precio limpio no se pudo aplicar en {ignoradas} de "
+                f"{len(df_bonds)} especies: su cronograma publica el total de cada pago, sin "
+                "separar renta de capital, y sin ese desglose no hay interés corrido que sumarle "
+                "al precio. Esas filas se calcularon con precio sucio, la convención de BYMA."
+            )
+
     unverified = int((~df_bonds["Verificado"] & df_bonds["En Catálogo"]).sum())
     if unverified:
-        st.info(
-            f"📋 **{unverified} de {int(df_bonds['En Catálogo'].sum())} ONs del catálogo tienen condiciones "
-            "de emisión sin verificar.** Cupón, vencimiento y cronograma de amortización salen de "
-            "`data/ons_catalog.csv` y fueron cargados como punto de partida, no contrastados contra el "
-            "prospecto. Verificalos antes de tomar una decisión de inversión y marcá `verificado=si` en el CSV: "
+        st.warning(
+            f"⚠️ **{unverified} ON(s) del catálogo local tienen condiciones de emisión sin verificar.** "
+            "Verificalas contra el prospecto y marcá `verificado=si` en `data/ons_catalog.csv`: "
             "un cupón mal cargado devuelve una TIR mansamente incorrecta."
         )
 
@@ -375,7 +447,21 @@ def render_bonds_panel():
             use_container_width=True,
         )
 
-    render_bonds_table(df_filtered)
+    vista_col, desglose_col = st.columns(2)
+    with vista_col:
+        vista_completa = st.checkbox(
+            "Ver todas las columnas",
+            value=False,
+            help="Agrega puntas, convexidad, valor técnico, interés corrido, calificación y demás detalle de segundo orden.",
+        )
+    with desglose_col:
+        ver_desglose = st.checkbox(
+            "Ver desglose del puntaje",
+            value=False,
+            help="Muestra cuánto aporta cada dimensión al Puntaje de Oportunidad, y qué fracción del peso se pudo medir.",
+        )
+
+    render_bonds_table(df_filtered, full=vista_completa, breakdown=ver_desglose)
 
     _render_glossary()
     _render_methodology()

@@ -58,15 +58,31 @@ DAYS_PER_YEAR: Final[float] = 365.0
 
 @dataclass(frozen=True)
 class CashFlow:
-    """Un pago del bono, expresado por cada 100 VN originales."""
+    """
+    Un pago del bono, expresado por cada 100 VN originales.
+
+    `split_known` distingue las dos formas en que puede llegar un flujo. Cuando
+    se reconstruye desde las condiciones de emisión se sabe qué parte del pago
+    es renta y qué parte devolución de capital. Cuando la fuente publica
+    directamente el cronograma ya resuelto, muchas veces solo informa el total
+    del pago; entonces el importe se guarda entero y la bandera queda en False,
+    para que las métricas que dependen del capital (vida promedio, paridad) se
+    abstengan en vez de responder sobre un supuesto inventado.
+    """
 
     date: date
     interest: float
     amortization: float
+    split_known: bool = True
 
     @property
     def total(self) -> float:
         return self.interest + self.amortization
+
+    @classmethod
+    def unsplit(cls, flow_date: date, amount: float) -> CashFlow:
+        """Construye un pago del que solo se conoce el importe total."""
+        return cls(date=flow_date, interest=amount, amortization=0.0, split_known=False)
 
 
 def add_months(reference: date, months: int) -> date:
@@ -216,6 +232,12 @@ def accrued_interest(
     comprador le paga por encima del precio limpio. Vencido el bono (o pasado
     el último cupón) no hay nada que devengar y devuelve 0.
     """
+    # Antes de la emisión no hay nada devengado. Sin esta guarda, el
+    # devengamiento 30/360 sale negativo y arrastra al valor técnico, con lo
+    # cual un bono a precio 100 puede mostrar paridad de 106%.
+    if settlement <= issue_date:
+        return 0.0
+
     coupon_dates = generate_coupon_dates(issue_date, maturity, frequency)
     future_coupons = [d for d in coupon_dates if d > settlement]
     if not future_coupons:
@@ -358,11 +380,35 @@ def weighted_average_life(flows: list[CashFlow], settlement: date) -> float | No
     amortizaciones parciales puede ser mucho menos que el plazo al vencimiento.
     """
     pending = remaining_cashflows(flows, settlement)
+    # Sin el desglose renta/capital no se puede decir cuándo vuelve el capital,
+    # que es exactamente lo que esta métrica mide.
+    if any(not flow.split_known for flow in pending):
+        return None
     total_amortization = sum(flow.amortization for flow in pending)
     if total_amortization <= 0:
         return None
     weighted = sum(year_fraction(settlement, flow.date) * flow.amortization for flow in pending)
     return weighted / total_amortization
+
+
+def analyze_cashflows(flows: list[CashFlow], settlement: date, dirty_price: float) -> dict:
+    """
+    Métricas que se derivan únicamente del flujo total y el precio pagado.
+
+    Es el núcleo compartido entre las dos formas de conocer un bono: a partir
+    de sus condiciones de emisión, o a partir de un cronograma de pagos ya
+    resuelto publicado por un tercero. Rendimiento y sensibilidad a la tasa no
+    necesitan saber qué parte de cada pago es renta y qué parte capital.
+    """
+    ytm = yield_to_maturity(flows, settlement, dirty_price)
+    return {
+        "ytm_pct": ytm * 100.0 if ytm is not None else None,
+        "macaulay_duration": macaulay_duration(flows, settlement, ytm) if ytm is not None else None,
+        "modified_duration": modified_duration(flows, settlement, ytm) if ytm is not None else None,
+        "convexity": convexity(flows, settlement, ytm) if ytm is not None else None,
+        "weighted_average_life": weighted_average_life(flows, settlement),
+        "cashflows": flows,
+    }
 
 
 def analyze_bond(
@@ -399,19 +445,17 @@ def analyze_bond(
     dirty_price = price if price_is_dirty else price + accrued
     clean_price = price - accrued if price_is_dirty else price
 
-    ytm = yield_to_maturity(flows, settlement, dirty_price)
-
     parity = (dirty_price / technical_value * 100.0) if technical_value > 0 else None
+    # La renta anual se mide contra el precio LIMPIO. Dividir por el sucio
+    # mete el interés corrido en el denominador, así que el mismo bono mostraría
+    # una renta que baja a lo largo del período de cupón y salta el día que
+    # paga, sin que haya cambiado nada del bono.
     annual_coupon = outstanding * (coupon_rate / 100.0)
-    current_yield = (annual_coupon / dirty_price * 100.0) if dirty_price > 0 else None
+    current_yield = (annual_coupon / clean_price * 100.0) if clean_price > 0 else None
 
     return {
-        "ytm_pct": ytm * 100.0 if ytm is not None else None,
+        **analyze_cashflows(flows, settlement, dirty_price),
         "current_yield_pct": current_yield,
-        "macaulay_duration": macaulay_duration(flows, settlement, ytm) if ytm is not None else None,
-        "modified_duration": modified_duration(flows, settlement, ytm) if ytm is not None else None,
-        "convexity": convexity(flows, settlement, ytm) if ytm is not None else None,
-        "weighted_average_life": weighted_average_life(flows, settlement),
         "accrued_interest": accrued,
         "residual_capital": outstanding,
         "technical_value": technical_value,
@@ -419,5 +463,4 @@ def analyze_bond(
         "dirty_price": dirty_price,
         "clean_price": clean_price,
         "years_to_maturity": max(year_fraction(settlement, maturity), 0.0),
-        "cashflows": flows,
     }

@@ -13,6 +13,11 @@ import pandas as pd
 import streamlit as st
 
 from constants import (
+    BOND_SCORE_JURISDICTION,
+    BOND_SCORE_LIQUIDITY,
+    BOND_SCORE_PARITY,
+    BOND_SCORE_RATE_RISK,
+    BOND_SCORE_YIELD,
     BOND_SIGNAL_ATTRACTIVE,
     BOND_SIGNAL_LOW,
     BOND_SIGNAL_RISK,
@@ -38,12 +43,45 @@ from theme import (
 VERIFIED_BADGE = "✅ Verificado"
 UNVERIFIED_BADGE = "⚠️ Sin verificar"
 
-# Orden de lectura del cuadro: rendimiento → riesgo → liquidez → descripción.
-DISPLAY_COLUMNS = [
+# Lo esencial para decidir, en orden de lectura: qué tan buena es la
+# oportunidad, de qué bono se trata, cuánto rinde, cuánto riesgo tiene y si se
+# puede operar. Todo lo demás (puntas, cantidades, convexidad, valor técnico,
+# interés corrido) es detalle de segundo orden y vive detrás del interruptor
+# de vista completa: una tabla de veinte columnas no se lee, se escanea.
+ESSENTIAL_COLUMNS = [
     "Atractivo",
+    "Puntaje",
+    "Ticker",
+    "Emisor",
+    "TIR (%)",
+    "Duration Mod.",
+    "Paridad (%)",
+    "Spread (%)",
+    "Volumen",
+    "Precio",
+    "Vencimiento",
+    "Ley",
+]
+
+# El desagregado del puntaje: por qué esta ON puntúa lo que puntúa.
+SCORE_BREAKDOWN_COLUMNS = [
+    BOND_SCORE_YIELD,
+    BOND_SCORE_LIQUIDITY,
+    BOND_SCORE_RATE_RISK,
+    BOND_SCORE_PARITY,
+    BOND_SCORE_JURISDICTION,
+    "Cobertura",
+]
+
+FULL_COLUMNS = [
+    "Atractivo",
+    "Puntaje",
     "Ticker",
     "Emisor",
     "Ley",
+    "Calificación",
+    "Liquidación",
+    "Fuente",
     "Verif.",
     "Precio",
     "Var. (%)",
@@ -59,7 +97,6 @@ DISPLAY_COLUMNS = [
     "Volumen",
     "Lámina Mínima",
 ]
-
 
 def style_bond_signal(val):
     """Colorea la etiqueta de atractivo con la misma paleta que el semáforo de acciones."""
@@ -110,8 +147,14 @@ def style_parity(val):
     return f"color: {COLOR_NEUTRAL};"
 
 
-def render_bonds_table(df: pd.DataFrame):
-    """Renderiza el cuadro comparativo de ONs con formato y ayudas por columna."""
+def render_bonds_table(df: pd.DataFrame, full: bool = False, breakdown: bool = False):
+    """
+    Renderiza el cuadro comparativo de ONs.
+
+    `full` muestra todas las columnas y `breakdown` agrega el desagregado del
+    puntaje. Por defecto se muestra solo lo esencial: el resto está disponible,
+    pero no compitiendo por la atención en la primera lectura.
+    """
     if df.empty:
         st.warning("No hay ONs que coincidan con los filtros seleccionados.")
         return
@@ -121,7 +164,10 @@ def render_bonds_table(df: pd.DataFrame):
         lambda ok: VERIFIED_BADGE if ok else UNVERIFIED_BADGE
     )
 
-    available = [col for col in DISPLAY_COLUMNS if col in df_display.columns]
+    columns = list(FULL_COLUMNS if full else ESSENTIAL_COLUMNS)
+    if breakdown:
+        columns += SCORE_BREAKDOWN_COLUMNS
+    available = [col for col in columns if col in df_display.columns]
     df_display = df_display[available]
 
     variation_cols = [col for col in ("Var. (%)", "Spread vs UST (pb)") if col in df_display.columns]
@@ -137,12 +183,34 @@ def render_bonds_table(df: pd.DataFrame):
             width="medium",
             help="🌟 MUY ATRACTIVO | 🟢 ATRACTIVO | 🟡 NEUTRAL | 🟠 POCO ATRACTIVO | 🚨 ALERTA DE RIESGO | ⚪ SIN DATOS",
         ),
+        "Puntaje": st.column_config.ProgressColumn(
+            "Puntaje",
+            format="%.0f",
+            min_value=0,
+            max_value=100,
+            help="Puntaje de Oportunidad (0-100): rendimiento, liquidez, riesgo de tasa, paridad y jurisdicción ponderados y comparados contra el resto del panel del día. Un bono promedio ronda 50.",
+        ),
         "Ticker": st.column_config.TextColumn("Especie", width="small"),
         "Emisor": st.column_config.TextColumn("Emisor", width="medium"),
         "Ley": st.column_config.TextColumn(
             "Ley",
             width="small",
             help="Jurisdicción aplicable. NY = se litiga en tribunales de Nueva York; ARG = tribunales argentinos.",
+        ),
+        "Calificación": st.column_config.TextColumn(
+            "Calificación",
+            width="small",
+            help="Calificación crediticia local del emisor (FIX SCR, Moody's Local, etc.). 's/c' = sin cargar en el catálogo.",
+        ),
+        "Liquidación": st.column_config.TextColumn(
+            "Liquidación",
+            width="small",
+            help="Especie según la última letra del ticker. O: liquida en pesos. D: dólar MEP, los dólares quedan en tu cuenta local. C: dólar cable (contado con liquidación), los dólares quedan en una cuenta del exterior — algunas plataformas lo muestran como 'ext'. Es la misma ON en las tres: cambia dónde y en qué moneda cobrás.",
+        ),
+        "Fuente": st.column_config.TextColumn(
+            "Fuente",
+            width="small",
+            help="De dónde salió el cronograma de pagos. El catálogo local permite calcular además paridad, valor técnico y vida promedio; la fuente pública solo informa el total de cada pago, así que esas columnas quedan vacías.",
         ),
         "Verif.": st.column_config.TextColumn(
             "Condiciones",
@@ -152,7 +220,7 @@ def render_bonds_table(df: pd.DataFrame):
         "Precio": st.column_config.NumberColumn(
             "Precio",
             format="%.2f",
-            help="Precio por cada 100 VN (valor nominal), en la moneda de emisión.",
+            help="Precio por cada 100 VN (valor nominal), en la moneda de la especie: pesos para la especie O, dólares para D y C.",
         ),
         "Var. (%)": st.column_config.NumberColumn("Var. (%)", format="%+.2f%%"),
         "TIR (%)": st.column_config.NumberColumn(
@@ -197,6 +265,16 @@ def render_bonds_table(df: pd.DataFrame):
             help="Diferencia entre punta vendedora y compradora sobre el punto medio. Es el costo de entrar y salir: la medida práctica de liquidez.",
         ),
         "Volumen": st.column_config.NumberColumn("Volumen", format="%.0f"),
+        "Cobertura": st.column_config.NumberColumn(
+            "Cobertura",
+            format="%.0f%%",
+            help="Qué porcentaje del peso total del puntaje se pudo medir de verdad. Lo que falta no puntúa cero: se excluye y los pesos se reparten sobre el resto.",
+        ),
+        BOND_SCORE_YIELD: st.column_config.NumberColumn(format="%.0f"),
+        BOND_SCORE_LIQUIDITY: st.column_config.NumberColumn(format="%.0f"),
+        BOND_SCORE_RATE_RISK: st.column_config.NumberColumn(format="%.0f"),
+        BOND_SCORE_PARITY: st.column_config.NumberColumn(format="%.0f"),
+        BOND_SCORE_JURISDICTION: st.column_config.NumberColumn(format="%.0f"),
         "Lámina Mínima": st.column_config.NumberColumn(
             "Lámina Mín.",
             format="%.0f",

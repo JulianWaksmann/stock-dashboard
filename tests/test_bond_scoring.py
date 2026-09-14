@@ -11,6 +11,7 @@ import pytest
 
 from bonds.scoring import evaluate_bond_attractiveness
 from constants import (
+    BOND_MIN_YEARS_FOR_GRADING,
     BOND_RISK_YIELD_PREMIUM_PP,
     BOND_SHORT_DURATION_MAX_YEARS,
     BOND_SIGNAL_ATTRACTIVE,
@@ -19,6 +20,7 @@ from constants import (
     BOND_SIGNAL_NO_DATA,
     BOND_SIGNAL_RISK,
     BOND_SIGNAL_VERY_ATTRACTIVE,
+    BOND_SIGNAL_VERY_SHORT,
     BOND_YIELD_PREMIUM_PP,
 )
 
@@ -34,6 +36,7 @@ def evaluate(**overrides):
         parity_pct=110.0,
         bid_ask_spread_pct=5.0,
         law="ARG",
+        years_to_maturity=5.0,
     )
     params.update(overrides)
     return evaluate_bond_attractiveness(**params)
@@ -134,3 +137,37 @@ class TestCondicionesIndividuales:
     def test_las_metricas_faltantes_simplemente_no_suman(self, valor):
         signal = evaluate(law="NY", parity_pct=95.0, modified_duration=valor, bid_ask_spread_pct=valor)
         assert signal == BOND_SIGNAL_NEUTRAL
+
+
+class TestPlazoMinimo:
+    """
+    Anualizar el retorno de un bono al que le quedan semanas convierte un
+    centavo de precio en decenas de puntos de TIR. Esas ONs se apartan en vez
+    de encabezar el panel o disparar una falsa alerta de riesgo.
+    """
+
+    def test_una_on_a_semanas_del_vencimiento_no_se_califica(self):
+        assert evaluate(years_to_maturity=0.05) == BOND_SIGNAL_VERY_SHORT
+
+    def test_el_plazo_minimo_le_gana_a_la_alerta_de_riesgo(self):
+        signal = evaluate(ytm_pct=MEDIAN + BOND_RISK_YIELD_PREMIUM_PP + 200.0, years_to_maturity=0.05)
+        assert signal == BOND_SIGNAL_VERY_SHORT
+
+    def test_el_plazo_minimo_le_gana_a_un_puntaje_perfecto(self):
+        signal = evaluate(
+            ytm_pct=MEDIAN + BOND_YIELD_PREMIUM_PP,
+            modified_duration=0.1,
+            parity_pct=95.0,
+            bid_ask_spread_pct=0.2,
+            law="NY",
+            years_to_maturity=0.05,
+        )
+        assert signal == BOND_SIGNAL_VERY_SHORT
+
+    def test_justo_en_el_umbral_si_se_califica(self):
+        assert evaluate(years_to_maturity=BOND_MIN_YEARS_FOR_GRADING) != BOND_SIGNAL_VERY_SHORT
+
+    def test_sin_plazo_conocido_se_califica_igual(self):
+        # El plazo es un dato opcional: su ausencia no puede dejar sin
+        # calificar a una ON que sí tiene TIR.
+        assert evaluate(years_to_maturity=None) == BOND_SIGNAL_LOW

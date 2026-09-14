@@ -177,6 +177,7 @@ BOND_SIGNAL_NEUTRAL: Final[str] = "🟡 NEUTRAL"
 BOND_SIGNAL_LOW: Final[str] = "🟠 POCO ATRACTIVO"
 BOND_SIGNAL_RISK: Final[str] = "🚨 ALERTA DE RIESGO"
 BOND_SIGNAL_NO_DATA: Final[str] = "⚪ SIN DATOS"
+BOND_SIGNAL_VERY_SHORT: Final[str] = "⏳ MUY CORTO"
 
 BOND_ATTRACTIVE_SIGNALS: Final[tuple[str, ...]] = (
     BOND_SIGNAL_VERY_ATTRACTIVE,
@@ -192,6 +193,14 @@ BOND_ATTRACTIVE_SIGNALS: Final[tuple[str, ...]] = (
 # con el riesgo argentino, así que un umbral absoluto ("TIR > 9%") diría
 # cosas opuestas en dos momentos distintos del ciclo.
 # ----------------------------------------------------------------------
+
+# Vida residual mínima para calificar una ON, en años. Por debajo de este
+# plazo la TIR sigue siendo correcta pero deja de ser comparable: anualizar
+# el retorno de tres semanas convierte un centavo de diferencia de precio en
+# decenas de puntos de "rendimiento". Esos bonos se etiquetan aparte y se
+# excluyen de la mediana del panel, para no arrastrar la referencia contra la
+# que se mide todo el resto ni disparar falsas alertas de riesgo.
+BOND_MIN_YEARS_FOR_GRADING: Final[float] = 0.25
 
 # Premio de rendimiento: cuánta TIR por encima de la mediana del panel hay
 # que ofrecer para que el bono sume el punto de "rinde más que sus pares".
@@ -254,3 +263,182 @@ BOND_PRICE_CONVENTION_OPTIONS: Final[tuple[str, ...]] = (
     BOND_PRICE_DIRTY,
     BOND_PRICE_CLEAN,
 )
+
+# ----------------------------------------------------------------------
+# Secciones del tablero (selector superior de app.py)
+#
+# Es un selector y no `st.tabs` porque Streamlit ejecuta el cuerpo de todas
+# las pestañas en cada corrida: con pestañas nativas, mirar acciones
+# dispararía igual la descarga de precios de ONs. Con el selector, cada
+# sección consulta sus fuentes recién cuando se la elige.
+# ----------------------------------------------------------------------
+SECTION_STOCKS: Final[str] = "📈 Acciones (Confluencia & Smart Money)"
+SECTION_BONDS: Final[str] = "💵 Bonos Corporativos Argentinos (ONs)"
+
+SECTION_OPTIONS: Final[tuple[str, ...]] = (SECTION_STOCKS, SECTION_BONDS)
+
+# ----------------------------------------------------------------------
+# Especies de liquidación de una ON.
+#
+# En BYMA un mismo bono cotiza en tres especies distintas, identificadas por
+# la última letra del ticker: O liquida en pesos, D en dólar MEP y C en dólar
+# cable. YMCJO, YMCJD e YMCJC son la MISMA obligación negociable de YPF; lo
+# que cambia es en qué moneda se paga y, por lo tanto, en qué moneda está
+# expresado el precio de pantalla (YMCJO cotiza ~152.000 pesos donde YMCJD
+# cotiza ~105 dólares).
+#
+# Esto no es cosmético: descontar el flujo en dólares de la ON contra un
+# precio en pesos devuelve una TIR sin ningún sentido económico. Por eso el
+# panel calcula rendimientos solo cuando la moneda de la especie coincide
+# con la moneda de emisión del bono.
+# ----------------------------------------------------------------------
+BOND_SETTLEMENT_PESOS: Final[str] = "🇦🇷 Pesos"
+BOND_SETTLEMENT_MEP: Final[str] = "💵 MEP"
+BOND_SETTLEMENT_CABLE: Final[str] = "🌎 Cable"
+BOND_SETTLEMENT_UNKNOWN: Final[str] = "—"
+
+# Última letra del ticker -> especie de liquidación.
+BOND_SETTLEMENT_BY_SUFFIX: Final[dict[str, str]] = {
+    "O": BOND_SETTLEMENT_PESOS,
+    "D": BOND_SETTLEMENT_MEP,
+    "C": BOND_SETTLEMENT_CABLE,
+}
+
+# Especie de liquidación -> moneda en la que está expresado el precio.
+BOND_SETTLEMENT_CURRENCY: Final[dict[str, str]] = {
+    BOND_SETTLEMENT_PESOS: "ARS",
+    BOND_SETTLEMENT_MEP: "USD",
+    BOND_SETTLEMENT_CABLE: "USD",
+}
+
+# --- Filtro por especie de liquidación ---
+BOND_FILTER_SETTLEMENT_ALL: Final[str] = "Todas las especies"
+BOND_FILTER_SETTLEMENT_USD: Final[str] = "💵 Solo dólares (MEP + Cable)"
+BOND_FILTER_SETTLEMENT_MEP: Final[str] = "💵 Solo MEP"
+BOND_FILTER_SETTLEMENT_PESOS: Final[str] = "🇦🇷 Solo pesos"
+
+BOND_SETTLEMENT_FILTER_OPTIONS: Final[tuple[str, ...]] = (
+    BOND_FILTER_SETTLEMENT_USD,
+    BOND_FILTER_SETTLEMENT_MEP,
+    BOND_FILTER_SETTLEMENT_PESOS,
+    BOND_FILTER_SETTLEMENT_ALL,
+)
+
+# ----------------------------------------------------------------------
+# Origen del cronograma de pagos de cada ON.
+#
+# El panel conoce un bono de dos maneras y no dan lo mismo: el catálogo
+# local describe las condiciones de emisión y permite calcular todo
+# (paridad, valor técnico, vida promedio); la fuente comunitaria publica el
+# cronograma ya resuelto, que alcanza para TIR y duration pero no informa
+# qué parte de cada pago es capital. Mostrar de dónde salió cada fila evita
+# tener que explicar por qué a unas les faltan columnas.
+# ----------------------------------------------------------------------
+BOND_SOURCE_CATALOG: Final[str] = "Catálogo local"
+BOND_SOURCE_NONE: Final[str] = "—"
+
+# ----------------------------------------------------------------------
+# Filtro de liquidez.
+#
+# El feed devuelve el panel entero, que incluye especies que no operaron en
+# todo el día. El precio que muestran es el de la última rueda en que se
+# negociaron, así que su TIR se calcula contra un precio viejo: parece un
+# dato y es un recuerdo.
+#
+# Los umbrales son relativos (hay volumen / top N del día) y no absolutos
+# porque el feed no documenta en qué unidad expresa el volumen. Un corte
+# tipo "más de 1.000.000" sería un número inventado; "las 20 que más
+# operaron hoy" se sostiene sin saber la unidad.
+# ----------------------------------------------------------------------
+BOND_FILTER_LIQUIDITY_TRADED: Final[str] = "💧 Solo las que operaron hoy"
+BOND_FILTER_LIQUIDITY_TOP_20: Final[str] = "🔝 Top 20 por volumen"
+BOND_FILTER_LIQUIDITY_TOP_50: Final[str] = "🔝 Top 50 por volumen"
+BOND_FILTER_LIQUIDITY_ALL: Final[str] = "Todas, incluso sin operar"
+
+# El primero es el default del selector. Arranca en el top 50 por volumen:
+# es el recorte que deja el panel operable, porque más abajo de ahí las
+# especies negocian tan poco que su precio de pantalla no es ejecutable.
+BOND_LIQUIDITY_FILTER_OPTIONS: Final[tuple[str, ...]] = (
+    BOND_FILTER_LIQUIDITY_TOP_50,
+    BOND_FILTER_LIQUIDITY_TOP_20,
+    BOND_FILTER_LIQUIDITY_TRADED,
+    BOND_FILTER_LIQUIDITY_ALL,
+)
+
+# Cantidad de especies que deja cada corte "top N por volumen".
+BOND_TOP_VOLUME_SIZES: Final[dict[str, int]] = {
+    BOND_FILTER_LIQUIDITY_TOP_20: 20,
+    BOND_FILTER_LIQUIDITY_TOP_50: 50,
+}
+
+# ----------------------------------------------------------------------
+# Puntaje de Oportunidad (0-100).
+#
+# El semáforo por puntos cuenta condiciones cumplidas, y eso empareja cosas
+# que no son iguales: un bono que roza el umbral de liquidez suma lo mismo
+# que uno que lo supera diez veces. El puntaje pondera cada dimensión de
+# forma continua, comparando a cada ON contra el resto del panel del día.
+#
+# Los pesos son un criterio de inversión explícito, no una verdad: dicen
+# que el rendimiento relativo pesa más que todo lo demás, que la liquidez
+# importa casi tanto porque un rendimiento que no podés ejecutar no existe,
+# y que la jurisdicción es un matiz y no el eje de la decisión. Se tocan
+# acá, en un solo lugar, y suman 100.
+# ----------------------------------------------------------------------
+BOND_SCORE_YIELD: Final[str] = "Rendimiento"
+BOND_SCORE_RATE_RISK: Final[str] = "Riesgo de tasa"
+BOND_SCORE_LIQUIDITY: Final[str] = "Liquidez"
+BOND_SCORE_PARITY: Final[str] = "Paridad"
+BOND_SCORE_JURISDICTION: Final[str] = "Jurisdicción"
+
+BOND_SCORE_WEIGHTS: Final[dict[str, float]] = {
+    BOND_SCORE_YIELD: 35.0,
+    BOND_SCORE_LIQUIDITY: 25.0,
+    BOND_SCORE_RATE_RISK: 20.0,
+    BOND_SCORE_PARITY: 10.0,
+    BOND_SCORE_JURISDICTION: 10.0,
+}
+
+# Pendiente del castigo por prima excesiva. Pasado el umbral de riesgo, cada
+# punto porcentual de TIR de más se cuenta como este múltiplo de puntos de
+# menos, de modo que el puntaje de rendimiento baje de verdad en lugar de
+# empatar con el percentil, que sigue subiendo. Con pendiente 2, un bono que
+# supera el umbral por 5 pp puntúa como uno que rinde 10 pp por debajo de él.
+BOND_SCORE_EXCESS_PENALTY_SLOPE: Final[float] = 2.0
+
+# Dentro de Liquidez, cuánto pesa el spread de puntas frente al volumen.
+# El spread es el costo cierto de entrar y salir; el volumen dice si ese
+# spread se sostiene en tamaño. Van casi a la par.
+BOND_SCORE_SPREAD_SHARE: Final[float] = 0.5
+
+# Puntaje de jurisdicción. Ley extranjera no es garantía de cobro, pero
+# históricamente cotiza con menor rendimiento exigido: el mercado paga por
+# esa diferencia, así que el puntaje la refleja sin volverla decisiva.
+BOND_SCORE_LAW_NY: Final[float] = 100.0
+BOND_SCORE_LAW_ARG: Final[float] = 40.0
+
+# Cobertura mínima: fracción del peso total que tiene que poder evaluarse
+# para publicar un puntaje. Una ON sin liquidez ni paridad conocidas se
+# estaría calificando con poco más que su TIR, y ese número diría más sobre
+# lo que falta que sobre el bono.
+BOND_SCORE_MIN_COVERAGE: Final[float] = 0.5
+
+# Tamaño mínimo del panel comparable para publicar puntajes. El puntaje es
+# un percentil: con dos o tres bonos, "estar en el percentil 100" significa
+# ganarle a dos, y con uno solo significa nada. Por debajo de este número no
+# se publica puntaje en vez de fabricar una comparación que no existe.
+BOND_SCORE_MIN_PANEL_SIZE: Final[int] = 5
+
+# Fracción mínima del panel que tiene que tener una dimensión para que esa
+# dimensión se use. Si solo tres bonos de cincuenta tienen la ley cargada, el
+# percentil los compara entre ellos y el mejor de esos tres se lleva 100 sobre
+# una muestra que no representa nada; además, los otros cuarenta y siete no
+# pagan por no tenerla, con lo cual cargar un dato cierto pero mediocre baja
+# el puntaje. Por debajo de este umbral la dimensión se descarta para todos,
+# que es la única forma de que todos se comparen sobre la misma base.
+BOND_SCORE_MIN_DIMENSION_COVERAGE: Final[float] = 0.5
+
+# Cortes del puntaje a etiqueta del semáforo.
+BOND_SCORE_VERY_ATTRACTIVE_MIN: Final[float] = 70.0
+BOND_SCORE_ATTRACTIVE_MIN: Final[float] = 55.0
+BOND_SCORE_NEUTRAL_MIN: Final[float] = 40.0
