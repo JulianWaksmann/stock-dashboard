@@ -23,11 +23,26 @@ from bonds.catalog import BondTerms, base_ticker_of, find_terms, quote_currency_
 from bonds.flows_source import BondFlows
 from bonds.scoring import evaluate_bond_attractiveness
 from constants import (
+    BOND_ATTRACTIVE_SIGNALS,
+    BOND_FILTER_LAW_ARG,
+    BOND_FILTER_LAW_NY,
+    BOND_FILTER_LIQUIDITY_ALL,
+    BOND_FILTER_SETTLEMENT_MEP,
+    BOND_FILTER_SETTLEMENT_PESOS,
+    BOND_FILTER_SETTLEMENT_USD,
+    BOND_FILTER_SIGNAL_ATTRACTIVE,
+    BOND_FILTER_SIGNAL_RISK,
+    BOND_FILTER_SIGNAL_VERY_ATTRACTIVE,
     BOND_MIN_YEARS_FOR_GRADING,
+    BOND_SETTLEMENT_MEP,
+    BOND_SETTLEMENT_PESOS,
     BOND_SETTLEMENT_UNKNOWN,
     BOND_SIGNAL_NO_DATA,
+    BOND_SIGNAL_RISK,
+    BOND_SIGNAL_VERY_ATTRACTIVE,
     BOND_SOURCE_CATALOG,
     BOND_SOURCE_NONE,
+    BOND_TOP_VOLUME_SIZES,
 )
 
 logger = logging.getLogger(__name__)
@@ -262,3 +277,92 @@ def build_bonds_panel(
     ]
     df.attrs["median_ytm_pct"] = median_ytm
     return df.sort_values(["TIR (%)"], ascending=False, na_position="last").reset_index(drop=True)
+
+
+def _collapse_to_one_row_per_bond(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Deja una sola fila por bono, la de la especie más operada.
+
+    Se usa cuando se piden las dos especies en dólares a la vez. MEP y cable
+    son el mismo bono cobrado en distinto lugar, así que mostrar las dos
+    duplica cada emisión: en un recorte "top 50 por volumen" eso significa que
+    la mitad de los lugares se los llevan repeticiones en vez de bonos
+    distintos. Se conserva la especie con más volumen, que es la que tiene el
+    precio más representativo.
+    """
+    if df.empty:
+        return df
+    ranked = df.assign(_raiz=df["Ticker"].map(base_ticker_of)).sort_values(
+        "Volumen", ascending=False, na_position="last"
+    )
+    return ranked.drop_duplicates("_raiz", keep="first").drop(columns="_raiz")
+
+
+def apply_bond_filters(
+    df: pd.DataFrame,
+    *,
+    settlement_filter: str,
+    liquidity_filter: str,
+    signal_filter: str,
+    law_filter: str,
+    max_duration: float | None = None,
+    only_with_yield: bool = False,
+) -> pd.DataFrame:
+    """
+    Aplica los filtros del panel. Vive acá, y no en la capa de dibujo, porque
+    el ORDEN en que se aplican cambia el resultado y eso merece tests.
+
+    El orden es:
+
+      1. **Moneda.** Va primero porque el volumen de la especie en pesos está
+         expresado en pesos y el de la especie MEP en dólares: rankear por
+         volumen mezclando ambas compara unidades distintas, y ganarían las
+         filas en pesos por tener el número más grande, no por operar más.
+      2. **Una fila por bono**, cuando se pidieron las dos especies en dólares.
+      3. **Liquidez.** El "top N" rankea contra todo el universo de esa moneda
+         y no contra lo que dejen los filtros de abajo: "las 50 más operadas"
+         no debe depender de si además se filtró por ley.
+      4. El resto (atractivo, ley, duration, TIR calculada), que solo recortan.
+    """
+    filtered = df.copy()
+
+    if settlement_filter == BOND_FILTER_SETTLEMENT_USD:
+        filtered = filtered[filtered["Moneda Precio"] == "USD"]
+        filtered = _collapse_to_one_row_per_bond(filtered)
+    elif settlement_filter == BOND_FILTER_SETTLEMENT_MEP:
+        filtered = filtered[filtered["Liquidación"] == BOND_SETTLEMENT_MEP]
+    elif settlement_filter == BOND_FILTER_SETTLEMENT_PESOS:
+        filtered = filtered[filtered["Liquidación"] == BOND_SETTLEMENT_PESOS]
+
+    if liquidity_filter != BOND_FILTER_LIQUIDITY_ALL:
+        filtered = filtered[filtered["Volumen"].isna() | (filtered["Volumen"] > 0)]
+    top_n = BOND_TOP_VOLUME_SIZES.get(liquidity_filter)
+    # `nlargest` sobre un DataFrame vacío falla si la columna quedó sin dtype
+    # numérico, y quedar vacío es un resultado normal acá: alcanza con que el
+    # filtro de moneda no deje ninguna fila.
+    if top_n is not None and not filtered.empty:
+        filtered = filtered.nlargest(top_n, "Volumen", keep="all")
+
+    if signal_filter == BOND_FILTER_SIGNAL_ATTRACTIVE:
+        filtered = filtered[filtered["Atractivo"].isin(BOND_ATTRACTIVE_SIGNALS)]
+    elif signal_filter == BOND_FILTER_SIGNAL_VERY_ATTRACTIVE:
+        filtered = filtered[filtered["Atractivo"] == BOND_SIGNAL_VERY_ATTRACTIVE]
+    elif signal_filter == BOND_FILTER_SIGNAL_RISK:
+        filtered = filtered[filtered["Atractivo"] == BOND_SIGNAL_RISK]
+
+    if law_filter == BOND_FILTER_LAW_NY:
+        filtered = filtered[filtered["Ley"] == "NY"]
+    elif law_filter == BOND_FILTER_LAW_ARG:
+        filtered = filtered[filtered["Ley"] == "ARG"]
+
+    # Una ON sin cronograma conocido no es "de duration alta", es de duration
+    # desconocida. Ocultarla es decisión del filtro de al lado, no de este.
+    if max_duration is not None:
+        filtered = filtered[filtered["Duration Mod."].isna() | (filtered["Duration Mod."] <= max_duration)]
+
+    if only_with_yield:
+        filtered = filtered[filtered["TIR (%)"].notna()]
+
+    # Se devuelve en el mismo orden que arma build_bonds_panel (mayor TIR
+    # primero), que los pasos de ranking y deduplicación alteran.
+    return filtered.sort_values("TIR (%)", ascending=False, na_position="last").reset_index(drop=True)

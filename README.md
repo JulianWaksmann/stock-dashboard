@@ -163,6 +163,10 @@ Its thresholds are relative rather than absolute because the feed does not docum
 volume is expressed in: "over 1,000,000" would be a made-up number, "the 20 that traded most today"
 holds without knowing the unit.
 
+Asking for both dollar species collapses each bond to one row, keeping its most traded species:
+MEP and cable are the same bond collected in a different place, so showing both would spend half
+of a top-50 on repetitions instead of distinct issuers.
+
 Currency is filtered before the volume ranking, and the order is not cosmetic: the peso species'
 volume is denominated in pesos and the MEP species' in dollars, so ranking across both compares
 different units and the peso rows win on magnitude rather than on activity.
@@ -197,7 +201,7 @@ stock-dashboard/
 │   ├── bond_math.py                # Cash flows, YTM, duration, convexity, parity, accrued interest (pure, no I/O)
 │   ├── catalog.py                  # Parses and validates data/ons_catalog.csv into BondTerms; settlement-species helpers
 │   ├── flows_source.py             # Fetches published payment schedules (community dataset)
-│   ├── panel.py                    # Pure merge of prices + terms + metrics into the final table
+│   ├── panel.py                    # Pure merge of prices + terms + metrics, and the panel filters (order matters, so it is tested)
 │   ├── scoring.py                  # Peer-relative attractiveness grading for ONs
 │   └── data_loader.py              # I/O only: live price feed, US Treasury curve, cached orchestration
 ├── data/
@@ -218,6 +222,7 @@ stock-dashboard/
 │   ├── test_52w_high_low.py        # Tests for compute_52w_high_low
 │   ├── test_bollinger.py           # Tests for compute_bollinger_bands
 │   ├── test_bond_catalog.py        # Tests for the ONs catalog parser and its error reporting
+│   ├── test_bond_filters.py        # Tests for the panel filters and the order they are applied in
 │   ├── test_bond_math.py           # Tests for the fixed-income math (cash flows, YTM, duration, parity)
 │   ├── test_bond_scoring.py        # Tests for the ONs attractiveness grading
 │   ├── test_bonds_panel.py         # Tests for the price/terms merge, source priority and Treasury curve interpolation

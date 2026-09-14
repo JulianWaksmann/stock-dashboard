@@ -19,18 +19,9 @@ import streamlit as st
 
 from bonds.data_loader import DATA912_CORPORATE_BONDS_URL, load_bonds_data
 from bonds.flows_source import COMMUNITY_FLOWS_URL
+from bonds.panel import apply_bond_filters
 from components.bonds_table import render_bonds_table
 from constants import (
-    BOND_ATTRACTIVE_SIGNALS,
-    BOND_FILTER_LAW_ARG,
-    BOND_FILTER_LAW_NY,
-    BOND_FILTER_LIQUIDITY_ALL,
-    BOND_FILTER_SETTLEMENT_MEP,
-    BOND_FILTER_SETTLEMENT_PESOS,
-    BOND_FILTER_SETTLEMENT_USD,
-    BOND_FILTER_SIGNAL_ATTRACTIVE,
-    BOND_FILTER_SIGNAL_RISK,
-    BOND_FILTER_SIGNAL_VERY_ATTRACTIVE,
     BOND_LAW_FILTER_OPTIONS,
     BOND_LIQUID_SPREAD_MAX_PCT,
     BOND_LIQUIDITY_FILTER_OPTIONS,
@@ -39,14 +30,9 @@ from constants import (
     BOND_PRICE_DIRTY,
     BOND_RISK_YIELD_PREMIUM_PP,
     BOND_SETTLEMENT_FILTER_OPTIONS,
-    BOND_SETTLEMENT_MEP,
-    BOND_SETTLEMENT_PESOS,
     BOND_SHORT_DURATION_MAX_YEARS,
     BOND_SIGNAL_FILTER_OPTIONS,
-    BOND_SIGNAL_RISK,
-    BOND_SIGNAL_VERY_ATTRACTIVE,
     BOND_SOURCE_NONE,
-    BOND_TOP_VOLUME_SIZES,
     BOND_YIELD_PREMIUM_PP,
 )
 
@@ -137,7 +123,14 @@ def _render_kpis(df: pd.DataFrame):
 
 
 def _render_filters(df: pd.DataFrame) -> pd.DataFrame:
-    """Filtros rápidos del panel. Devuelve el DataFrame ya filtrado."""
+    """
+    Dibuja los filtros rápidos y devuelve el DataFrame ya filtrado.
+
+    Esta función solo recoge lo que el usuario eligió; el filtrado en sí lo
+    hace `apply_bond_filters`, que es código puro y testeado: el orden en que
+    se aplican los filtros cambia el resultado y no puede vivir enterrado en
+    la capa de dibujo.
+    """
     col_liq, col0, col1, col2, col3, col4 = st.columns([2, 2, 2, 2, 2, 2])
 
     with col_liq:
@@ -150,7 +143,7 @@ def _render_filters(df: pd.DataFrame) -> pd.DataFrame:
         settlement_filter = st.selectbox(
             "💱 Especie de liquidación:",
             BOND_SETTLEMENT_FILTER_OPTIONS,
-            help="Cada ON cotiza en tres especies según la última letra del ticker: O liquida en pesos, D en dólar MEP (dólares en tu cuenta local) y C en dólar cable (dólares en el exterior). Son el mismo bono. Por defecto se muestran las dos en dólares.",
+            help="Cada ON cotiza en tres especies según la última letra del ticker: O liquida en pesos, D en dólar MEP (dólares en tu cuenta local) y C en dólar cable (dólares en el exterior). Son el mismo bono. La opción por defecto trae las dos en dólares y muestra una sola fila por bono, la de la especie más operada.",
         )
     with col1:
         signal_filter = st.selectbox("🚦 Filtrar por atractivo:", BOND_SIGNAL_FILTER_OPTIONS)
@@ -169,55 +162,19 @@ def _render_filters(df: pd.DataFrame) -> pd.DataFrame:
         only_with_yield = st.checkbox(
             "Solo ONs con TIR calculada",
             value=True,
-            help="Oculta las especies que cotizan pero no tienen condiciones de emisión cargadas en el catálogo.",
+            help="Oculta las especies que cotizan pero no tienen cronograma de pagos conocido.",
         )
 
-    filtered = df.copy()
-
-    # La moneda se filtra ANTES que la liquidez, y el orden no es cosmético:
-    # el volumen de la especie en pesos está expresado en pesos y el de la
-    # especie MEP en dólares. Rankear "top N por volumen" mezclando ambas
-    # compara magnitudes de distinta unidad, y el ranking lo coparían las
-    # especies en pesos por ser el número más grande, no las más operadas.
-    if settlement_filter == BOND_FILTER_SETTLEMENT_USD:
-        filtered = filtered[filtered["Moneda Precio"] == "USD"]
-    elif settlement_filter == BOND_FILTER_SETTLEMENT_MEP:
-        filtered = filtered[filtered["Liquidación"] == BOND_SETTLEMENT_MEP]
-    elif settlement_filter == BOND_FILTER_SETTLEMENT_PESOS:
-        filtered = filtered[filtered["Liquidación"] == BOND_SETTLEMENT_PESOS]
-
-    # Dentro de esa moneda, el top N rankea contra todo el universo y no
-    # contra lo que dejen los filtros de abajo: "las 50 más operadas del
-    # panel" no debe depender de si además se está filtrando por ley.
-    if liquidity_filter != BOND_FILTER_LIQUIDITY_ALL:
-        filtered = filtered[filtered["Volumen"].isna() | (filtered["Volumen"] > 0)]
-    top_n = BOND_TOP_VOLUME_SIZES.get(liquidity_filter)
-    if top_n is not None:
-        filtered = filtered.nlargest(top_n, "Volumen", keep="all")
-
-    if signal_filter == BOND_FILTER_SIGNAL_ATTRACTIVE:
-        filtered = filtered[filtered["Atractivo"].isin(BOND_ATTRACTIVE_SIGNALS)]
-    elif signal_filter == BOND_FILTER_SIGNAL_VERY_ATTRACTIVE:
-        filtered = filtered[filtered["Atractivo"] == BOND_SIGNAL_VERY_ATTRACTIVE]
-    elif signal_filter == BOND_FILTER_SIGNAL_RISK:
-        filtered = filtered[filtered["Atractivo"] == BOND_SIGNAL_RISK]
-
-    if law_filter == BOND_FILTER_LAW_NY:
-        filtered = filtered[filtered["Ley"] == "NY"]
-    elif law_filter == BOND_FILTER_LAW_ARG:
-        filtered = filtered[filtered["Ley"] == "ARG"]
-
-    # El filtro de duration no debe descartar las filas sin duration calculada
-    # salvo que el usuario haya pedido explícitamente solo ONs con TIR: una ON
-    # sin condiciones cargadas no es "de duration alta", es de duration
-    # desconocida, y esa distinción la decide el checkbox de al lado.
-    if max_duration < _MAX_DURATION_FILTER_YEARS:
-        filtered = filtered[filtered["Duration Mod."].isna() | (filtered["Duration Mod."] <= max_duration)]
-
-    if only_with_yield:
-        filtered = filtered[filtered["TIR (%)"].notna()]
-
-    return filtered
+    return apply_bond_filters(
+        df,
+        settlement_filter=settlement_filter,
+        liquidity_filter=liquidity_filter,
+        signal_filter=signal_filter,
+        law_filter=law_filter,
+        # El tope del slider significa "sin límite", no "duration 15".
+        max_duration=None if max_duration >= _MAX_DURATION_FILTER_YEARS else max_duration,
+        only_with_yield=only_with_yield,
+    )
 
 
 def _render_glossary():
