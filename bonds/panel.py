@@ -18,10 +18,16 @@ from datetime import date
 import numpy as np
 import pandas as pd
 
-from bonds.bond_math import analyze_bond
-from bonds.catalog import BondTerms, find_terms, quote_currency_of, settlement_of
+from bonds.bond_math import analyze_bond, analyze_cashflows, year_fraction
+from bonds.catalog import BondTerms, base_ticker_of, find_terms, quote_currency_of, settlement_of
+from bonds.flows_source import BondFlows
 from bonds.scoring import evaluate_bond_attractiveness
-from constants import BOND_SETTLEMENT_UNKNOWN, BOND_SIGNAL_NO_DATA
+from constants import (
+    BOND_SETTLEMENT_UNKNOWN,
+    BOND_SIGNAL_NO_DATA,
+    BOND_SOURCE_CATALOG,
+    BOND_SOURCE_NONE,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -108,12 +114,24 @@ def build_bonds_panel(
     settlement: date,
     price_is_dirty: bool = True,
     treasury_curve: dict[float, float] | None = None,
+    flows_by_base: dict[str, BondFlows] | None = None,
 ) -> pd.DataFrame:
     """
-    Cruza precios, condiciones de emisión y métricas en el cuadro final.
+    Cruza precios, cronogramas de pago y métricas en el cuadro final.
 
-    Es una función pura (no descarga nada) para poder testearla con precios y
-    catálogo fijos: toda la aritmética que la interfaz muestra pasa por acá.
+    Un bono puede conocerse de dos maneras, y el panel usa las dos:
+
+      * Por sus **condiciones de emisión** (catálogo local): permite calcular
+        todo, incluidas paridad, valor técnico y vida promedio, porque se sabe
+        qué parte de cada pago es renta y qué parte capital. Hay que cargarlo
+        a mano, así que manda cuando está: es una decisión explícita.
+      * Por su **cronograma de pagos ya resuelto** (fuente comunitaria): da
+        cobertura sin mantenimiento, pero solo informa el total de cada pago,
+        así que alcanza para TIR, duration y convexidad y no para el resto.
+
+    Es una función pura (no descarga nada) para poder testearla con precios,
+    catálogo y cronogramas fijos: toda la aritmética que la interfaz muestra
+    pasa por acá.
 
     El semáforo se asigna en una segunda pasada porque depende de la mediana de
     TIR del panel, que recién se conoce cuando están calculadas todas las filas.
@@ -122,11 +140,13 @@ def build_bonds_panel(
         return pd.DataFrame()
 
     treasury_curve = treasury_curve or {}
+    flows_by_base = flows_by_base or {}
     rows: list[dict] = []
 
     for _, quote in prices.iterrows():
         ticker = quote["Ticker"]
         terms = find_terms(catalog, ticker)
+        flows = flows_by_base.get(base_ticker_of(ticker))
         settlement_kind = settlement_of(ticker)
         quote_currency = quote_currency_of(ticker)
         price = float(quote.get("Precio", np.nan))
@@ -136,14 +156,14 @@ def build_bonds_panel(
         row = {
             "Atractivo": BOND_SIGNAL_NO_DATA,
             "Ticker": ticker,
-            "Emisor": terms.issuer if terms else "— (fuera del catálogo)",
+            "Emisor": terms.issuer if terms else (flows.issuer if flows else "— (sin cronograma)"),
             "Sector": terms.sector if terms else "Sin clasificar",
-            "Moneda": terms.currency if terms else "—",
+            "Moneda": terms.currency if terms else (flows.currency if flows else "—"),
             "Liquidación": settlement_kind,
             "Moneda Precio": quote_currency or BOND_SETTLEMENT_UNKNOWN,
             "Ley": terms.law if terms else "—",
             "Cupón (%)": terms.coupon_rate if terms else np.nan,
-            "Vencimiento": terms.maturity if terms else pd.NaT,
+            "Vencimiento": terms.maturity if terms else (flows.maturity if flows else pd.NaT),
             "Precio": price,
             "Var. (%)": float(quote.get("Var. (%)", np.nan)),
             "Punta Compra": bid,
@@ -155,6 +175,7 @@ def build_bonds_panel(
             "Calificación": terms.rating if terms else "s/c",
             "Verificado": bool(terms.verified) if terms else False,
             "En Catálogo": terms is not None,
+            "Fuente": BOND_SOURCE_CATALOG if terms else (flows.source if flows else BOND_SOURCE_NONE),
             "TIR (%)": np.nan,
             "Current Yield (%)": np.nan,
             "Duration Mod.": np.nan,
@@ -173,32 +194,39 @@ def build_bonds_panel(
         # moneda en la que paga el bono. La especie en pesos de una ON en
         # dólares cotiza ~152.000 donde la especie MEP cotiza ~105: mezclarlas
         # no da una TIR mala, da una TIR sin ningún significado.
-        currency_matches = terms is not None and quote_currency == terms.currency
+        priceable = np.isfinite(price) and price > 0
 
-        if currency_matches and np.isfinite(price) and price > 0:
+        metrics: dict = {}
+        if priceable and terms is not None and quote_currency == terms.currency:
             metrics = _metrics_for_bond(terms, price, settlement, price_is_dirty)
-            if metrics:
-                row.update(
-                    {
-                        "TIR (%)": _num(metrics.get("ytm_pct")),
-                        "Current Yield (%)": _num(metrics.get("current_yield_pct")),
-                        "Duration Mod.": _num(metrics.get("modified_duration")),
-                        "Duration Mac.": _num(metrics.get("macaulay_duration")),
-                        "Convexidad": _num(metrics.get("convexity")),
-                        "Vida Prom. (años)": _num(metrics.get("weighted_average_life")),
-                        "Paridad (%)": _num(metrics.get("parity_pct")),
-                        "Valor Técnico": _num(metrics.get("technical_value")),
-                        "Interés Corrido": _num(metrics.get("accrued_interest")),
-                        "Capital Residual": _num(metrics.get("residual_capital")),
-                        "Años al Vto.": _num(metrics.get("years_to_maturity")),
-                    }
-                )
-                # El spread crediticio se mide contra el tramo del Tesoro de
-                # duration equivalente, no contra el plazo al vencimiento: es
-                # el plazo efectivo del dinero lo que hay que comparar.
-                benchmark = interpolate_treasury_yield(treasury_curve, row["Duration Mod."])
-                if benchmark is not None and np.isfinite(row["TIR (%)"]):
-                    row["Spread vs UST (pb)"] = (row["TIR (%)"] - benchmark) * 100.0
+        elif priceable and flows is not None and quote_currency == flows.currency:
+            # El cronograma comunitario publica pagos totales, así que solo se
+            # piden las métricas que no necesitan el desglose renta/capital.
+            metrics = analyze_cashflows(list(flows.cashflows), settlement, price)
+            metrics["years_to_maturity"] = max(year_fraction(settlement, flows.maturity), 0.0)
+
+        if metrics:
+            row.update(
+                {
+                    "TIR (%)": _num(metrics.get("ytm_pct")),
+                    "Current Yield (%)": _num(metrics.get("current_yield_pct")),
+                    "Duration Mod.": _num(metrics.get("modified_duration")),
+                    "Duration Mac.": _num(metrics.get("macaulay_duration")),
+                    "Convexidad": _num(metrics.get("convexity")),
+                    "Vida Prom. (años)": _num(metrics.get("weighted_average_life")),
+                    "Paridad (%)": _num(metrics.get("parity_pct")),
+                    "Valor Técnico": _num(metrics.get("technical_value")),
+                    "Interés Corrido": _num(metrics.get("accrued_interest")),
+                    "Capital Residual": _num(metrics.get("residual_capital")),
+                    "Años al Vto.": _num(metrics.get("years_to_maturity")),
+                }
+            )
+            # El spread crediticio se mide contra el tramo del Tesoro de
+            # duration equivalente, no contra el plazo al vencimiento: es
+            # el plazo efectivo del dinero lo que hay que comparar.
+            benchmark = interpolate_treasury_yield(treasury_curve, row["Duration Mod."])
+            if benchmark is not None and np.isfinite(row["TIR (%)"]):
+                row["Spread vs UST (pb)"] = (row["TIR (%)"] - benchmark) * 100.0
 
         rows.append(row)
 

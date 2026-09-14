@@ -14,7 +14,9 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from bonds.bond_math import CashFlow
 from bonds.catalog import BondTerms
+from bonds.flows_source import COMMUNITY_FLOWS_SOURCE_NAME, BondFlows
 from bonds.panel import build_bonds_panel, interpolate_treasury_yield
 from constants import (
     BOND_SETTLEMENT_CABLE,
@@ -22,6 +24,8 @@ from constants import (
     BOND_SETTLEMENT_PESOS,
     BOND_SETTLEMENT_UNKNOWN,
     BOND_SIGNAL_NO_DATA,
+    BOND_SOURCE_CATALOG,
+    BOND_SOURCE_NONE,
 )
 
 SETTLEMENT = date(2025, 1, 15)
@@ -252,3 +256,74 @@ class TestMonedaDeLaEspecie:
         panel = build_bonds_panel(make_prices(quote("RARO")), {}, SETTLEMENT)
         assert panel.iloc[0]["Liquidación"] == BOND_SETTLEMENT_UNKNOWN
         assert np.isnan(panel.iloc[0]["TIR (%)"])
+
+
+class TestPrioridadDeFuentes:
+    """
+    Un bono se puede conocer por su cronograma publicado o por sus condiciones
+    de emisión cargadas a mano. Las dos sirven, pero no dan lo mismo, y cuál
+    manda tiene que ser predecible.
+    """
+
+    def _flows(self, base="TSTA", **overrides):
+        params = dict(
+            base_ticker=base,
+            quote_ticker=base + "D",
+            issuer="Emisor publicado",
+            maturity=date(2030, 1, 15),
+            cashflows=(
+                CashFlow.unsplit(date(2026, 1, 15), 5.0),
+                CashFlow.unsplit(date(2030, 1, 15), 105.0),
+            ),
+        )
+        params.update(overrides)
+        return {params["base_ticker"]: BondFlows(**params)}
+
+    def test_el_cronograma_publicado_alcanza_para_tir_y_duration(self):
+        panel = build_bonds_panel(
+            make_prices(quote("TSTAD", price=95.0)), {}, SETTLEMENT, flows_by_base=self._flows()
+        )
+        row = panel.iloc[0]
+        assert row["TIR (%)"] > 0
+        assert row["Duration Mod."] > 0
+        assert row["Emisor"] == "Emisor publicado"
+        assert row["Fuente"] == COMMUNITY_FLOWS_SOURCE_NAME
+
+    def test_sin_desglose_no_se_informan_las_metricas_de_capital(self):
+        # La fuente publica el total de cada pago: afirmar una paridad o una
+        # vida promedio con eso sería inventar el reparto renta/capital.
+        panel = build_bonds_panel(
+            make_prices(quote("TSTAD", price=95.0)), {}, SETTLEMENT, flows_by_base=self._flows()
+        )
+        row = panel.iloc[0]
+        for columna in ("Paridad (%)", "Valor Técnico", "Interés Corrido", "Vida Prom. (años)"):
+            assert np.isnan(row[columna]), columna
+
+    def test_el_catalogo_local_le_gana_al_cronograma_publicado(self):
+        panel = build_bonds_panel(
+            make_prices(quote("TSTAD", price=95.0)),
+            {"TSTAO": make_terms("TSTAO")},
+            SETTLEMENT,
+            flows_by_base=self._flows(),
+        )
+        row = panel.iloc[0]
+        assert row["Fuente"] == BOND_SOURCE_CATALOG
+        assert row["Emisor"] == "Emisor TSTAO"
+        assert not np.isnan(row["Paridad (%)"])
+
+    def test_la_especie_en_pesos_no_usa_el_cronograma_en_dolares(self):
+        panel = build_bonds_panel(
+            make_prices(quote("TSTAO", price=138_000.0)), {}, SETTLEMENT, flows_by_base=self._flows()
+        )
+        assert np.isnan(panel.iloc[0]["TIR (%)"])
+
+    def test_una_especie_sin_cronograma_ni_catalogo_queda_sin_fuente(self):
+        panel = build_bonds_panel(make_prices(quote("ZZZZD")), {}, SETTLEMENT, flows_by_base=self._flows())
+        assert panel.iloc[0]["Fuente"] == BOND_SOURCE_NONE
+        assert np.isnan(panel.iloc[0]["TIR (%)"])
+
+    def test_informa_el_plazo_al_vencimiento_del_cronograma_publicado(self):
+        panel = build_bonds_panel(
+            make_prices(quote("TSTAD", price=95.0)), {}, SETTLEMENT, flows_by_base=self._flows()
+        )
+        assert panel.iloc[0]["Años al Vto."] == pytest.approx(5.0, abs=0.02)

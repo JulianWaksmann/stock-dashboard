@@ -314,3 +314,16 @@ BOND_SETTLEMENT_FILTER_OPTIONS: Final[tuple[str, ...]] = (
     BOND_FILTER_SETTLEMENT_PESOS,
     BOND_FILTER_SETTLEMENT_ALL,
 )
+
+# ----------------------------------------------------------------------
+# Origen del cronograma de pagos de cada ON.
+#
+# El panel conoce un bono de dos maneras y no dan lo mismo: el catálogo
+# local describe las condiciones de emisión y permite calcular todo
+# (paridad, valor técnico, vida promedio); la fuente comunitaria publica el
+# cronograma ya resuelto, que alcanza para TIR y duration pero no informa
+# qué parte de cada pago es capital. Mostrar de dónde salió cada fila evita
+# tener que explicar por qué a unas les faltan columnas.
+# ----------------------------------------------------------------------
+BOND_SOURCE_CATALOG: Final[str] = "Catálogo local"
+BOND_SOURCE_NONE: Final[str] = "—"

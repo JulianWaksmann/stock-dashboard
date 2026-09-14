@@ -46,6 +46,7 @@ DISPLAY_COLUMNS = [
     "Ley",
     "Calificación",
     "Liquidación",
+    "Fuente",
     "Verif.",
     "Precio",
     "Var. (%)",
@@ -155,6 +156,11 @@ def render_bonds_table(df: pd.DataFrame):
             "Liquidación",
             width="small",
             help="Especie según la última letra del ticker: O liquida en pesos, D en dólar MEP, C en dólar cable. Es la misma ON en las tres, cambia la moneda del precio.",
+        ),
+        "Fuente": st.column_config.TextColumn(
+            "Fuente",
+            width="small",
+            help="De dónde salió el cronograma de pagos. El catálogo local permite calcular además paridad, valor técnico y vida promedio; la fuente pública solo informa el total de cada pago, así que esas columnas quedan vacías.",
         ),
         "Verif.": st.column_config.TextColumn(
             "Condiciones",

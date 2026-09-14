@@ -40,15 +40,26 @@ def write_catalog(tmp_path, *rows, header: str = HEADER):
 
 
 class TestCatalogoDelRepositorio:
-    """El CSV versionado tiene que cargar sin errores en cada commit."""
+    """
+    El CSV versionado arranca vacío: los cronogramas llegan de la fuente
+    pública y el catálogo local existe para completarlos o corregirlos. Lo que
+    sí tiene que cumplirse en cada commit es que el archivo esté bien formado
+    y que todo lo que alguien agregue sea consistente.
+    """
 
     def test_el_catalogo_del_repo_carga_sin_errores(self):
-        terms, errors = load_catalog()
+        _, errors = load_catalog()
         assert errors == []
-        assert terms, "El catálogo versionado no debería estar vacío"
 
     def test_el_catalogo_del_repo_existe_en_la_ruta_por_defecto(self):
         assert DEFAULT_CATALOG_PATH.exists()
+
+    def test_el_encabezado_del_repo_declara_todas_las_columnas(self):
+        header = next(
+            line for line in DEFAULT_CATALOG_PATH.read_text(encoding="utf-8").splitlines()
+            if not line.lstrip().startswith("#")
+        )
+        assert header.split(",") == list(REQUIRED_COLUMNS)
 
     def test_todas_las_ons_del_repo_vencen_despues_de_emitirse(self):
         terms, _ = load_catalog()

@@ -18,6 +18,7 @@ import pandas as pd
 import streamlit as st
 
 from bonds.data_loader import DATA912_CORPORATE_BONDS_URL, load_bonds_data
+from bonds.flows_source import COMMUNITY_FLOWS_URL
 from components.bonds_table import render_bonds_table
 from constants import (
     BOND_ATTRACTIVE_SIGNALS,
@@ -42,6 +43,7 @@ from constants import (
     BOND_SIGNAL_FILTER_OPTIONS,
     BOND_SIGNAL_RISK,
     BOND_SIGNAL_VERY_ATTRACTIVE,
+    BOND_SOURCE_NONE,
     BOND_YIELD_PREMIUM_PP,
 )
 
@@ -314,8 +316,14 @@ def _render_sources():
 | Dato | Fuente | Cómo se obtiene |
 | --- | --- | --- |
 | Precios, puntas, volumen | [data912]({DATA912_CORPORATE_BONDS_URL}) | API pública sin API key. Es dato educativo con caché de ~2 hs del lado del proveedor: sirve para analizar rendimientos, no para operar al segundo. |
-| Condiciones de emisión | `data/ons_catalog.csv` (este repo) | Cargadas a mano. **Ninguna fuente pública y gratuita las publica en formato consultable por máquina**: viven en el prospecto de cada emisión. |
+| Cronogramas de pago | [rendimientos-ar]({COMMUNITY_FLOWS_URL}) | Se descarga en cada carga. Es un dataset **comunitario** mantenido a mano por terceros (licencia ISC), no una fuente oficial. Publica el total de cada pago, sin separar renta de capital. |
+| Condiciones de emisión | `data/ons_catalog.csv` (este repo) | Opcional y vacío por defecto. Solo hace falta para las métricas que necesitan el desglose renta/capital, o para una ON que la fuente comunitaria no cubra. |
 | Curva del Tesoro de EE.UU. | Yahoo Finance (`^IRX`, `^FVX`, `^TNX`, `^TYX`) | Vía `yfinance`, igual que el panel de acciones. |
+
+**Por qué el cronograma no sale de una fuente oficial:** las condiciones de emisión de una ON
+(cupón, amortizaciones, ley) viven en su prospecto. Ni BYMA ni la CNV las publican en un formato
+consultable por máquina, así que todas las alternativas son o bien datasets mantenidos a mano como
+este, o bien scraping del Informe Diario del IAMC.
 
 **Para verificar o completar el catálogo:**
 
@@ -363,24 +371,23 @@ def render_bonds_panel():
         _render_sources()
         return
 
-    uncatalogued = sorted(df_bonds.loc[~df_bonds["En Catálogo"], "Ticker"])
-    if uncatalogued:
+    without_schedule = sorted(df_bonds.loc[df_bonds["Fuente"] == BOND_SOURCE_NONE, "Ticker"])
+    if without_schedule:
         st.info(
-            f"📗 **{len(uncatalogued)} de {len(df_bonds)} especies cotizan sin condiciones de emisión cargadas.** "
+            f"📗 **{len(without_schedule)} de {len(df_bonds)} especies cotizan sin cronograma de pagos conocido.** "
             "Se les muestra precio, puntas y volumen, pero no se les puede calcular TIR ni duration. "
-            "Para incorporarlas, agregá una fila por bono en `data/ons_catalog.csv`: alcanza con cargar "
-            "una especie (por ejemplo la O) y el panel la aplica también a las especies D y C del mismo bono."
+            "El cronograma de las ONs más operadas se descarga solo; para incorporar una que la fuente "
+            "no cubra, agregá una fila en `data/ons_catalog.csv`: alcanza con cargar una especie "
+            "(por ejemplo la O) y el panel la aplica también a las especies D y C del mismo bono."
         )
-        with st.expander(f"Ver las {len(uncatalogued)} especies sin condiciones cargadas"):
-            st.write(", ".join(uncatalogued))
+        with st.expander(f"Ver las {len(without_schedule)} especies sin cronograma"):
+            st.write(", ".join(without_schedule))
 
     unverified = int((~df_bonds["Verificado"] & df_bonds["En Catálogo"]).sum())
     if unverified:
-        st.info(
-            f"📋 **{unverified} de {int(df_bonds['En Catálogo'].sum())} ONs del catálogo tienen condiciones "
-            "de emisión sin verificar.** Cupón, vencimiento y cronograma de amortización salen de "
-            "`data/ons_catalog.csv` y fueron cargados como punto de partida, no contrastados contra el "
-            "prospecto. Verificalos antes de tomar una decisión de inversión y marcá `verificado=si` en el CSV: "
+        st.warning(
+            f"⚠️ **{unverified} ON(s) del catálogo local tienen condiciones de emisión sin verificar.** "
+            "Verificalas contra el prospecto y marcá `verificado=si` en `data/ons_catalog.csv`: "
             "un cupón mal cargado devuelve una TIR mansamente incorrecta."
         )
 

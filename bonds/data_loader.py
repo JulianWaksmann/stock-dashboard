@@ -32,6 +32,7 @@ import streamlit as st
 import yfinance as yf
 
 from bonds.catalog import load_catalog
+from bonds.flows_source import BondFlows, fetch_community_flows
 from bonds.panel import build_bonds_panel
 
 logger = logging.getLogger(__name__)
@@ -124,6 +125,18 @@ def fetch_live_bond_prices(url: str = DATA912_CORPORATE_BONDS_URL) -> pd.DataFra
 
 
 @st.cache_data(ttl=3600, show_spinner=False)
+def fetch_bond_cashflows() -> tuple[dict[str, BondFlows], str | None]:
+    """
+    Cronogramas de pago publicados, cacheados por una hora.
+
+    Se cachean mucho más tiempo que los precios porque no cambian con el
+    mercado: un cronograma de pagos solo se mueve cuando la fuente incorpora
+    una emisión nueva.
+    """
+    return fetch_community_flows()
+
+
+@st.cache_data(ttl=3600, show_spinner=False)
 def fetch_us_treasury_curve() -> dict[float, float]:
     """
     Rendimientos del Tesoro de EE.UU. por tramo, en % anual.
@@ -170,6 +183,10 @@ def load_bonds_data(
     catalog, catalog_errors = load_catalog(catalog_path)
     warnings.extend(catalog_errors)
 
+    flows_by_base, flows_error = fetch_bond_cashflows()
+    if flows_error:
+        warnings.append(flows_error)
+
     prices = fetch_live_bond_prices()
     feed_error = prices.attrs.get("error") if hasattr(prices, "attrs") else None
     if feed_error:
@@ -182,6 +199,7 @@ def load_bonds_data(
         settlement=settlement,
         price_is_dirty=price_is_dirty,
         treasury_curve=fetch_us_treasury_curve(),
+        flows_by_base=flows_by_base,
     )
 
     return panel, warnings

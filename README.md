@@ -106,20 +106,29 @@ All labels and thresholds live in `constants.py`, same as the equity engine.
 | Data | Source | Notes |
 | --- | --- | --- |
 | Prices, bid/ask, volume | [data912](https://data912.com/live/arg_corp) | Public JSON, no API key. Educational feed cached ~2h upstream — good for yield analysis, not for execution. |
-| Issue terms | `data/ons_catalog.csv` (this repo) | Hand-maintained. **No free public source publishes these in machine-readable form** — they live in each bond's prospectus. |
+| Payment schedules | [rendimientos-ar](https://github.com/arisbdar/rendimientos-ar) (`public/config.json`) | Fetched on every load. A **community dataset** hand-kept by third parties (ISC), not an official source. Publishes each payment's total, without splitting interest from principal. |
+| Issue terms | `data/ons_catalog.csv` (this repo) | Optional, empty by default. Only needed for the metrics that require the interest/principal split, or for a bond the community dataset does not cover. |
 | US Treasury curve | Yahoo Finance (`^IRX`, `^FVX`, `^TNX`, `^TYX`) | Via `yfinance`, same as the equities section. Linearly interpolated to each bond's duration. |
 
-### ⚠️ The catalog ships unverified
+### Two ways to know a bond
 
-`data/ons_catalog.csv` is seeded with the most traded hard-dollar issuers using the market's
-standard structure (bullet, semiannual coupon, 30/360). **Every row is marked `verificado=no`**
-and the table flags it with ⚠️. A wrong coupon or maturity does not break anything — it quietly
-returns a wrong YTM, which is worse.
+A bond's issue terms are not downloadable. Coupon, amortization schedule and governing law live in
+its prospectus, and neither BYMA nor the CNV publishes them in machine-readable form. So the panel
+works from whichever of two sources it has, and says which one on every row:
 
-Before acting on these numbers, check each row against the issuer's prospectus (via the
+* **Payment schedule** (community dataset, fetched live) — covers the traded universe with no
+  manual upkeep, but reports only each payment's total. That is enough for YTM, duration and
+  convexity, and not enough for parity, technical value, accrued interest or WAL, which need to
+  know how much of each payment is principal. Those columns stay empty rather than guessing.
+* **Issue terms** (`data/ons_catalog.csv`) — computes everything, and has to be typed in by hand.
+  A catalog row always wins over the community schedule, because loading one is a deliberate act.
+
+The catalog ships **empty on purpose**: shipping plausible-looking coupons nobody verified would
+return wrong yields that look authoritative. Any row added there is flagged ⚠️ until marked
+`verificado=si`, and is worth checking against the issuer's prospectus (via the
 [CNV](https://www.argentina.gob.ar/cnv)), the [IAMC](https://www.iamc.com.ar) daily report (which
 publishes YTM, parity and duration already computed, so it validates both the inputs and the
-result), or the [BYMA](https://www.byma.com.ar) daily bulletin — then set `verificado=si`.
+result), or the [BYMA](https://www.byma.com.ar) daily bulletin.
 
 ### Settlement species
 
@@ -163,12 +172,13 @@ stock-dashboard/
 ├── bonds/
 │   ├── __init__.py                 # Fixed-income package for Argentine corporate bonds (ONs)
 │   ├── bond_math.py                # Cash flows, YTM, duration, convexity, parity, accrued interest (pure, no I/O)
-│   ├── catalog.py                  # Parses and validates data/ons_catalog.csv into BondTerms
+│   ├── catalog.py                  # Parses and validates data/ons_catalog.csv into BondTerms; settlement-species helpers
+│   ├── flows_source.py             # Fetches published payment schedules (community dataset)
 │   ├── panel.py                    # Pure merge of prices + terms + metrics into the final table
 │   ├── scoring.py                  # Peer-relative attractiveness grading for ONs
 │   └── data_loader.py              # I/O only: live price feed, US Treasury curve, cached orchestration
 ├── data/
-│   └── ons_catalog.csv             # Hand-maintained issue terms per ON (coupon, maturity, amortization, law)
+│   └── ons_catalog.csv             # Optional hand-kept issue terms per ON; empty by default, overrides the fetched schedule
 ├── components/
 │   ├── __init__.py                 # Marks components as a package
 │   ├── alerts_panel.py             # Top "quick alerts" cards grouped by signal grade
@@ -187,7 +197,8 @@ stock-dashboard/
 │   ├── test_bond_catalog.py        # Tests for the ONs catalog parser and its error reporting
 │   ├── test_bond_math.py           # Tests for the fixed-income math (cash flows, YTM, duration, parity)
 │   ├── test_bond_scoring.py        # Tests for the ONs attractiveness grading
-│   ├── test_bonds_panel.py         # Tests for the price/terms merge and the Treasury curve interpolation
+│   ├── test_bonds_panel.py         # Tests for the price/terms merge, source priority and Treasury curve interpolation
+│   ├── test_flows_source.py        # Tests for the published payment-schedule parser
 │   ├── test_compute_stock_technicals.py  # Tests for the compute_stock_technicals aggregator
 │   ├── test_confluence_signal.py   # Tests for evaluate_confluence_signal
 │   ├── test_obv.py                 # Tests for compute_obv
@@ -266,6 +277,7 @@ Every push and pull request against `main` runs both `ruff check .` and `pytest`
 * Confluence signal labels and numeric thresholds: `constants.py`.
 * Bond grading labels and thresholds: `constants.py` (the "BONOS CORPORATIVOS" section).
 * Issue terms of an ON (coupon, maturity, amortization schedule, law): `data/ons_catalog.csv`.
+* The payment-schedule dataset: `COMMUNITY_FLOWS_URL` in `bonds/flows_source.py`.
 * The bond price feed: `DATA912_CORPORATE_BONDS_URL` in `bonds/data_loader.py` — any source returning
   the same JSON shape drops straight in.
 * Colors used across the table and the charts: `theme.py`.
