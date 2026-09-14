@@ -152,6 +152,21 @@ Two consequences, both handled:
 The panel quotes 600+ species against a catalog covering a handful, so the species filter defaults
 to the dollar ones and the uncatalogued list sits behind an expander rather than in the warning.
 
+### Liquidity
+
+No ticker list is typed anywhere: the universe comes from the price feed. What needs filtering is
+the noise in it — species that did not trade today still quote the price of the last session they
+did, so their yield measures a different day's market.
+
+The liquidity filter defaults to bonds that actually traded, and offers top-20 / top-50 by volume.
+Its thresholds are relative rather than absolute because the feed does not document the unit its
+volume is expressed in: "over 1,000,000" would be a made-up number, "the 20 that traded most today"
+holds without knowing the unit.
+
+Untraded species are also left out of the panel median for the same reason near-maturity bonds are
+— the median is the reference every bond is graded against, so it cannot be built from prices that
+are not comparable. They stay visible in the table; only their influence on the grading is removed.
+
 ### Modeling limits
 
 * **Fixed-rate bonds only.** CER, dollar-linked, Badlar and TAMAR ONs cannot be modeled here:

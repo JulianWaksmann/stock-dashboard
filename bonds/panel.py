@@ -237,10 +237,16 @@ def build_bonds_panel(
     # mediana de TIR del día ya calculada. Si ninguna ON tiene TIR (catálogo
     # vacío) no hay mediana que calcular: pedírsela a pandas sobre una columna
     # entera de NaN devuelve NaN pero emitiendo un RuntimeWarning de numpy.
-    # Las ONs a semanas del vencimiento quedan fuera de la mediana: su TIR
-    # anualizada es un artefacto aritmético y correría la referencia contra la
-    # que se califica a todas las demás.
-    comparable = df.loc[df["Años al Vto."] >= BOND_MIN_YEARS_FOR_GRADING, "TIR (%)"].dropna()
+    # Dos exclusiones de la mediana, por el mismo motivo: es la referencia
+    # contra la que se califica todo el panel, así que no puede construirse
+    # con datos que no son comparables.
+    #   - Las ONs a semanas del vencimiento: su TIR anualizada es un artefacto
+    #     aritmético, no una medida de rendimiento.
+    #   - Las que no operaron: su precio es el de la última rueda en que se
+    #     negociaron, así que su TIR mide el mercado de otro día.
+    traded = ~(df["Volumen"].notna() & (df["Volumen"] <= 0))
+    long_enough = df["Años al Vto."] >= BOND_MIN_YEARS_FOR_GRADING
+    comparable = df.loc[traded & long_enough, "TIR (%)"].dropna()
     median_ytm = comparable.median() if not comparable.empty else np.nan
     df["Atractivo"] = [
         evaluate_bond_attractiveness(

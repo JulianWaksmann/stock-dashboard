@@ -336,3 +336,34 @@ BOND_SETTLEMENT_FILTER_OPTIONS: Final[tuple[str, ...]] = (
 # ----------------------------------------------------------------------
 BOND_SOURCE_CATALOG: Final[str] = "Catálogo local"
 BOND_SOURCE_NONE: Final[str] = "—"
+
+# ----------------------------------------------------------------------
+# Filtro de liquidez.
+#
+# El feed devuelve el panel entero, que incluye especies que no operaron en
+# todo el día. El precio que muestran es el de la última rueda en que se
+# negociaron, así que su TIR se calcula contra un precio viejo: parece un
+# dato y es un recuerdo.
+#
+# Los umbrales son relativos (hay volumen / top N del día) y no absolutos
+# porque el feed no documenta en qué unidad expresa el volumen. Un corte
+# tipo "más de 1.000.000" sería un número inventado; "las 20 que más
+# operaron hoy" se sostiene sin saber la unidad.
+# ----------------------------------------------------------------------
+BOND_FILTER_LIQUIDITY_TRADED: Final[str] = "💧 Solo las que operaron hoy"
+BOND_FILTER_LIQUIDITY_TOP_20: Final[str] = "🔝 Top 20 por volumen"
+BOND_FILTER_LIQUIDITY_TOP_50: Final[str] = "🔝 Top 50 por volumen"
+BOND_FILTER_LIQUIDITY_ALL: Final[str] = "Todas, incluso sin operar"
+
+BOND_LIQUIDITY_FILTER_OPTIONS: Final[tuple[str, ...]] = (
+    BOND_FILTER_LIQUIDITY_TRADED,
+    BOND_FILTER_LIQUIDITY_TOP_20,
+    BOND_FILTER_LIQUIDITY_TOP_50,
+    BOND_FILTER_LIQUIDITY_ALL,
+)
+
+# Cantidad de especies que deja cada corte "top N por volumen".
+BOND_TOP_VOLUME_SIZES: Final[dict[str, int]] = {
+    BOND_FILTER_LIQUIDITY_TOP_20: 20,
+    BOND_FILTER_LIQUIDITY_TOP_50: 50,
+}

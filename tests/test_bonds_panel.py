@@ -327,3 +327,40 @@ class TestPrioridadDeFuentes:
             make_prices(quote("TSTAD", price=95.0)), {}, SETTLEMENT, flows_by_base=self._flows()
         )
         assert panel.iloc[0]["Años al Vto."] == pytest.approx(5.0, abs=0.02)
+
+
+class TestMedianaYLiquidez:
+    """
+    La mediana del panel es la referencia contra la que se califica cada ON,
+    así que solo puede construirse con datos comparables entre sí.
+    """
+
+    def _catalogo(self, *tickers):
+        return {t: make_terms(t) for t in tickers}
+
+    def test_una_especie_que_no_opero_no_entra_en_la_mediana(self):
+        # Su precio es el de la última rueda en que se negoció: su TIR mide
+        # el mercado de otro día.
+        prices = make_prices(
+            quote("TSTAD", price=100.0, **{"Volumen": 500_000.0}),
+            quote("TSTBD", price=60.0, **{"Volumen": 0.0}),
+        )
+        panel = build_bonds_panel(prices, self._catalogo("TSTAD", "TSTBD"), SETTLEMENT)
+        solo_operada = panel.loc[panel["Ticker"] == "TSTAD", "TIR (%)"].iloc[0]
+        assert panel.attrs["median_ytm_pct"] == pytest.approx(solo_operada)
+
+    def test_sin_dato_de_volumen_la_especie_sigue_contando(self):
+        # Que el feed no informe volumen no es lo mismo que volumen cero:
+        # descartarla dejaría el panel sin mediana si la fuente deja de
+        # publicar la columna.
+        prices = make_prices(quote("TSTAD", price=100.0, **{"Volumen": np.nan}))
+        panel = build_bonds_panel(prices, self._catalogo("TSTAD"), SETTLEMENT)
+        assert not np.isnan(panel.attrs["median_ytm_pct"])
+
+    def test_la_especie_que_no_opero_igual_se_muestra(self):
+        # Queda fuera de la mediana, no del panel: su precio y su volumen
+        # siguen siendo información útil.
+        prices = make_prices(quote("TSTBD", price=60.0, **{"Volumen": 0.0}))
+        panel = build_bonds_panel(prices, self._catalogo("TSTBD"), SETTLEMENT)
+        assert list(panel["Ticker"]) == ["TSTBD"]
+        assert not np.isnan(panel.iloc[0]["TIR (%)"])

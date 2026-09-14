@@ -24,6 +24,7 @@ from constants import (
     BOND_ATTRACTIVE_SIGNALS,
     BOND_FILTER_LAW_ARG,
     BOND_FILTER_LAW_NY,
+    BOND_FILTER_LIQUIDITY_ALL,
     BOND_FILTER_SETTLEMENT_MEP,
     BOND_FILTER_SETTLEMENT_PESOS,
     BOND_FILTER_SETTLEMENT_USD,
@@ -32,6 +33,7 @@ from constants import (
     BOND_FILTER_SIGNAL_VERY_ATTRACTIVE,
     BOND_LAW_FILTER_OPTIONS,
     BOND_LIQUID_SPREAD_MAX_PCT,
+    BOND_LIQUIDITY_FILTER_OPTIONS,
     BOND_PARITY_DISCOUNT_MAX,
     BOND_PRICE_CONVENTION_OPTIONS,
     BOND_PRICE_DIRTY,
@@ -44,6 +46,7 @@ from constants import (
     BOND_SIGNAL_RISK,
     BOND_SIGNAL_VERY_ATTRACTIVE,
     BOND_SOURCE_NONE,
+    BOND_TOP_VOLUME_SIZES,
     BOND_YIELD_PREMIUM_PP,
 )
 
@@ -135,8 +138,14 @@ def _render_kpis(df: pd.DataFrame):
 
 def _render_filters(df: pd.DataFrame) -> pd.DataFrame:
     """Filtros rápidos del panel. Devuelve el DataFrame ya filtrado."""
-    col0, col1, col2, col3, col4 = st.columns([2, 2, 2, 2, 2])
+    col_liq, col0, col1, col2, col3, col4 = st.columns([2, 2, 2, 2, 2, 2])
 
+    with col_liq:
+        liquidity_filter = st.selectbox(
+            "💧 Liquidez:",
+            BOND_LIQUIDITY_FILTER_OPTIONS,
+            help="El feed devuelve el panel entero, incluidas especies que no operaron hoy: su precio es el de la última rueda en que se negociaron, así que su TIR mide el mercado de otro día.",
+        )
     with col0:
         settlement_filter = st.selectbox(
             "💱 Especie de liquidación:",
@@ -164,6 +173,14 @@ def _render_filters(df: pd.DataFrame) -> pd.DataFrame:
         )
 
     filtered = df.copy()
+
+    # La liquidez se filtra primero: el "top N por volumen" tiene que rankear
+    # contra el panel completo, no contra lo que hayan dejado los otros filtros.
+    if liquidity_filter != BOND_FILTER_LIQUIDITY_ALL:
+        filtered = filtered[filtered["Volumen"].isna() | (filtered["Volumen"] > 0)]
+    top_n = BOND_TOP_VOLUME_SIZES.get(liquidity_filter)
+    if top_n is not None:
+        filtered = filtered.nlargest(top_n, "Volumen", keep="all")
 
     if settlement_filter == BOND_FILTER_SETTLEMENT_USD:
         filtered = filtered[filtered["Moneda Precio"] == "USD"]
