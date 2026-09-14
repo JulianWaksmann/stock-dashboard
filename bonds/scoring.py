@@ -33,6 +33,8 @@ from constants import (
     BOND_SCORE_LAW_NY,
     BOND_SCORE_LIQUIDITY,
     BOND_SCORE_MIN_COVERAGE,
+    BOND_SCORE_MIN_DIMENSION_COVERAGE,
+    BOND_SCORE_MIN_PANEL_SIZE,
     BOND_SCORE_NEUTRAL_MIN,
     BOND_SCORE_PARITY,
     BOND_SCORE_RATE_RISK,
@@ -165,8 +167,13 @@ def _percentile(series: pd.Series, higher_is_better: bool = True) -> pd.Series:
     la pregunta que importa —cómo se compara con las alternativas reales de
     hoy— y se recalibra solo cuando el mercado se mueve.
     """
-    ranked = series.rank(pct=True, na_option="keep") * 100.0
-    return ranked if higher_is_better else 100.0 - ranked
+    # `ascending` en el propio rank, y no `100 - percentil`: esa resta NO es
+    # el espejo del percentil. El rank porcentual de pandas vive en (0, 1], así
+    # que su complemento vive en [0, 1) y las dos escalas no coinciden. Con
+    # todos los valores empatados daba 60 para "más es mejor" y 40 para "menos
+    # es mejor" sobre el mismo dato, un sesgo estructural a favor de las
+    # dimensiones que premian el valor alto.
+    return series.rank(pct=True, ascending=higher_is_better, na_option="keep") * 100.0
 
 
 def _yield_subscore(ytm: pd.Series, median_ytm: float) -> pd.Series:
@@ -175,10 +182,11 @@ def _yield_subscore(ytm: pd.Series, median_ytm: float) -> pd.Series:
 
     Más TIR es mejor solo hasta cierto punto. Pasada la prima que separa una
     oportunidad de un problema de crédito, el mercado no está regalando
-    rendimiento: está poniéndole precio a una probabilidad de default. A
-    partir de ahí el puntaje se derrite linealmente y llega a cero cuando la
-    prima duplica ese umbral, de modo que un bono en problemas no puede
-    encabezar el panel por el solo hecho de rendir mucho.
+    rendimiento: está poniéndole precio a una probabilidad de default. A partir
+    de ahí cada punto porcentual de más se cuenta como BOND_SCORE_EXCESS_PENALTY_SLOPE
+    puntos de menos al rankear, así que el bono cae en el orden del panel en
+    lugar de subir. Dónde termina depende del resto del panel —es un
+    percentil—, no de un piso fijo.
     """
     if not _is_number(median_ytm):
         return _percentile(ytm, higher_is_better=True)
@@ -204,7 +212,14 @@ def _liquidity_subscore(spread_pct: pd.Series, volume: pd.Series) -> pd.Series:
     el otro en vez de descartar la dimensión entera.
     """
     tightness = _percentile(spread_pct, higher_is_better=False)
-    depth = _percentile(volume, higher_is_better=True)
+
+    # Volumen cero no es un dato faltante: es la peor liquidez posible, y hay
+    # que decirlo explícitamente. Por percentil, una masa de ceros empatados
+    # se reparte el rango medio, y una especie que no operó terminaba sacando
+    # el mismo puntaje de liquidez que otra con las puntas pegadas y medio
+    # millón operado.
+    depth = _percentile(volume.where(volume > 0), higher_is_better=True)
+    depth = depth.mask(volume.notna() & (volume <= 0), 0.0)
 
     combined = (
         tightness * BOND_SCORE_SPREAD_SHARE + depth * (1.0 - BOND_SCORE_SPREAD_SHARE)
@@ -221,7 +236,11 @@ def _jurisdiction_subscore(law: pd.Series) -> pd.Series:
     return scores
 
 
-def compute_opportunity_scores(df: pd.DataFrame, median_ytm: float | None = None) -> pd.DataFrame:
+def compute_opportunity_scores(
+    df: pd.DataFrame,
+    median_ytm: float | None = None,
+    comparable: pd.Series | None = None,
+) -> pd.DataFrame:
     """
     Puntaje de Oportunidad de cada ON, de 0 a 100, con su desagregado.
 
@@ -241,16 +260,36 @@ def compute_opportunity_scores(df: pd.DataFrame, median_ytm: float | None = None
     if median_ytm is None:
         median_ytm = df.attrs.get("median_ytm_pct", np.nan)
 
+    # Los percentiles se calculan SOLO sobre el panel comparable, el mismo
+    # subconjunto que define la mediana de TIR. Si las especies que no operaron
+    # entraran al ranking, la referencia del puntaje y la del castigo por prima
+    # serían dos poblaciones distintas, y un bono podría estar en el percentil
+    # 80 contra un universo y en el 50 contra el otro.
+    if comparable is None:
+        comparable = pd.Series(True, index=df.index)
+    comparable = comparable.reindex(df.index).fillna(False).astype(bool)
+
+    ranked = df.where(comparable)
+
     subscores = pd.DataFrame(
         {
-            BOND_SCORE_YIELD: _yield_subscore(df["TIR (%)"], median_ytm),
-            BOND_SCORE_LIQUIDITY: _liquidity_subscore(df["Spread (%)"], df["Volumen"]),
-            BOND_SCORE_RATE_RISK: _percentile(df["Duration Mod."], higher_is_better=False),
-            BOND_SCORE_PARITY: _percentile(df["Paridad (%)"], higher_is_better=False),
-            BOND_SCORE_JURISDICTION: _jurisdiction_subscore(df["Ley"]),
+            BOND_SCORE_YIELD: _yield_subscore(ranked["TIR (%)"], median_ytm),
+            BOND_SCORE_LIQUIDITY: _liquidity_subscore(ranked["Spread (%)"], ranked["Volumen"]),
+            BOND_SCORE_RATE_RISK: _percentile(ranked["Duration Mod."], higher_is_better=False),
+            BOND_SCORE_PARITY: _percentile(ranked["Paridad (%)"], higher_is_better=False),
+            BOND_SCORE_JURISDICTION: _jurisdiction_subscore(ranked["Ley"]),
         },
         index=df.index,
     )
+
+    # Una dimensión que casi nadie tiene se descarta para todos. Usarla
+    # compararía a unos pocos entre sí y dejaría a la mayoría sin pagar por no
+    # tenerla, de modo que cargar un dato cierto pero mediocre bajaría el
+    # puntaje: exactamente el incentivo opuesto al que queremos.
+    panel_size = int(comparable.sum())
+    dimension_coverage = subscores.notna().sum() / max(panel_size, 1)
+    unusable = dimension_coverage[dimension_coverage < BOND_SCORE_MIN_DIMENSION_COVERAGE].index
+    subscores[unusable] = np.nan
 
     weights = pd.Series(BOND_SCORE_WEIGHTS)
     measured = subscores.notna()
@@ -262,6 +301,11 @@ def compute_opportunity_scores(df: pd.DataFrame, median_ytm: float | None = None
     score = (weighted_total / available_weight.replace(0.0, np.nan)).where(
         coverage >= BOND_SCORE_MIN_COVERAGE
     )
+
+    # Un percentil contra un puñado de bonos no mide nada: con un panel de uno,
+    # "percentil 100" es ganarse a sí mismo.
+    if panel_size < BOND_SCORE_MIN_PANEL_SIZE:
+        score = pd.Series(np.nan, index=df.index, dtype=float)
 
     result = subscores.copy()
     result["Puntaje"] = score

@@ -79,6 +79,13 @@ def fetch_live_bond_prices() -> pd.DataFrame:
     return prices
 
 
+def _feed_warnings(prices: pd.DataFrame) -> list[str]:
+    """Avisos del feed que la pestaña tiene que mostrar tal cual."""
+    if not hasattr(prices, "attrs"):
+        return []
+    return [prices.attrs[key] for key in ("volume_missing",) if prices.attrs.get(key)]
+
+
 @st.cache_data(ttl=3600, show_spinner=False)
 def fetch_bond_cashflows() -> tuple[dict[str, BondFlows], str | None]:
     """
@@ -148,9 +155,7 @@ def load_bonds_data(
         warnings.append(feed_error)
         return pd.DataFrame(), warnings
 
-    degraded = prices.attrs.get("degraded")
-    if degraded:
-        warnings.append(degraded)
+    warnings.extend(_feed_warnings(prices))
 
     panel = build_bonds_panel(
         prices=prices,

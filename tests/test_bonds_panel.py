@@ -19,6 +19,8 @@ from bonds.catalog import BondTerms
 from bonds.flows_source import COMMUNITY_FLOWS_SOURCE_NAME, BondFlows
 from bonds.panel import build_bonds_panel, interpolate_treasury_yield
 from constants import (
+    BOND_PRICE_CLEAN,
+    BOND_PRICE_DIRTY,
     BOND_SETTLEMENT_CABLE,
     BOND_SETTLEMENT_MEP,
     BOND_SETTLEMENT_PESOS,
@@ -364,3 +366,53 @@ class TestMedianaYLiquidez:
         panel = build_bonds_panel(prices, self._catalogo("TSTBD"), SETTLEMENT)
         assert list(panel["Ticker"]) == ["TSTBD"]
         assert not np.isnan(panel.iloc[0]["TIR (%)"])
+
+
+class TestSpreadContraElTesoroPorMoneda:
+    def test_no_se_informa_spread_para_un_bono_en_pesos(self):
+        # Restarle un rendimiento en dólares a una TIR en pesos devuelve un
+        # número enorme con formato de spread crediticio que en realidad mezcla
+        # riesgo de crédito con expectativa de devaluación.
+        terms = make_terms("TSTAO", currency="ARS", coupon_rate=50.0)
+        panel = build_bonds_panel(
+            make_prices(quote("TSTAO", price=100.0)),
+            {"TSTAO": terms},
+            SETTLEMENT,
+            treasury_curve={0.25: 4.0, 5.0: 4.5, 10.0: 4.8, 30.0: 5.0},
+        )
+        fila = panel.iloc[0]
+        assert not np.isnan(fila["TIR (%)"])
+        assert np.isnan(fila["Spread vs UST (pb)"])
+
+
+class TestConvencionDePrecioAplicada:
+    def _flows(self):
+        return {
+            "TSTA": BondFlows(
+                base_ticker="TSTA",
+                quote_ticker="TSTAD",
+                issuer="Emisor publicado",
+                maturity=date(2030, 1, 15),
+                cashflows=(CashFlow.unsplit(date(2030, 1, 15), 105.0),),
+            )
+        }
+
+    def test_por_el_camino_de_cronogramas_el_precio_se_toma_siempre_sucio(self):
+        # Pasar de limpio a sucio exige el interés corrido, y el interés
+        # corrido exige el desglose renta/capital que esa fuente no publica.
+        # La fila lo deja dicho en vez de aplicar en silencio una opción que
+        # ahí no hace nada.
+        prices = make_prices(quote("TSTAD", price=95.0))
+        limpio = build_bonds_panel(prices, {}, SETTLEMENT, price_is_dirty=False, flows_by_base=self._flows())
+        sucio = build_bonds_panel(prices, {}, SETTLEMENT, price_is_dirty=True, flows_by_base=self._flows())
+        assert limpio.iloc[0]["TIR (%)"] == pytest.approx(sucio.iloc[0]["TIR (%)"])
+        assert limpio.iloc[0]["Convención Aplicada"] == BOND_PRICE_DIRTY
+
+    def test_con_condiciones_cargadas_la_convencion_elegida_sí_se_respeta(self):
+        prices = make_prices(quote("TSTAD", price=100.0))
+        catalogo = {"TSTAO": make_terms("TSTAO")}
+        settlement = date(2025, 4, 15)
+        limpio = build_bonds_panel(prices, catalogo, settlement, price_is_dirty=False)
+        sucio = build_bonds_panel(prices, catalogo, settlement, price_is_dirty=True)
+        assert limpio.iloc[0]["TIR (%)"] < sucio.iloc[0]["TIR (%)"]
+        assert limpio.iloc[0]["Convención Aplicada"] == BOND_PRICE_CLEAN

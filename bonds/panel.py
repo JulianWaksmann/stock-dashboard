@@ -34,6 +34,8 @@ from constants import (
     BOND_FILTER_SIGNAL_RISK,
     BOND_FILTER_SIGNAL_VERY_ATTRACTIVE,
     BOND_MIN_YEARS_FOR_GRADING,
+    BOND_PRICE_CLEAN,
+    BOND_PRICE_DIRTY,
     BOND_SETTLEMENT_MEP,
     BOND_SETTLEMENT_PESOS,
     BOND_SETTLEMENT_UNKNOWN,
@@ -205,6 +207,8 @@ def build_bonds_panel(
             "Capital Residual": np.nan,
             "Años al Vto.": np.nan,
             "Spread vs UST (pb)": np.nan,
+            # Qué convención de precio se aplicó de verdad en esta fila.
+            "Convención Aplicada": BOND_PRICE_DIRTY if price_is_dirty else BOND_PRICE_CLEAN,
         }
 
         # Solo se descuenta el flujo cuando la especie cotiza en la misma
@@ -219,8 +223,15 @@ def build_bonds_panel(
         elif priceable and flows is not None and quote_currency == flows.currency:
             # El cronograma comunitario publica pagos totales, así que solo se
             # piden las métricas que no necesitan el desglose renta/capital.
+            #
+            # `price_is_dirty` no se puede honrar por este camino: pasar de
+            # precio limpio a sucio exige el interés corrido, y el interés
+            # corrido exige saber qué parte de cada pago es renta. El precio se
+            # toma como sucio —la convención de BYMA— y la fila lo deja dicho,
+            # en vez de aplicar en silencio una opción que acá no hace nada.
             metrics = analyze_cashflows(list(flows.cashflows), settlement, price)
             metrics["years_to_maturity"] = max(year_fraction(settlement, flows.maturity), 0.0)
+            row["Convención Aplicada"] = BOND_PRICE_DIRTY
 
         if metrics:
             row.update(
@@ -241,9 +252,15 @@ def build_bonds_panel(
             # El spread crediticio se mide contra el tramo del Tesoro de
             # duration equivalente, no contra el plazo al vencimiento: es
             # el plazo efectivo del dinero lo que hay que comparar.
-            benchmark = interpolate_treasury_yield(treasury_curve, row["Duration Mod."])
-            if benchmark is not None and np.isfinite(row["TIR (%)"]):
-                row["Spread vs UST (pb)"] = (row["TIR (%)"] - benchmark) * 100.0
+            #
+            # Y solo si la TIR está en dólares: restarle un rendimiento en
+            # dólares a una TIR en pesos devuelve un número enorme con formato
+            # de spread crediticio que en realidad mezcla riesgo de crédito con
+            # expectativa de devaluación.
+            if quote_currency == "USD":
+                benchmark = interpolate_treasury_yield(treasury_curve, row["Duration Mod."])
+                if benchmark is not None and np.isfinite(row["TIR (%)"]):
+                    row["Spread vs UST (pb)"] = (row["TIR (%)"] - benchmark) * 100.0
 
         rows.append(row)
 
@@ -317,6 +334,32 @@ def _collapse_to_one_row_per_bond(df: pd.DataFrame) -> pd.DataFrame:
     return ranked.drop_duplicates("_raiz", keep="first").drop(columns="_raiz")
 
 
+def _top_by_volume_within_currency(df: pd.DataFrame, top_n: int) -> pd.DataFrame:
+    """
+    Las N especies más operadas, rankeadas **dentro de cada moneda**.
+
+    El volumen de la especie en pesos está expresado en pesos y el de la
+    especie MEP en dólares. Rankeando las dos juntas, un "top 20" se llena de
+    filas en pesos por tener el número más grande y no por operar más: con 30
+    especies en pesos y 10 en dólares, el top 20 devolvía 30 filas y ninguna en
+    dólares. Cuando el filtro de moneda ya dejó una sola, esto equivale a
+    rankear el panel entero.
+
+    Se corta en N exacto (`keep="first"`): con empates, `keep="all"` devolvía
+    más filas de las pedidas, que es lo contrario de lo que significa un tope.
+    """
+    if "Moneda Precio" not in df.columns:
+        return df.nlargest(top_n, "Volumen", keep="first")
+
+    # Se usa un rank dentro del grupo en lugar de `groupby().apply(nlargest)`:
+    # el apply reconstruye el DataFrame y puede perder la columna de agrupación,
+    # mientras que el rank filtra sobre el original y conserva orden y columnas.
+    position = df.groupby("Moneda Precio", dropna=False)["Volumen"].rank(
+        method="first", ascending=False
+    )
+    return df[position <= top_n]
+
+
 def apply_bond_filters(
     df: pd.DataFrame,
     *,
@@ -355,12 +398,13 @@ def apply_bond_filters(
 
     if liquidity_filter != BOND_FILTER_LIQUIDITY_ALL:
         filtered = filtered[filtered["Volumen"].isna() | (filtered["Volumen"] > 0)]
+
     top_n = BOND_TOP_VOLUME_SIZES.get(liquidity_filter)
     # `nlargest` sobre un DataFrame vacío falla si la columna quedó sin dtype
     # numérico, y quedar vacío es un resultado normal acá: alcanza con que el
     # filtro de moneda no deje ninguna fila.
     if top_n is not None and not filtered.empty:
-        filtered = filtered.nlargest(top_n, "Volumen", keep="all")
+        filtered = _top_by_volume_within_currency(filtered, top_n)
 
     if signal_filter == BOND_FILTER_SIGNAL_ATTRACTIVE:
         filtered = filtered[filtered["Atractivo"].isin(BOND_ATTRACTIVE_SIGNALS)]

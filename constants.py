@@ -423,6 +423,21 @@ BOND_SCORE_LAW_ARG: Final[float] = 40.0
 # lo que falta que sobre el bono.
 BOND_SCORE_MIN_COVERAGE: Final[float] = 0.5
 
+# Tamaño mínimo del panel comparable para publicar puntajes. El puntaje es
+# un percentil: con dos o tres bonos, "estar en el percentil 100" significa
+# ganarle a dos, y con uno solo significa nada. Por debajo de este número no
+# se publica puntaje en vez de fabricar una comparación que no existe.
+BOND_SCORE_MIN_PANEL_SIZE: Final[int] = 5
+
+# Fracción mínima del panel que tiene que tener una dimensión para que esa
+# dimensión se use. Si solo tres bonos de cincuenta tienen la ley cargada, el
+# percentil los compara entre ellos y el mejor de esos tres se lleva 100 sobre
+# una muestra que no representa nada; además, los otros cuarenta y siete no
+# pagan por no tenerla, con lo cual cargar un dato cierto pero mediocre baja
+# el puntaje. Por debajo de este umbral la dimensión se descarta para todos,
+# que es la única forma de que todos se comparen sobre la misma base.
+BOND_SCORE_MIN_DIMENSION_COVERAGE: Final[float] = 0.5
+
 # Cortes del puntaje a etiqueta del semáforo.
 BOND_SCORE_VERY_ATTRACTIVE_MIN: Final[float] = 70.0
 BOND_SCORE_ATTRACTIVE_MIN: Final[float] = 55.0

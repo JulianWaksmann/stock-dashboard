@@ -312,9 +312,19 @@ class TestAnalyzeBond:
         # Pagar 102.5 por el mismo flujo rinde menos que pagar 100.
         assert limpio["ytm_pct"] < sucio["ytm_pct"]
 
-    def test_current_yield_es_cupon_sobre_precio(self):
-        result = self._analyze(price=80.0)
+    def test_current_yield_se_mide_sobre_el_precio_limpio(self):
+        # Contra el precio sucio, la renta bajaría a lo largo del período de
+        # cupón y saltaría el día del pago sin que cambie nada del bono.
+        result = self._analyze(price=82.5)  # 80 limpio + 2.5 de interés corrido
+        assert result["clean_price"] == pytest.approx(80.0)
         assert result["current_yield_pct"] == pytest.approx(10.0 / 80.0 * 100.0)
+
+    def test_antes_de_la_emision_no_hay_interes_corrido(self):
+        # Sin guarda, el devengamiento 30/360 sale negativo y arrastra al valor
+        # técnico: un bono a precio 100 mostraría paridad por encima de 100.
+        result = self._analyze(settlement=date(2019, 6, 1), price=100.0)
+        assert result["accrued_interest"] == pytest.approx(0.0)
+        assert result["parity_pct"] == pytest.approx(100.0)
 
     def test_devuelve_metricas_vacias_sin_flujos_pendientes(self):
         result = self._analyze(settlement=date(2031, 1, 1))

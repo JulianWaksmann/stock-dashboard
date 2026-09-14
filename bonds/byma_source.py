@@ -125,11 +125,16 @@ def parse_byma_bonds(payload: object) -> pd.DataFrame:
 
         price = _first_positive(record, _PRICE_FIELDS)
         previous = _first_positive(record, _PREVIOUS_PRICE_FIELDS)
-        if not np.isfinite(price):
+        traded_today = np.isfinite(price)
+        if not traded_today:
             price = previous
 
+        # La variación solo se informa si hubo precio del día. Cayendo al cierre
+        # anterior, precio y referencia son el mismo número y la cuenta da
+        # 0,00%, que en pantalla se lee como "no se movió" cuando en realidad
+        # significa "no operó".
         change_pct = np.nan
-        if np.isfinite(price) and np.isfinite(previous) and previous > 0:
+        if traded_today and np.isfinite(price) and np.isfinite(previous) and previous > 0:
             change_pct = (price / previous - 1.0) * 100.0
 
         rows.append(
@@ -162,8 +167,22 @@ def parse_byma_bonds(payload: object) -> pd.DataFrame:
     # Una especie puede repetirse entre plazos de liquidación; nos quedamos con
     # la primera aparición para no duplicar filas en el panel.
     frame = pd.DataFrame(rows)
-    # Volumen ausente y volumen cero son cosas distintas: BYMA informa cero
-    # cuando la especie no operó, y el panel usa ese dato para descartarla.
+
+    # Si NINGUNA especie del panel informa volumen, lo más probable no es que
+    # no haya operado nada: es que BYMA renombró sus campos de volumen. Sin
+    # esta marca, el filtro de liquidez —que por defecto muestra el top 50—
+    # vaciaría la pantalla sin explicar por qué, y un panel vacío parece un
+    # problema de red y no un cambio de esquema.
+    if not (frame["Volumen"] > 0).any():
+        frame.attrs["volume_missing"] = (
+            "Ninguna especie informó volumen operado. Puede ser una rueda sin "
+            "actividad, pero lo habitual es que BYMA haya cambiado el nombre de "
+            f"sus campos de volumen (se buscan: {', '.join(_VOLUME_FIELDS)}). "
+            "Mientras tanto, el filtro de liquidez no puede ordenar el panel."
+        )
+
+    # Volumen ausente y volumen cero son cosas distintas para BYMA, que informa
+    # cero cuando la especie no operó; el panel usa ese dato para descartarla.
     frame["Volumen"] = frame["Volumen"].fillna(0.0)
     return frame.drop_duplicates(subset="Ticker", keep="first").reset_index(drop=True)
 

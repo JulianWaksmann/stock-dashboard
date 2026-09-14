@@ -174,3 +174,32 @@ class TestRecortesSimples:
             signal_filter=BOND_FILTER_SIGNAL_ALL,
             law_filter=BOND_FILTER_LAW_ALL,
         ).empty
+
+
+class TestTopNPorMoneda:
+    """
+    El volumen de la especie en pesos está en pesos y el de la MEP en dólares.
+    Rankear las dos juntas compara unidades distintas y ganan las filas en
+    pesos por magnitud, no por actividad.
+    """
+
+    def _panel_mixto(self):
+        rows = [fila(f"P{i:03}O", 1e9 + i) for i in range(30)]
+        rows += [fila(f"D{i:03}D", 5e6 + i) for i in range(10)]
+        return rows
+
+    def test_mostrando_todas_las_especies_el_top_rankea_dentro_de_cada_moneda(self):
+        resultado = filtrar(
+            self._panel_mixto(),
+            settlement_filter=BOND_FILTER_SETTLEMENT_ALL,
+            liquidity_filter=BOND_FILTER_LIQUIDITY_TOP_20,
+        )
+        assert (resultado["Moneda Precio"] == "USD").sum() == 10
+        assert (resultado["Moneda Precio"] == "ARS").sum() == 20
+
+    def test_el_tope_se_respeta_aunque_haya_empates(self):
+        # `keep="all"` devolvía más filas que las pedidas, que es lo contrario
+        # de lo que significa un tope.
+        rows = [fila(f"E{i:03}D", 100.0) for i in range(30)]
+        resultado = filtrar(rows, liquidity_filter=BOND_FILTER_LIQUIDITY_TOP_20)
+        assert len(resultado) == 20

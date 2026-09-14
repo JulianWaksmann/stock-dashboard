@@ -11,13 +11,14 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from bonds.scoring import compute_opportunity_scores, label_from_score
+from bonds.scoring import _percentile, compute_opportunity_scores, label_from_score
 from constants import (
     BOND_RISK_YIELD_PREMIUM_PP,
     BOND_SCORE_ATTRACTIVE_MIN,
     BOND_SCORE_JURISDICTION,
     BOND_SCORE_LIQUIDITY,
     BOND_SCORE_NEUTRAL_MIN,
+    BOND_SCORE_RATE_RISK,
     BOND_SCORE_VERY_ATTRACTIVE_MIN,
     BOND_SCORE_WEIGHTS,
     BOND_SCORE_YIELD,
@@ -31,8 +32,17 @@ from constants import (
 MEDIANA = 9.0
 
 
-def panel(*filas) -> pd.DataFrame:
-    return pd.DataFrame(list(filas))
+# El puntaje es un percentil, así que necesita un panel de referencia: por
+# debajo de BOND_SCORE_MIN_PANEL_SIZE no publica nada. Los tests que comparan
+# dos bonos completan el panel con relleno neutro para tener contra qué medir.
+_RELLENO = 6
+
+
+def panel(*filas, rellenar: bool = True) -> pd.DataFrame:
+    filas = list(filas)
+    if rellenar:
+        filas += [bono(f"RELLENO{i}") for i in range(_RELLENO)]
+    return pd.DataFrame(filas)
 
 
 def bono(ticker: str, **overrides) -> dict:
@@ -139,6 +149,14 @@ class TestDatosFaltantes:
         assert np.isnan(resultado.loc["SIN_LEY", BOND_SCORE_JURISDICTION])
         assert resultado.loc["SIN_LEY", "Puntaje"] >= resultado.loc["CON_LEY", "Puntaje"]
 
+    def test_abstenerse_no_le_gana_a_tener_el_dato_bueno(self):
+        # El reverso del test anterior, que es el riesgo real de renormalizar:
+        # el que declara la mejor jurisdicción tiene que ganarle al que no la
+        # declara, o el sistema premiaría no cargar datos.
+        df = panel(bono("CON_LEY_NY", Ley="NY"), bono("SIN_LEY", Ley=None))
+        resultado = puntajes(df)
+        assert resultado.loc["CON_LEY_NY", "Puntaje"] > resultado.loc["SIN_LEY", "Puntaje"]
+
     def test_la_cobertura_baja_cuando_falta_una_dimension(self):
         df = panel(bono("COMPLETO"), bono("SIN_LEY", Ley=None))
         resultado = puntajes(df)
@@ -158,8 +176,36 @@ class TestDatosFaltantes:
         df = panel(bono("A", Volumen=np.nan), bono("B"))
         assert not np.isnan(puntajes(df).loc["A", BOND_SCORE_LIQUIDITY])
 
+    def test_volumen_cero_es_la_peor_liquidez_posible_y_no_un_dato_faltante(self):
+        # Por percentil, una masa de ceros empatados se reparte el rango medio:
+        # una especie que no operó sacaba el mismo puntaje de liquidez que otra
+        # con las puntas pegadas y medio millón operado.
+        df = panel(
+            bono("OPERO", **{"Spread (%)": 0.2, "Volumen": 5e6}),
+            bono("NO_OPERO", **{"Spread (%)": np.nan, "Volumen": 0.0}),
+        )
+        resultado = puntajes(df)
+        assert resultado.loc["NO_OPERO", BOND_SCORE_LIQUIDITY] == pytest.approx(0.0)
+        assert resultado.loc["OPERO", BOND_SCORE_LIQUIDITY] > resultado.loc["NO_OPERO", BOND_SCORE_LIQUIDITY]
+
     def test_un_panel_vacio_no_rompe(self):
         assert compute_opportunity_scores(pd.DataFrame()).empty
+
+    def test_un_panel_demasiado_chico_no_publica_puntaje(self):
+        # Un percentil contra dos bonos no mide nada, y contra uno solo mide
+        # que se ganó a sí mismo.
+        df = panel(bono("A"), bono("B"), rellenar=False)
+        assert compute_opportunity_scores(df, MEDIANA)["Puntaje"].isna().all()
+
+    def test_una_dimension_que_casi_nadie_tiene_se_descarta_para_todos(self):
+        # Si solo un bono tiene la ley cargada, el percentil lo compara consigo
+        # mismo y los demás no pagan por no tenerla: cargar un dato cierto pero
+        # mediocre terminaría bajando el puntaje.
+        df = panel(bono("UNICO_CON_LEY", Ley="NY"), rellenar=False)
+        for i in range(_RELLENO):
+            df = pd.concat([df, pd.DataFrame([bono(f"R{i}", Ley=None)])], ignore_index=True)
+        resultado = compute_opportunity_scores(df, MEDIANA).set_index(df["Ticker"])
+        assert resultado[BOND_SCORE_JURISDICTION].isna().all()
 
 
 class TestEtiqueta:
@@ -179,3 +225,37 @@ class TestEtiqueta:
     @pytest.mark.parametrize("puntaje", [None, float("nan"), "n/d"])
     def test_sin_puntaje_no_se_afirma_nada(self, puntaje):
         assert label_from_score(puntaje) == BOND_SIGNAL_NO_DATA
+
+
+class TestPercentilSimetrico:
+    """
+    `100 - percentil` no es el espejo del percentil: el rank porcentual de
+    pandas vive en (0, 1] y su complemento en [0, 1). Usarlo sesgaba el puntaje
+    a favor de las dimensiones donde más es mejor.
+    """
+
+    def test_con_todo_empatado_las_dos_direcciones_dan_lo_mismo(self):
+        serie = pd.Series([5.0] * 5)
+        assert _percentile(serie, True).iloc[0] == pytest.approx(_percentile(serie, False).iloc[0])
+
+    def test_las_dos_direcciones_son_espejo_una_de_otra(self):
+        serie = pd.Series([1.0, 2.0, 3.0, 4.0])
+        assert list(_percentile(serie, True)) == list(reversed(list(_percentile(serie, False))))
+
+    def test_dimensiones_iguales_no_se_sesgan_entre_si(self):
+        # Panel donde todos los bonos son idénticos: ninguna dimensión puede
+        # puntuar más que otra solo por la dirección en que se mide.
+        df = panel(rellenar=True)
+        resultado = compute_opportunity_scores(df, MEDIANA)
+        assert resultado[BOND_SCORE_YIELD].iloc[0] == pytest.approx(resultado[BOND_SCORE_RATE_RISK].iloc[0])
+
+
+class TestPanelComparable:
+    def test_los_percentiles_se_calculan_solo_sobre_el_panel_comparable(self):
+        # Si las no comparables entraran al ranking, la referencia del puntaje
+        # y la de la mediana de TIR serían dos poblaciones distintas.
+        df = panel(bono("EXCLUIDO", **{"TIR (%)": 99.0}))
+        comparable = pd.Series([True] * len(df), index=df.index)
+        comparable.iloc[0] = False
+        resultado = compute_opportunity_scores(df, MEDIANA, comparable=comparable).set_index(df["Ticker"])
+        assert np.isnan(resultado.loc["EXCLUIDO", BOND_SCORE_YIELD])

@@ -75,7 +75,7 @@ def _render_controls() -> tuple[date, bool]:
             "💲 Convención del precio de pantalla",
             BOND_PRICE_CONVENTION_OPTIONS,
             horizontal=True,
-            help="BYMA publica precios sucios (con interés corrido incluido). Elegir mal esta opción sesga la TIR y la paridad.",
+            help="BYMA publica precios sucios (con interés corrido incluido). Elegir mal esta opción sesga la TIR y la paridad. Solo tiene efecto sobre las ONs con condiciones de emisión cargadas: pasar de limpio a sucio exige el interés corrido, y para eso hay que saber qué parte de cada pago es renta.",
         )
 
     with col3:
@@ -404,6 +404,19 @@ def render_bonds_panel():
         )
         with st.expander(f"Ver las {len(without_schedule)} especies sin cronograma"):
             st.write(", ".join(without_schedule))
+
+    # El selector de convención de precio no puede aplicarse sobre las ONs que
+    # solo tienen cronograma publicado. Decirlo es mejor que dejar un control
+    # que no hace nada en la mayoría de las filas.
+    if not price_is_dirty and "Convención Aplicada" in df_bonds.columns:
+        ignoradas = int((df_bonds["Convención Aplicada"] == BOND_PRICE_DIRTY).sum())
+        if ignoradas:
+            st.caption(
+                f"ℹ️ La convención de precio limpio no se pudo aplicar en {ignoradas} de "
+                f"{len(df_bonds)} especies: su cronograma publica el total de cada pago, sin "
+                "separar renta de capital, y sin ese desglose no hay interés corrido que sumarle "
+                "al precio. Esas filas se calcularon con precio sucio, la convención de BYMA."
+            )
 
     unverified = int((~df_bonds["Verificado"] & df_bonds["En Catálogo"]).sum())
     if unverified:

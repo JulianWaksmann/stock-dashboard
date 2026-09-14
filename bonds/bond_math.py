@@ -232,6 +232,12 @@ def accrued_interest(
     comprador le paga por encima del precio limpio. Vencido el bono (o pasado
     el último cupón) no hay nada que devengar y devuelve 0.
     """
+    # Antes de la emisión no hay nada devengado. Sin esta guarda, el
+    # devengamiento 30/360 sale negativo y arrastra al valor técnico, con lo
+    # cual un bono a precio 100 puede mostrar paridad de 106%.
+    if settlement <= issue_date:
+        return 0.0
+
     coupon_dates = generate_coupon_dates(issue_date, maturity, frequency)
     future_coupons = [d for d in coupon_dates if d > settlement]
     if not future_coupons:
@@ -440,8 +446,12 @@ def analyze_bond(
     clean_price = price - accrued if price_is_dirty else price
 
     parity = (dirty_price / technical_value * 100.0) if technical_value > 0 else None
+    # La renta anual se mide contra el precio LIMPIO. Dividir por el sucio
+    # mete el interés corrido en el denominador, así que el mismo bono mostraría
+    # una renta que baja a lo largo del período de cupón y salta el día que
+    # paga, sin que haya cambiado nada del bono.
     annual_coupon = outstanding * (coupon_rate / 100.0)
-    current_yield = (annual_coupon / dirty_price * 100.0) if dirty_price > 0 else None
+    current_yield = (annual_coupon / clean_price * 100.0) if clean_price > 0 else None
 
     return {
         **analyze_cashflows(flows, settlement, dirty_price),

@@ -119,3 +119,25 @@ class TestRespuestasImperfectas:
     def test_cae_a_otro_campo_de_volumen_si_falta_el_preferido(self):
         sin_monto = {k: v for k, v in OPERADA.items() if k != "volumeAmount"}
         assert parse_byma_bonds([sin_monto]).iloc[0]["Volumen"] == pytest.approx(124_737)
+
+
+class TestSeñalesDeCambioDeEsquema:
+    def test_avisa_cuando_ninguna_especie_informa_volumen(self):
+        # Sin esta marca, el filtro de liquidez (top 50 por defecto) vaciaría
+        # la pantalla y parecería un problema de red, no un campo renombrado.
+        resultado = parse_byma_bonds([{k: v for k, v in OPERADA.items() if "olume" not in k}])
+        assert "volumen" in resultado.attrs.get("volume_missing", "").lower()
+
+    def test_no_avisa_cuando_hay_volumen(self):
+        assert "volume_missing" not in parse_byma_bonds([OPERADA]).attrs
+
+
+class TestVariacionDiaria:
+    def test_no_informa_variacion_si_la_especie_no_operó(self):
+        # Con precio caído al cierre anterior, la cuenta da 0,00%, que se lee
+        # como "no se movió" cuando significa "no operó".
+        assert np.isnan(parse_byma_bonds([SIN_OPERAR]).iloc[0]["Var. (%)"])
+
+    def test_informa_variacion_cuando_sí_operó(self):
+        fila = parse_byma_bonds([OPERADA]).iloc[0]
+        assert fila["Var. (%)"] == pytest.approx((105.6 / 106.2 - 1) * 100)
