@@ -1,303 +1,314 @@
-# Quantitative Stock Dashboard & Confluence Screener
+# Tablero Cuantitativo de Acciones y Bonos Corporativos
 
-A high-performance quantitative screening dashboard built with **Streamlit**, **Pandas**, and **Yahoo Finance (`yfinance`)**, split into two sections: **Equities** (technical confluence screener) and **Argentine Corporate Bonds** (fixed-income analytics for Obligaciones Negociables). Sections are selected rather than tabbed, so each one queries its data sources only when it is actually opened.
+Tablero de análisis cuantitativo construido con **Streamlit**, **Pandas** y **Yahoo Finance (`yfinance`)**, dividido en dos secciones: **Acciones** (screener de confluencia técnica) y **Bonos Corporativos Argentinos** (analítica de renta fija para Obligaciones Negociables). Las secciones se eligen con un selector en lugar de pestañas, así cada una consulta sus fuentes recién cuando se la abre.
 
-The platform monitors the top 50 market leaders in real-time, combining **fundamental valuation metrics** (Trailing P/E, Forward P/E, and 5-Year Historical P/E) with **John Murphy's Technical Confluence Principles** and an **On-Balance Volume "Smart Money" flow check** to identify swing trading opportunities, rotation exhaustion points, and volatility squeeze setups at a glance.
-
----
-
-## ⚡ Key Features
-
-### 1. Confluence Engine (Grade-Based "Traffic Light" System)
-Scores each ticker against a small set of mandatory and optional conditions to produce a graded signal:
-
-**Buy side (swing setups)**
-* Mandatory: price within ±4% of SMA 50, **or** at/below the Lower Bollinger Band (1% tolerance) — **and** RSI (14) < 45.
-* Optional, one point each: confirmed uptrend (SMA 50 > SMA 200, tolerating up to 5% below SMA 200), Stochastic bullish crossover or %K < 30, and OBV above its 20-period SMA (Smart Money accumulation).
-* 4-5 points → 🌟 **STRONG BUY**. Exactly 3 points → 🟢 **MODERATE BUY**.
-
-**Sell side (rotation / exhaustion)**
-* Mandatory: price within 6% of its 52-week high — **and** RSI (14) > 65.
-* Optional, one point each: Stochastic bearish crossover or %K ≥ 80, a weakening MACD (falling histogram or MACD line below signal line), and OBV below its 20-period SMA (Smart Money distribution).
-* 3-4 points → 🚨 **STRONG SELL / ROTATE**. Exactly 2 points → 🟠 **MODERATE SELL**.
-
-**Other states**
-* 🚨 **SQUEEZE:** Bollinger Bandwidth at, or within 8% of, its 6-month (126-bar) low — signaling volatility compression and an imminent directional expansion.
-* 🟡 **NEUTRAL:** baseline tracking mode when no confluence thresholds are met.
-
-Every signal label and numeric threshold above lives in `constants.py`, which is the single source of truth shared by the algorithm (`indicators.py`) and the sidebar filters (`app.py`) — tune the rules there, not in the code that consumes them.
+La sección de acciones monitorea las 50 principales líderes del mercado en tiempo real, combinando **métricas de valuación fundamental** (PER pasado, PER futuro y PER promedio de 5 años) con los **principios de confluencia técnica de John Murphy** y una lectura de flujo institucional vía **On-Balance Volume ("Smart Money")**, para identificar de un vistazo oportunidades de swing, agotamientos de rotación y compresiones de volatilidad.
 
 ---
 
-### 2. Smart Money Flow (Institutional OBV)
-* Compares On-Balance Volume (OBV) against its own 20-period SMA to flag each ticker as 🐳 **Accumulation** or 📉 **Distribution**. This feeds both the confluence score above and its own "Flujo Institucional" column and sidebar filter.
+## ⚡ Funcionalidades principales
+
+### 1. Motor de Confluencia (semáforo por sistema de grados)
+Evalúa cada ticker contra un conjunto chico de condiciones obligatorias y opcionales para producir una señal graduada:
+
+**Lado compra (swing)**
+* Obligatorio: precio a ±4% de la SMA 50, **o** en/por debajo de la Banda Inferior de Bollinger (1% de tolerancia) — **y** RSI (14) < 45.
+* Opcionales, un punto cada uno: tendencia alcista confirmada (SMA 50 > SMA 200, tolerando hasta 5% por debajo de la SMA 200), cruce alcista del Estocástico o %K < 30, y OBV por encima de su SMA de 20 períodos (acumulación).
+* 4-5 puntos → 🌟 **COMPRA FUERTE**. Exactamente 3 puntos → 🟢 **COMPRA MODERADA**.
+
+**Lado venta (rotación / agotamiento)**
+* Obligatorio: precio a menos de 6% de su máximo de 52 semanas — **y** RSI (14) > 65.
+* Opcionales, un punto cada uno: cruce bajista del Estocástico o %K ≥ 80, MACD debilitándose (histograma cayendo o línea MACD por debajo de la señal), y OBV por debajo de su SMA de 20 períodos (distribución).
+* 3-4 puntos → 🚨 **VENTA FUERTE / ROTAR**. Exactamente 2 puntos → 🟠 **VENTA MODERADA**.
+
+**Otros estados**
+* 🚨 **SQUEEZE:** el ancho de las Bandas de Bollinger está en su mínimo de 6 meses (126 ruedas) o hasta 8% por encima — señal de compresión de volatilidad y expansión direccional inminente.
+* 🟡 **NEUTRAL:** modo de seguimiento cuando no se alcanza ningún umbral de confluencia.
+
+Cada etiqueta de señal y cada umbral numérico vive en `constants.py`, que es la única fuente de verdad compartida entre el algoritmo (`indicators.py`) y los filtros de la barra lateral (`app.py`) — las reglas se ajustan ahí, no en el código que las consume.
 
 ---
 
-### 3. Fundamental Valuation Matrix
-* **Trailing P/E:** Price-to-Earnings based on real earnings from the last 12 months (TTM).
-* **Forward P/E:** Price-to-Earnings based on analyst consensus earnings estimates for the next 12 months.
-* **5-Year Historical Average P/E:** Multi-year baseline calculated from annual fiscal statements, allowing quick detection of multiple expansion or undervaluation.
+### 2. Flujo institucional (OBV / Smart Money)
+* Compara el On-Balance Volume contra su propia SMA de 20 períodos para marcar cada ticker como 🐳 **Acumulación** o 📉 **Distribución**. Alimenta tanto el puntaje de confluencia como su propia columna "Flujo Institucional" y su filtro en la barra lateral.
 
 ---
 
-### 4. Quantitative Technical Indicators
-* **Moving Averages & % Distances:** SMA 20 (Short-term), SMA 50 (Medium-term), and SMA 200 (Macro trend), with real-time percentage deviation ($\Delta\%$).
-* **Relative Strength Index (RSI 14):** Wilder's smoothed momentum oscillator, charted with fixed 30 and 70 threshold markers.
-* **MACD (12, 26, 9):** Trend-following momentum indicator measuring convergence/divergence.
-* **Bollinger Bands (20, 2):** Volatility envelopes and dynamic support/resistance channels with normalized bandwidth calculation.
-* **Stochastic Oscillator (%K 14, %D 3):** Momentum trigger confirming micro trend turns.
-* **52-Week High / Low:** 252-period rolling extremes and percentage distance from cycle highs.
+### 3. Matriz de valuación fundamental
+* **PER pasado (trailing):** precio sobre ganancias reales de los últimos 12 meses.
+* **PER futuro (forward):** precio sobre ganancias estimadas por consenso de analistas para los próximos 12 meses.
+* **PER promedio histórico (5 años):** base multianual calculada a partir de los balances anuales, que permite detectar rápido expansión de múltiplos o subvaluación.
 
 ---
 
-### 5. Architecture & Usability
-* **Dual Timeframe Engine:** Seamlessly toggle between **Daily (1D)** and **Weekly (1W)** calculations.
-* **Market Selector:** the sidebar lets you pick a market; **USA Stocks (S&P 500)** is the fully implemented default, while Crypto and Argentine Equities (Merval) currently show as "coming soon" placeholders.
-* **Quick Filters:** filter the screener by signal grade, Smart Money flow (OBV), RSI (14) range, and trend vs. SMA 200.
-* **Top Alerts Panel:** immediate categorization of tickers activating Buy, Sell, or Squeeze setups.
-* **Multi-threaded Ingestion:** fast parallel data downloading using `concurrent.futures` and intelligent caching via `st.cache_data`.
-* **Resilient Data Loading:** if some tickers fail to download (Yahoo Finance rate limits, delisted symbols, network hiccups, etc.), the rest of the dashboard keeps working and a warning lists the tickers that were skipped.
-* **One-Click Export:** instant filtered CSV downloads.
+### 4. Indicadores técnicos
+* **Medias móviles y distancias %:** SMA 20 (corto plazo), SMA 50 (mediano) y SMA 200 (tendencia de fondo), con desvío porcentual en tiempo real.
+* **RSI (14):** oscilador de momento con suavizado de Wilder, graficado con marcas fijas en 30 y 70.
+* **MACD (12, 26, 9):** indicador de momento seguidor de tendencia.
+* **Bandas de Bollinger (20, 2):** envolventes de volatilidad y canal dinámico de soporte/resistencia, con ancho normalizado.
+* **Estocástico (%K 14, %D 3):** gatillo de momento que confirma giros de micro tendencia.
+* **Máximo / mínimo de 52 semanas:** extremos móviles de 252 ruedas y distancia porcentual al techo del ciclo.
 
 ---
 
-## 💵 Argentine Corporate Bonds (Obligaciones Negociables)
+### 5. Arquitectura y usabilidad
+* **Doble temporalidad:** alterna entre cálculos **diarios (1D)** y **semanales (1W)**.
+* **Selector de mercado:** la barra lateral permite elegir mercado; **Acciones USA (S&P 500)** es el default implementado, mientras que Cripto y Acciones Argentinas (Merval) figuran como "próximamente".
+* **Filtros rápidos:** por grado de señal, flujo institucional (OBV), rango de RSI (14) y tendencia contra la SMA 200.
+* **Panel de alertas:** categorización inmediata de los tickers que activan setups de compra, venta o squeeze.
+* **Descarga en paralelo:** ingesta multihilo con `concurrent.futures` y caché vía `st.cache_data`.
+* **Carga resiliente:** si algunos tickers fallan (límites de Yahoo Finance, símbolos deslistados, cortes de red), el resto del tablero sigue funcionando y un aviso lista los omitidos.
+* **Exportación a CSV** de lo que se esté viendo, con un clic.
 
-A second section prices the Argentine corporate hard-dollar bond panel from its **contractual cash
-flow** — not from price-momentum indicators, which say nothing useful about a bond.
+---
 
-### What it computes
+## 💵 Bonos Corporativos Argentinos (Obligaciones Negociables)
 
-For every ON whose issue terms are known, the section derives, per 100 of original face value:
+La segunda sección valúa el panel de ONs corporativas en dólares a partir de su **flujo de fondos
+contractual**, y no de indicadores de momento de precio, que no dicen nada útil sobre un bono.
 
-| Metric | What it answers |
+### Qué calcula
+
+Para cada ON con cronograma conocido, por cada 100 de valor nominal original:
+
+| Métrica | Qué responde |
 | --- | --- |
-| **YTM (TIR)** | Effective annual return if held to maturity. The single comparison variable across bonds. |
-| **Current yield** | Annual coupon over price paid — this year's cash flow, ignoring capital gain/loss. |
-| **Modified duration** | Interest-rate risk: approximate % price drop per 1 pp rise in required yield. |
-| **Macaulay duration / convexity** | Time-weighted average of the discounted cash flow, and the curvature duration alone misses. |
-| **Weighted average life (WAL)** | How long, on average, until the principal comes back. Well below maturity on amortizing bonds. |
-| **Parity** | Price over technical value. Below 100 means part of the return arrives as capital gain. |
-| **Technical value / accrued interest / residual capital** | What the contract says the bond is worth today. |
-| **Spread vs UST** | Basis points over the duration-matched US Treasury — the price of Argentine + issuer risk. |
-| **Bid/ask spread, volume** | Whether the quoted yield is actually executable. |
-| **Minimum denomination** | Whether a retail investor can buy it at all (many NY-law ONs trade in 100k+ lots). |
+| **TIR** | Rendimiento efectivo anual si se mantiene hasta el vencimiento. Es *la* variable de comparación entre bonos. |
+| **Renta anual (*current yield*)** | Cupón anual sobre el precio pagado: el flujo de caja del año, sin contar ganancia ni pérdida de capital. |
+| **Duration modificada** | Riesgo de tasa: caída aproximada del precio, en %, si el rendimiento exigido sube 1 punto porcentual. |
+| **Duration de Macaulay / convexidad** | Plazo promedio ponderado del flujo descontado, y la curvatura que la duration sola no captura. |
+| **Vida promedio (WAL)** | En cuántos años, promedio, vuelve el capital. Bastante menos que el plazo al vencimiento en bonos que amortizan. |
+| **Paridad** | Precio sobre valor técnico. Por debajo de 100, parte del retorno llega como ganancia de capital. |
+| **Valor técnico / interés corrido / capital residual** | Lo que el contrato dice que el bono vale hoy. |
+| **Spread vs UST** | Puntos básicos por encima del Tesoro de EE.UU. de duration equivalente: el precio del riesgo argentino más el del emisor. |
+| **Spread de puntas y volumen** | Si ese rendimiento es ejecutable o es teórico. |
+| **Lámina mínima** | Si un minorista puede comprarlo (muchas ONs ley NY operan en láminas de 100.000 o más). |
 
-An in-app glossary explains every one of these in plain Spanish, next to the table.
+La app incluye un glosario que explica cada una de estas variables al lado del cuadro.
 
-### Opportunity score
+### Puntaje de Oportunidad
 
-Every bond gets a **0-100 score**, and the label comes from it. It is not an absolute grade: each
-dimension is scored by where the bond sits **within that day's panel**. An 11% yield is excellent
-or mediocre depending on where everything else trades, so a fixed threshold would say opposite
-things at two points of the cycle. By construction an average bond lands near 50; what matters is
-who pulls away.
+Cada ON recibe un puntaje de **0 a 100**, y de ahí sale la etiqueta. No es una nota absoluta: cada
+dimensión se puntúa por la posición del bono **dentro del panel de ese día**. Una TIR del 11% es
+excelente o mediocre según dónde esté cotizando todo lo demás, así que un umbral fijo diría cosas
+opuestas en dos momentos del ciclo. Por construcción un bono promedio queda cerca de 50; lo que
+importa es quién se despega.
 
-| Dimension | Weight | What it measures |
+| Dimensión | Peso | Qué mide |
 | --- | --- | --- |
-| Yield | 35% | Return against peers, penalized for an excessive premium |
-| Liquidity | 25% | Bid/ask spread and traded volume — whether the yield is executable |
-| Rate risk | 20% | Modified duration |
-| Parity | 10% | Below par means part of the return arrives as capital gain |
-| Jurisdiction | 10% | Governing law |
+| Rendimiento | 35% | Cuánto rinde frente a sus pares, con castigo por prima excesiva |
+| Liquidez | 25% | Spread de puntas y volumen operado: si el rendimiento es ejecutable |
+| Riesgo de tasa | 20% | Duration modificada |
+| Paridad | 10% | Cotizar bajo la par implica retorno vía ganancia de capital |
+| Jurisdicción | 10% | Ley aplicable |
 
-Three rules keep the number honest:
+Tres reglas mantienen honesto al número:
 
-1. **More yield is not always better.** Past a premium of `BOND_RISK_YIELD_PREMIUM_PP` over the
-   panel median, the penalty is applied to the yield *before* ranking, not to the percentile after.
-   Multiplying a percentile by a decaying factor does not work: the percentile rises with yield as
-   the factor falls, the two cancel, and between two already-penalized bonds the riskier one can
-   score higher — exactly what the rule exists to prevent.
-2. **What cannot be measured scores nothing, not zero.** A missing dimension is dropped and its
-   weight redistributed over the rest. Scoring it zero would punish the bond for a gap in our
-   source rather than anything about the bond. A `Cobertura` column reports how much of the weight
-   was actually measured.
-3. **Too little measured, no score at all.** Below `BOND_SCORE_MIN_COVERAGE` the number would come
-   almost entirely from the yield and would say more about what is missing than about the bond.
+1. **Más TIR no siempre es mejor.** Pasada una prima de `BOND_RISK_YIELD_PREMIUM_PP` sobre la
+   mediana del panel, el castigo se aplica a la TIR *antes* de rankear, no al percentil después.
+   Multiplicar un percentil por un factor decreciente no funciona: el percentil sube con la TIR
+   mientras el factor baja, los dos efectos se cancelan y entre dos bonos ya castigados puede
+   puntuar más alto el más riesgoso, que es exactamente lo que la regla evita.
+2. **Lo que no se puede medir no puntúa cero: se excluye.** Una dimensión faltante sale del cálculo
+   y su peso se reparte entre las demás. Puntuarla cero castigaría al bono por un hueco en nuestra
+   fuente y no por algo que le pase al bono. La columna `Cobertura` informa qué fracción del peso
+   se midió de verdad.
+3. **Con muy poco medido, no hay puntaje.** Por debajo de `BOND_SCORE_MIN_COVERAGE` el número
+   saldría casi solo de la TIR y diría más sobre lo que falta que sobre la oportunidad.
 
-Score to label: ≥70 🌟 MUY ATRACTIVO · ≥55 🟢 ATRACTIVO · ≥40 🟡 NEUTRAL · below 🟠 POCO ATRACTIVO.
-Two cases override the score: 🚨 **ALERTA DE RIESGO** for the premium above, and ⏳ **MUY CORTO**
-for bonds under `BOND_MIN_YEARS_FOR_GRADING` from maturity, where annualizing a few weeks' return
-turns one cent of price into tens of points of yield. Both are also excluded from the panel median,
-so an arithmetic artifact cannot drag the reference everything else is graded against.
+Del puntaje a la etiqueta: ≥70 🌟 MUY ATRACTIVO · ≥55 🟢 ATRACTIVO · ≥40 🟡 NEUTRAL · por debajo
+🟠 POCO ATRACTIVO. Dos casos ganan sobre el puntaje: 🚨 **ALERTA DE RIESGO** por la prima de
+arriba, y ⏳ **MUY CORTO** para las ONs a menos de `BOND_MIN_YEARS_FOR_GRADING` del vencimiento,
+donde anualizar el retorno de unas semanas convierte un centavo de precio en decenas de puntos de
+TIR. Los dos casos quedan además fuera de la mediana del panel, para que un artefacto aritmético no
+corra la referencia contra la que se califica todo el resto.
 
-Weights live in `constants.py` (`BOND_SCORE_WEIGHTS`). They are an explicit investment opinion, not
-a truth: if liquidity matters more to you than yield, that is where to say so.
+Los pesos viven en `constants.py` (`BOND_SCORE_WEIGHTS`). Son un criterio de inversión explícito y
+no una verdad: si para vos la liquidez pesa más que el rendimiento, ese es el lugar para decirlo.
 
-The table shows the essentials by default — score, yield, duration, parity, spread, volume — with
-the full column set and the per-dimension score breakdown behind toggles. A twenty-column table
-does not get read, it gets scanned.
+El cuadro muestra lo esencial por defecto —puntaje, TIR, duration, paridad, spread, volumen— con el
+set completo de columnas y el desglose del puntaje detrás de dos interruptores. Una tabla de veinte
+columnas no se lee, se escanea.
 
-### Where the data comes from
+### De dónde salen los datos
 
-| Data | Source | Notes |
+| Dato | Fuente | Notas |
 | --- | --- | --- |
-| Prices, bid/ask, volume | [BYMA Open Data](https://open.bymadata.com.ar) | The exchange the bonds actually trade on. Public, no API key, but undocumented: POST only, and it validates a browser cookie. Also carries each species' maturity and currency. |
-| Payment schedules | [rendimientos-ar](https://github.com/arisbdar/rendimientos-ar) (`public/config.json`) | Fetched on every load. A **community dataset** hand-kept by third parties (ISC), not an official source. Publishes each payment's total, without splitting interest from principal. |
-| Issue terms | `data/ons_catalog.csv` (this repo) | Optional, empty by default. Only needed for the metrics that require the interest/principal split, or for a bond the community dataset does not cover. |
-| US Treasury curve | Yahoo Finance (`^IRX`, `^FVX`, `^TNX`, `^TYX`) | Via `yfinance`, same as the equities section. Linearly interpolated to each bond's duration. |
+| Precios, puntas, volumen | [BYMA Open Data](https://open.bymadata.com.ar) | El mercado donde las ONs cotizan. Pública y sin API key, pero sin documentar: es POST y valida cookie de navegador. Trae además vencimiento y moneda de cada especie. |
+| Cronogramas de pago | [rendimientos-ar](https://github.com/arisbdar/rendimientos-ar) (`public/config.json`) | Se descarga en cada carga. Es un **dataset comunitario** mantenido a mano por terceros (licencia ISC), no una fuente oficial. Publica el total de cada pago, sin separar renta de capital. |
+| Condiciones de emisión | `data/ons_catalog.csv` (este repo) | Opcional y vacío por defecto. Solo hace falta para las métricas que necesitan el desglose renta/capital, o para una ON que el dataset comunitario no cubra. |
+| Curva del Tesoro de EE.UU. | Yahoo Finance (`^IRX`, `^FVX`, `^TNX`, `^TYX`) | Vía `yfinance`, igual que la sección de acciones. Interpolada linealmente al plazo de duration de cada ON. |
 
-### One price source, on purpose
+### Una sola fuente de precios, a propósito
 
-Prices come from BYMA alone. A second feed (data912) was measured against it with
-`scripts/verificar_fuentes.py` and dropped: BYMA lists 2727 species against 616, and across the 614
-they share, half the alternative's prices arrived stale — 0.17% median difference, up to 2.75% on
-the same bond. On a duration-3 bond that is 6 to 90 basis points of yield, which is exactly what
-this panel compares. It was not kept as a fallback either: a fallback that returns a different
-number is not a fallback, it is a second answer to the same question. If BYMA is down the panel
-says so rather than quietly showing something else.
+Los precios salen únicamente de BYMA. Hubo un segundo feed (data912) y se descartó después de
+medirlo con `scripts/verificar_fuentes.py`: BYMA lista 2727 especies contra 616, y sobre las 614
+que comparten, la mitad de los precios del feed alternativo llegaban con atraso —0,17% de
+diferencia mediana y hasta 2,75% sobre el mismo título—. En un bono de duration 3 eso son entre 6
+y 90 puntos básicos de TIR, que es justo lo que este panel compara. Tampoco quedó como respaldo: un
+respaldo que devuelve otro número no es un respaldo, es una segunda respuesta a la misma pregunta.
+Si BYMA no responde, el panel lo dice en lugar de mostrar otra cosa en silencio.
 
-### Two ways to know a bond
+### Dos maneras de conocer un bono
 
-A bond's issue terms are not downloadable. Coupon, amortization schedule and governing law live in
-its prospectus, and neither BYMA nor the CNV publishes them in machine-readable form. So the panel
-works from whichever of two sources it has, and says which one on every row:
+Las condiciones de emisión de una ON no se descargan. El cupón, el cronograma de amortización y la
+ley aplicable viven en su prospecto, y ni BYMA ni la CNV los publican en formato consultable por
+máquina. Así que el panel trabaja con la fuente que tenga, y dice cuál en cada fila:
 
-* **Payment schedule** (community dataset, fetched live) — covers the traded universe with no
-  manual upkeep, but reports only each payment's total. That is enough for YTM, duration and
-  convexity, and not enough for parity, technical value, accrued interest or WAL, which need to
-  know how much of each payment is principal. Those columns stay empty rather than guessing.
-* **Issue terms** (`data/ons_catalog.csv`) — computes everything, and has to be typed in by hand.
-  A catalog row always wins over the community schedule, because loading one is a deliberate act.
+* **Cronograma de pagos** (dataset comunitario, descargado en vivo) — cubre el universo operado sin
+  mantenimiento manual, pero informa solo el total de cada pago. Alcanza para TIR, duration y
+  convexidad, y no alcanza para paridad, valor técnico, interés corrido ni vida promedio, que
+  necesitan saber cuánto de cada pago es capital. Esas columnas quedan vacías en vez de adivinar.
+* **Condiciones de emisión** (`data/ons_catalog.csv`) — permite calcular todo, y hay que cargarlas a
+  mano. Una fila del catálogo siempre le gana al cronograma comunitario, porque cargarla es una
+  decisión explícita.
 
-The catalog ships **empty on purpose**: shipping plausible-looking coupons nobody verified would
-return wrong yields that look authoritative. Any row added there is flagged ⚠️ until marked
-`verificado=si`, and is worth checking against the issuer's prospectus (via the
-[CNV](https://www.argentina.gob.ar/cnv)), the [IAMC](https://www.iamc.com.ar) daily report (which
-publishes YTM, parity and duration already computed, so it validates both the inputs and the
-result), or the [BYMA](https://www.byma.com.ar) daily bulletin.
+El catálogo viene **vacío a propósito**: mandar cupones verosímiles que nadie verificó devuelve
+rendimientos equivocados con apariencia autoritativa. Toda fila que se agregue queda marcada con ⚠️
+hasta que se ponga `verificado=si`, y conviene contrastarla contra el prospecto del emisor (vía la
+[CNV](https://www.argentina.gob.ar/cnv)), el Informe Diario del [IAMC](https://www.iamc.com.ar)
+—que publica TIR, paridad y duration ya calculadas, así que valida los datos cargados *y* el
+resultado— o el boletín diario de [BYMA](https://www.byma.com.ar).
 
-### Settlement species
+### Especies de liquidación
 
-The last letter of a BYMA ticker is the settlement species, not decoration: **O** settles in pesos,
-**D** in MEP dollars, **C** in cable. `YMCJO`, `YMCJD` and `YMCJC` are the same YPF bond, but the
-first quotes around 152,000 pesos where the others quote around 105 dollars.
+La última letra de un ticker de BYMA es la especie de liquidación, no decoración: **O** liquida en
+pesos, **D** en dólar MEP y **C** en dólar cable. `YMCJO`, `YMCJD` e `YMCJC` son el mismo bono de
+YPF, pero el primero cotiza alrededor de 152.000 pesos donde los otros cotizan alrededor de 105
+dólares.
 
-Two consequences, both handled:
+Dos consecuencias, las dos contempladas:
 
-* A yield is computed only when the species' quote currency matches the bond's currency of issue.
-  Discounting a dollar cash flow against a peso price does not give a slightly wrong yield, it
-  gives a meaningless one — the peso species shows price and liquidity with no yield instead.
-* The catalog is matched by ticker root, so one row loaded as `YMCJO` also covers `YMCJD` and
-  `YMCJC`. An exact ticker still wins over the root, leaving room to load a single species with
-  different terms.
+* La TIR se calcula solo cuando la moneda de la especie coincide con la moneda de emisión del bono.
+  Descontar un flujo en dólares contra un precio en pesos no da una TIR un poco equivocada: da una
+  TIR sin significado. La especie en pesos muestra precio y liquidez, sin rendimiento.
+* El catálogo se busca por raíz del ticker, así que una fila cargada como `YMCJO` cubre también
+  `YMCJD` e `YMCJC`. Un ticker exacto le sigue ganando a la raíz, lo que deja lugar a cargar una
+  especie puntual con condiciones distintas.
 
-The panel quotes 600+ species against a catalog covering a handful, so the species filter defaults
-to the dollar ones and the uncatalogued list sits behind an expander rather than in the warning.
+El panel cotiza más de 600 especies contra un catálogo que cubre unas pocas, así que el filtro de
+especie arranca en las que liquidan en dólares y la lista de las que no tienen cronograma queda
+detrás de un desplegable en vez de dentro del aviso.
 
-### Liquidity
+### Liquidez
 
-No ticker list is typed anywhere: the universe comes from the price feed. What needs filtering is
-the noise in it — species that did not trade today still quote the price of the last session they
-did, so their yield measures a different day's market.
+No hay ninguna lista de tickers escrita a mano: el universo sale del feed de precios. Lo que hay que
+filtrar es el ruido que trae — las especies que no operaron hoy siguen cotizando el precio de la
+última rueda en que sí lo hicieron, así que su rendimiento mide el mercado de otro día.
 
-The liquidity filter defaults to the top 50 by volume, and offers top-20 or every bond that traded.
-Its thresholds are relative rather than absolute because the feed does not document the unit its
-volume is expressed in: "over 1,000,000" would be a made-up number, "the 20 that traded most today"
-holds without knowing the unit.
+El filtro de liquidez arranca en el top 50 por volumen, y ofrece top 20 o todas las que operaron.
+Sus cortes son relativos y no absolutos porque el feed no documenta en qué unidad expresa el
+volumen: "más de 1.000.000" sería un número inventado, "las 20 que más operaron hoy" se sostiene sin
+saber la unidad.
 
-Asking for both dollar species collapses each bond to one row, keeping its most traded species:
-MEP and cable are the same bond collected in a different place, so showing both would spend half
-of a top-50 on repetitions instead of distinct issuers.
+Pedir las dos especies en dólares colapsa cada bono a una sola fila, conservando la más operada: MEP
+y cable son el mismo bono cobrado en distinto lugar, así que mostrar las dos gastaría la mitad de un
+top 50 en repeticiones en vez de emisores distintos.
 
-Currency is filtered before the volume ranking, and the order is not cosmetic: the peso species'
-volume is denominated in pesos and the MEP species' in dollars, so ranking across both compares
-different units and the peso rows win on magnitude rather than on activity.
+La moneda se filtra antes del ranking por volumen, y el orden no es cosmético: el volumen de la
+especie en pesos está expresado en pesos y el de la especie MEP en dólares, así que rankear
+mezclando ambas compara unidades distintas y ganan las filas en pesos por magnitud y no por
+actividad.
 
-Untraded species are also left out of the panel median for the same reason near-maturity bonds are
-— the median is the reference every bond is graded against, so it cannot be built from prices that
-are not comparable. They stay visible in the table; only their influence on the grading is removed.
+Las especies que no operaron quedan además fuera de la mediana del panel, por el mismo motivo que
+los bonos próximos a vencer: la mediana es la referencia contra la que se califica cada bono, así
+que no puede construirse con precios que no son comparables. Siguen visibles en el cuadro; lo único
+que se les quita es la influencia sobre la calificación.
 
-### Modeling limits
+### Límites del modelo
 
-* **The amortization schedule is not taken from BYMA.** Its technical-sheet endpoint carries issue
-  date, maturity, coupon, currency, governing-law country, minimum denomination and residual
-  amount — but the amortization schedule comes as free prose ("amortized in 4 annual instalments,
-  that is on 30 September 2030, ..."). Parsing that per issuer is a guess dressed as data, so the
-  schedule keeps coming from the resolved cash flows instead.
-* **Fixed-rate bonds only.** CER, dollar-linked, Badlar and TAMAR ONs cannot be modeled here:
-  their future cash flow is not determined today. Loading one would produce a meaningless YTM.
-* No step-up coupons and no call/put schedules.
-* Accrued interest on a 30/360 basis; discounting on ACT/365 with annual compounding, so the
-  reported YTM is an **effective annual rate**, directly comparable across payment frequencies.
-* The price convention (dirty vs clean) is an explicit selector, because getting it
-  wrong silently biases YTM and parity. BYMA publishes dirty prices.
+* **El cronograma de amortización no se toma de BYMA.** Su ficha técnica trae fecha de emisión,
+  vencimiento, cupón, moneda, país de la ley, lámina mínima y monto residual — pero el cronograma
+  de amortización viene en prosa libre ("amortizadas en 4 cuotas anuales, es decir el 30 de
+  septiembre de 2030, ..."). Parsear eso emisor por emisor es una adivinanza disfrazada de dato, así
+  que el cronograma sigue viniendo del flujo de fondos ya resuelto.
+* **Solo tasa fija.** Las ONs CER, dollar-linked, Badlar y TAMAR no se pueden modelar acá: su flujo
+  futuro no está determinado hoy. Cargar una devolvería una TIR sin sentido.
+* Sin cupones escalonados (*step-up*) ni opciones de rescate anticipado (*call/put*).
+* Interés corrido en base 30/360; descuento en base ACT/365 con capitalización anual, de modo que la
+  TIR informada sea **efectiva anual** y comparable entre bonos de distinta frecuencia de pago.
+* La convención de precio (sucio contra limpio) es un selector explícito, porque elegirla mal sesga
+  la TIR y la paridad en silencio. BYMA publica precios sucios.
 
 ---
 
-## 📁 Repository Structure
+## 📁 Estructura del repositorio
 
 ```
 stock-dashboard/
-├── app.py                          # Streamlit entry point: page layout, sidebar filters and market/timeframe selectors
-├── constants.py                    # Single source of truth for signal labels and confluence engine thresholds
-├── theme.py                        # Centralized color palette shared by the table and the charts
-├── data_loader.py                  # Parallel price + fundamentals download, caching, and technicals aggregation
-├── indicators.py                   # Indicator math (SMA/EMA/RSI/MACD/Bollinger/Stochastic/OBV/52W) and the confluence algorithm
+├── app.py                          # Punto de entrada Streamlit: selector de secciones, filtros de la barra lateral
+├── constants.py                    # Única fuente de verdad de etiquetas y umbrales de ambos motores
+├── theme.py                        # Paleta de colores centralizada, compartida por el cuadro y los gráficos
+├── data_loader.py                  # Descarga paralela de precios y fundamentales de acciones, caché y agregación
+├── indicators.py                   # Matemática de indicadores (SMA/EMA/RSI/MACD/Bollinger/Estocástico/OBV/52S) y confluencia
 ├── bonds/
-│   ├── __init__.py                 # Fixed-income package for Argentine corporate bonds (ONs)
-│   ├── bond_math.py                # Cash flows, YTM, duration, convexity, parity, accrued interest (pure, no I/O)
-│   ├── catalog.py                  # Parses and validates data/ons_catalog.csv into BondTerms; settlement-species helpers
-│   ├── flows_source.py             # Fetches published payment schedules (community dataset)
-│   ├── panel.py                    # Pure merge of prices + terms + metrics, and the panel filters (order matters, so it is tested)
-│   ├── scoring.py                  # Peer-relative attractiveness grading for ONs
-│   └── data_loader.py              # I/O only: live price feed, US Treasury curve, cached orchestration
+│   ├── __init__.py                 # Paquete de renta fija para ONs argentinas
+│   ├── bond_math.py                # Flujo de fondos, TIR, duration, convexidad, paridad, interés corrido (puro, sin I/O)
+│   ├── byma_source.py              # Precios de BYMA Open Data; el parseo es una función pura
+│   ├── catalog.py                  # Lee y valida data/ons_catalog.csv; helpers de especie de liquidación
+│   ├── flows_source.py             # Descarga los cronogramas de pago publicados (dataset comunitario)
+│   ├── panel.py                    # Cruce puro de precios + condiciones + métricas, y los filtros del panel
+│   ├── scoring.py                  # Puntaje de Oportunidad ponderado, relativo al panel del día
+│   └── data_loader.py              # Solo I/O: precios, curva del Tesoro, orquestación cacheada
 ├── data/
-│   └── ons_catalog.csv             # Optional hand-kept issue terms per ON; empty by default, overrides the fetched schedule
+│   └── ons_catalog.csv             # Condiciones de emisión opcionales por ON; vacío por defecto
 ├── components/
-│   ├── __init__.py                 # Marks components as a package
-│   ├── alerts_panel.py             # Top "quick alerts" cards grouped by signal grade
-│   ├── bonds_panel.py              # The whole Bonds section: controls, KPIs, filters, glossary and methodology
-│   ├── bonds_table.py              # Comparison table of ONs with conditional formatting and per-column help
-│   ├── charts.py                   # Plotly 4-panel technical chart and the valuation-vs-momentum scatter plot
-│   ├── formatting.py               # Shared text formatting helpers (e.g. signed percentages)
-│   ├── kpi_cards.py                # Market breadth and valuation summary KPI cards
-│   ├── screener_table.py           # Interactive screener table with conditional color highlighting
-│   └── ticker_detail.py            # Per-ticker detail view (chart + technical snapshot); not yet wired into app.py
-├── tests/
 │   ├── __init__.py
-│   ├── conftest.py                 # Shared pytest fixtures (deterministic synthetic series)
-│   ├── test_52w_high_low.py        # Tests for compute_52w_high_low
-│   ├── test_bollinger.py           # Tests for compute_bollinger_bands
-│   ├── test_bond_catalog.py        # Tests for the ONs catalog parser and its error reporting
-│   ├── test_bond_filters.py        # Tests for the panel filters and the order they are applied in
-│   ├── test_bond_math.py           # Tests for the fixed-income math (cash flows, YTM, duration, parity)
-│   ├── test_bond_scoring.py        # Tests for the ONs attractiveness grading
-│   ├── test_bonds_panel.py         # Tests for the price/terms merge, source priority and Treasury curve interpolation
-│   ├── test_flows_source.py        # Tests for the published payment-schedule parser
-│   ├── test_compute_stock_technicals.py  # Tests for the compute_stock_technicals aggregator
-│   ├── test_confluence_signal.py   # Tests for evaluate_confluence_signal
-│   ├── test_obv.py                 # Tests for compute_obv
-│   ├── test_rsi.py                 # Tests for compute_rsi
-│   ├── test_sma_ema_macd.py        # Tests for compute_sma / compute_ema / compute_macd
-│   └── test_stochastic.py          # Tests for compute_stochastic
-├── .github/workflows/ci.yml        # GitHub Actions CI: runs ruff and pytest on push/PR to main
-├── requirements.txt                # Runtime dependencies
-├── requirements-dev.txt            # Adds pytest + ruff on top of requirements.txt, for development and CI
-├── ruff.toml                       # Linter configuration
-├── pytest.ini                      # pytest configuration
-├── .python-version                 # Pins the Python version (3.11) for local tooling
-├── run.sh                          # One-click virtualenv setup + launch script
-├── LICENSE                         # MIT license
+│   ├── alerts_panel.py             # Tarjetas de alertas rápidas agrupadas por grado de señal
+│   ├── bonds_panel.py              # La sección de Bonos completa: controles, KPIs, filtros, glosario y metodología
+│   ├── bonds_table.py              # Cuadro comparativo de ONs con formato condicional y ayuda por columna
+│   ├── charts.py                   # Gráfico técnico de 4 paneles y dispersión valuación vs momento
+│   ├── formatting.py               # Helpers de formato de texto compartidos
+│   ├── kpi_cards.py                # Tarjetas de KPIs de amplitud de mercado y valuación
+│   ├── screener_table.py           # Tabla interactiva del screener con resaltado condicional
+│   └── ticker_detail.py            # Vista de detalle por ticker; todavía no conectada a app.py
+├── scripts/
+│   ├── verificar_fuentes.py        # Diagnóstico de las fuentes de datos y comparación entre feeds
+│   └── panel_ons.py                # El panel de ONs en la terminal, con el mismo motor que la interfaz
+├── tests/
+│   ├── conftest.py                 # Fixtures compartidas (series sintéticas deterministas)
+│   ├── test_52w_high_low.py        # compute_52w_high_low
+│   ├── test_bollinger.py           # compute_bollinger_bands
+│   ├── test_bond_catalog.py        # Parser del catálogo de ONs y su reporte de errores
+│   ├── test_bond_filters.py        # Filtros del panel y el orden en que se aplican
+│   ├── test_bond_math.py           # Matemática de renta fija (flujos, TIR, duration, paridad)
+│   ├── test_bond_score.py          # Puntaje de Oportunidad ponderado
+│   ├── test_bond_scoring.py        # Etiquetas de atractivo y casos excluyentes
+│   ├── test_bonds_panel.py         # Cruce precios/condiciones, prioridad de fuentes e interpolación de la curva
+│   ├── test_byma_source.py         # Parseo de la respuesta de BYMA
+│   ├── test_flows_source.py        # Parser de los cronogramas publicados
+│   ├── test_compute_stock_technicals.py
+│   ├── test_confluence_signal.py   # evaluate_confluence_signal
+│   ├── test_obv.py                 # compute_obv
+│   ├── test_rsi.py                 # compute_rsi
+│   ├── test_sma_ema_macd.py        # compute_sma / compute_ema / compute_macd
+│   └── test_stochastic.py          # compute_stochastic
+├── .github/workflows/ci.yml        # CI: corre ruff y pytest en push/PR contra main, en Python 3.11 y 3.14
+├── requirements.txt                # Dependencias de ejecución
+├── requirements-dev.txt            # Agrega pytest y ruff, para desarrollo y CI
+├── ruff.toml                       # Configuración del linter
+├── pytest.ini                      # Configuración de pytest
+├── .python-version                 # Fija la versión de Python (3.11) para las herramientas locales
+├── run.sh                          # Setup del entorno virtual y lanzamiento, en un solo paso
+├── LICENSE                         # Licencia MIT
 └── .gitignore
 ```
 
 ---
 
-## 🚀 Quick Start
+## 🚀 Puesta en marcha
 
-### Prerequisites
-* Python 3.11+
+### Requisitos
+* Python 3.11 o superior
 * Git
 
-### 1. Clone the repository
+### 1. Clonar el repositorio
 ```bash
 git clone https://github.com/JulianWaksmann/stock-dashboard.git
 cd stock-dashboard
 ```
 
-### 2. Set up a virtual environment & install dependencies
+### 2. Crear el entorno virtual e instalar dependencias
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
@@ -305,78 +316,92 @@ pip install --upgrade pip
 pip install -r requirements.txt
 ```
 
-### 3. Run the dashboard
+### 3. Levantar el tablero
 ```bash
 streamlit run app.py
 ```
-Or execute directly using the launcher script:
+O directamente con el script de arranque:
 ```bash
 ./run.sh
 ```
 
-The application will open in your default browser at `http://localhost:8501`.
+La aplicación se abre en el navegador en `http://localhost:8501`.
+
+### Herramientas de línea de comandos
+
+```bash
+# Diagnóstico de las fuentes: qué responde cada una, con qué campos y cuántos registros
+python3 scripts/verificar_fuentes.py
+
+# El panel de ONs en la terminal, con el mismo motor y los mismos filtros que la interfaz
+python3 scripts/panel_ons.py --top 20 --desglose
+```
 
 ---
 
-## 🛠️ Development / Contributing
+## 🛠️ Desarrollo
 
-### Install development dependencies
+### Instalar dependencias de desarrollo
 ```bash
 pip install -r requirements-dev.txt
 ```
-This installs the runtime dependencies plus `pytest` and `ruff`.
+Instala las dependencias de ejecución más `pytest` y `ruff`.
 
-### Run the test suite
+### Correr los tests
 ```bash
 pytest
 ```
-The suite currently has 76 unit tests covering the indicator math and the confluence algorithm in `indicators.py`.
 
-### Run the linter
+### Correr el linter
 ```bash
 ruff check .
 ```
 
-### Continuous Integration
-Every push and pull request against `main` runs both `ruff check .` and `pytest` via GitHub Actions (see `.github/workflows/ci.yml`); a PR won't be mergeable if either step fails.
+### Integración continua
+Cada push y cada pull request contra `main` corre `ruff check .` y `pytest` vía GitHub Actions (ver
+`.github/workflows/ci.yml`), en Python 3.11 y 3.14. Un PR no es mergeable si alguno de los dos
+pasos falla.
 
-### Where to change things
-* Confluence signal labels and numeric thresholds: `constants.py`.
-* Bond grading labels and thresholds: `constants.py` (the "BONOS CORPORATIVOS" section).
-* Issue terms of an ON (coupon, maturity, amortization schedule, law): `data/ons_catalog.csv`.
-* The payment-schedule dataset: `COMMUNITY_FLOWS_URL` in `bonds/flows_source.py`.
-* The bond price feed: `bonds/byma_source.py`. Its parsing is a pure function, so another source
-  slots in by normalizing to the same columns.
-* Colors used across the table and the charts: `theme.py`.
-
----
-
-## ☁️ Deployment (Streamlit Community Cloud)
-
-This application is fully optimized for **Streamlit Community Cloud**:
-
-1. Fork or push this repository to your GitHub account: `https://github.com/JulianWaksmann/stock-dashboard`.
-2. Navigate to [share.streamlit.io](https://share.streamlit.io) and log in with GitHub.
-3. Click **"New app"**, select your repository, branch (`main`), and set the main file path to `app.py`.
-4. Click **"Deploy"**.
+### Dónde se cambian las cosas
+* Etiquetas y umbrales de la señal de confluencia: `constants.py`.
+* Etiquetas, umbrales y pesos del puntaje de bonos: `constants.py`, sección "BONOS CORPORATIVOS".
+* Condiciones de emisión de una ON (cupón, vencimiento, amortizaciones, ley): `data/ons_catalog.csv`.
+* El dataset de cronogramas de pago: `COMMUNITY_FLOWS_URL` en `bonds/flows_source.py`.
+* La fuente de precios de bonos: `bonds/byma_source.py`. Su parseo es una función pura, así que otra
+  fuente entra normalizando a las mismas columnas.
+* Colores del cuadro y de los gráficos: `theme.py`.
 
 ---
 
-## 📊 Technical Rules Summary
+## ☁️ Despliegue (Streamlit Community Cloud)
 
-$$\text{Distance to SMA}\% = \frac{\text{Price} - \text{SMA}}{\text{SMA}} \times 100$$
-
-$$\text{Bollinger Bandwidth}\% = \frac{\text{Upper Band} - \text{Lower Band}}{\text{Middle Band}} \times 100$$
-
-$$\text{Distance to 52W High}\% = \frac{\text{Price} - \text{High}_{252}}{\text{High}_{252}} \times 100$$
-
----
-
-## 📄 License
-
-This project is licensed under the **MIT License** — see [`LICENSE`](LICENSE) for the full text.
+1. Subí este repositorio a tu cuenta de GitHub: `https://github.com/JulianWaksmann/stock-dashboard`.
+2. Entrá a [share.streamlit.io](https://share.streamlit.io) e iniciá sesión con GitHub.
+3. Hacé clic en **"New app"**, elegí el repositorio y la rama (`main`), y poné `app.py` como archivo principal.
+4. Hacé clic en **"Deploy"**.
 
 ---
 
-## ⚠️ Disclaimer
-*This project is built for quantitative research and screening purposes only. It does not constitute financial advice. Past performance and quantitative indicators do not guarantee future market results.*
+## 📊 Fórmulas de referencia
+
+$$\text{Distancia a la SMA}\% = \frac{\text{Precio} - \text{SMA}}{\text{SMA}} \times 100$$
+
+$$\text{Ancho de Bollinger}\% = \frac{\text{Banda Superior} - \text{Banda Inferior}}{\text{Banda Media}} \times 100$$
+
+$$\text{Distancia al Máx. 52S}\% = \frac{\text{Precio} - \text{Máx}_{252}}{\text{Máx}_{252}} \times 100$$
+
+$$\text{Paridad}\% = \frac{\text{Precio}}{\text{Capital Residual} + \text{Interés Corrido}} \times 100$$
+
+---
+
+## 📄 Licencia
+
+Proyecto bajo **Licencia MIT** — ver [`LICENSE`](LICENSE) para el texto completo.
+
+---
+
+## ⚠️ Advertencia
+*Este proyecto está construido con fines de investigación y screening cuantitativo. No constituye
+asesoramiento financiero. El rendimiento pasado y los indicadores cuantitativos no garantizan
+resultados futuros. Los datos provienen de fuentes públicas sin garantía de exactitud: verificá
+todo contra tu broker o contra el boletín oficial de BYMA antes de operar.*
