@@ -268,3 +268,49 @@ SECTION_BONDS: Final[str] = "💵 Bonos Corporativos Argentinos (ONs)"
 
 SECTION_OPTIONS: Final[tuple[str, ...]] = (SECTION_STOCKS, SECTION_BONDS)
 
+# ----------------------------------------------------------------------
+# Especies de liquidación de una ON.
+#
+# En BYMA un mismo bono cotiza en tres especies distintas, identificadas por
+# la última letra del ticker: O liquida en pesos, D en dólar MEP y C en dólar
+# cable. YMCJO, YMCJD e YMCJC son la MISMA obligación negociable de YPF; lo
+# que cambia es en qué moneda se paga y, por lo tanto, en qué moneda está
+# expresado el precio de pantalla (YMCJO cotiza ~152.000 pesos donde YMCJD
+# cotiza ~105 dólares).
+#
+# Esto no es cosmético: descontar el flujo en dólares de la ON contra un
+# precio en pesos devuelve una TIR sin ningún sentido económico. Por eso el
+# panel calcula rendimientos solo cuando la moneda de la especie coincide
+# con la moneda de emisión del bono.
+# ----------------------------------------------------------------------
+BOND_SETTLEMENT_PESOS: Final[str] = "🇦🇷 Pesos"
+BOND_SETTLEMENT_MEP: Final[str] = "💵 MEP"
+BOND_SETTLEMENT_CABLE: Final[str] = "🌎 Cable"
+BOND_SETTLEMENT_UNKNOWN: Final[str] = "—"
+
+# Última letra del ticker -> especie de liquidación.
+BOND_SETTLEMENT_BY_SUFFIX: Final[dict[str, str]] = {
+    "O": BOND_SETTLEMENT_PESOS,
+    "D": BOND_SETTLEMENT_MEP,
+    "C": BOND_SETTLEMENT_CABLE,
+}
+
+# Especie de liquidación -> moneda en la que está expresado el precio.
+BOND_SETTLEMENT_CURRENCY: Final[dict[str, str]] = {
+    BOND_SETTLEMENT_PESOS: "ARS",
+    BOND_SETTLEMENT_MEP: "USD",
+    BOND_SETTLEMENT_CABLE: "USD",
+}
+
+# --- Filtro por especie de liquidación ---
+BOND_FILTER_SETTLEMENT_ALL: Final[str] = "Todas las especies"
+BOND_FILTER_SETTLEMENT_USD: Final[str] = "💵 Solo dólares (MEP + Cable)"
+BOND_FILTER_SETTLEMENT_MEP: Final[str] = "💵 Solo MEP"
+BOND_FILTER_SETTLEMENT_PESOS: Final[str] = "🇦🇷 Solo pesos"
+
+BOND_SETTLEMENT_FILTER_OPTIONS: Final[tuple[str, ...]] = (
+    BOND_FILTER_SETTLEMENT_USD,
+    BOND_FILTER_SETTLEMENT_MEP,
+    BOND_FILTER_SETTLEMENT_PESOS,
+    BOND_FILTER_SETTLEMENT_ALL,
+)

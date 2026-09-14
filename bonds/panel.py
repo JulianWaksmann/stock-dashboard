@@ -19,9 +19,9 @@ import numpy as np
 import pandas as pd
 
 from bonds.bond_math import analyze_bond
-from bonds.catalog import BondTerms
+from bonds.catalog import BondTerms, find_terms, quote_currency_of, settlement_of
 from bonds.scoring import evaluate_bond_attractiveness
-from constants import BOND_SIGNAL_NO_DATA
+from constants import BOND_SETTLEMENT_UNKNOWN, BOND_SIGNAL_NO_DATA
 
 logger = logging.getLogger(__name__)
 
@@ -126,7 +126,9 @@ def build_bonds_panel(
 
     for _, quote in prices.iterrows():
         ticker = quote["Ticker"]
-        terms = catalog.get(ticker)
+        terms = find_terms(catalog, ticker)
+        settlement_kind = settlement_of(ticker)
+        quote_currency = quote_currency_of(ticker)
         price = float(quote.get("Precio", np.nan))
         bid = float(quote.get("Punta Compra", np.nan))
         ask = float(quote.get("Punta Venta", np.nan))
@@ -137,6 +139,8 @@ def build_bonds_panel(
             "Emisor": terms.issuer if terms else "— (fuera del catálogo)",
             "Sector": terms.sector if terms else "Sin clasificar",
             "Moneda": terms.currency if terms else "—",
+            "Liquidación": settlement_kind,
+            "Moneda Precio": quote_currency or BOND_SETTLEMENT_UNKNOWN,
             "Ley": terms.law if terms else "—",
             "Cupón (%)": terms.coupon_rate if terms else np.nan,
             "Vencimiento": terms.maturity if terms else pd.NaT,
@@ -165,7 +169,13 @@ def build_bonds_panel(
             "Spread vs UST (pb)": np.nan,
         }
 
-        if terms is not None and np.isfinite(price) and price > 0:
+        # Solo se descuenta el flujo cuando la especie cotiza en la misma
+        # moneda en la que paga el bono. La especie en pesos de una ON en
+        # dólares cotiza ~152.000 donde la especie MEP cotiza ~105: mezclarlas
+        # no da una TIR mala, da una TIR sin ningún significado.
+        currency_matches = terms is not None and quote_currency == terms.currency
+
+        if currency_matches and np.isfinite(price) and price > 0:
             metrics = _metrics_for_bond(terms, price, settlement, price_is_dirty)
             if metrics:
                 row.update(

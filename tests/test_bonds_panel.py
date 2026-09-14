@@ -16,9 +16,19 @@ import pytest
 
 from bonds.catalog import BondTerms
 from bonds.panel import build_bonds_panel, interpolate_treasury_yield
-from constants import BOND_SIGNAL_NO_DATA
+from constants import (
+    BOND_SETTLEMENT_CABLE,
+    BOND_SETTLEMENT_MEP,
+    BOND_SETTLEMENT_PESOS,
+    BOND_SETTLEMENT_UNKNOWN,
+    BOND_SIGNAL_NO_DATA,
+)
 
 SETTLEMENT = date(2025, 1, 15)
+
+# Los tickers de prueba terminan en D (dólar MEP) salvo que el test diga otra
+# cosa: la última letra decide la moneda del precio, y con ella si el flujo en
+# dólares del bono se puede descontar contra ese precio.
 
 
 def make_terms(ticker: str, **overrides) -> BondTerms:
@@ -67,16 +77,16 @@ class TestPanelVacio:
 
 class TestCruceDePreciosYCatalogo:
     def test_calcula_las_metricas_de_una_on_del_catalogo(self):
-        panel = build_bonds_panel(make_prices(quote("TEST1")), {"TEST1": make_terms("TEST1")}, SETTLEMENT)
+        panel = build_bonds_panel(make_prices(quote("TSTAD")), {"TSTAD": make_terms("TSTAD")}, SETTLEMENT)
         row = panel.iloc[0]
         assert bool(row["En Catálogo"]) is True
-        assert row["Emisor"] == "Emisor TEST1"
+        assert row["Emisor"] == "Emisor TSTAD"
         assert row["TIR (%)"] == pytest.approx(10.25, abs=0.05)
         assert row["Duration Mod."] > 0
         assert row["Paridad (%)"] == pytest.approx(100.0)
 
     def test_una_on_fuera_del_catalogo_conserva_precio_pero_no_tiene_tir(self):
-        panel = build_bonds_panel(make_prices(quote("RARO1")), {}, SETTLEMENT)
+        panel = build_bonds_panel(make_prices(quote("RARAD")), {}, SETTLEMENT)
         row = panel.iloc[0]
         assert bool(row["En Catálogo"]) is False
         assert row["Precio"] == pytest.approx(100.0)
@@ -85,14 +95,14 @@ class TestCruceDePreciosYCatalogo:
         assert row["Atractivo"] == BOND_SIGNAL_NO_DATA
 
     def test_no_se_pierde_ninguna_especie_que_cotiza(self):
-        prices = make_prices(quote("TEST1"), quote("RARO1"), quote("TEST2"))
-        panel = build_bonds_panel(prices, {"TEST1": make_terms("TEST1")}, SETTLEMENT)
-        assert set(panel["Ticker"]) == {"TEST1", "RARO1", "TEST2"}
+        prices = make_prices(quote("TSTAD"), quote("RARAD"), quote("TSTBD"))
+        panel = build_bonds_panel(prices, {"TSTAD": make_terms("TSTAD")}, SETTLEMENT)
+        assert set(panel["Ticker"]) == {"TSTAD", "RARAD", "TSTBD"}
 
     def test_un_precio_invalido_no_produce_metricas(self):
-        prices = make_prices(quote("TEST1", price=np.nan), quote("TEST2", price=0.0))
+        prices = make_prices(quote("TSTAD", price=np.nan), quote("TSTBD", price=0.0))
         panel = build_bonds_panel(
-            prices, {"TEST1": make_terms("TEST1"), "TEST2": make_terms("TEST2")}, SETTLEMENT
+            prices, {"TSTAD": make_terms("TSTAD"), "TSTBD": make_terms("TSTBD")}, SETTLEMENT
         )
         assert panel["TIR (%)"].isna().all()
 
@@ -100,15 +110,15 @@ class TestCruceDePreciosYCatalogo:
         # `bond_math` usa None para "no calculable" y pandas usa NaN: si se
         # mezclan, la columna deja de ser numérica y rompe el formato y el
         # ordenamiento de la tabla.
-        prices = make_prices(quote("TEST1"), quote("RARO1"))
-        panel = build_bonds_panel(prices, {"TEST1": make_terms("TEST1")}, SETTLEMENT)
+        prices = make_prices(quote("TSTAD"), quote("RARAD"))
+        panel = build_bonds_panel(prices, {"TSTAD": make_terms("TSTAD")}, SETTLEMENT)
         for column in ("TIR (%)", "Duration Mod.", "Paridad (%)", "Spread (%)", "Convexidad"):
             assert pd.api.types.is_numeric_dtype(panel[column]), column
 
 
 class TestSpreadDePuntas:
     def test_calcula_el_spread_sobre_el_punto_medio(self):
-        panel = build_bonds_panel(make_prices(quote("T", bid=99.0, ask=101.0)), {}, SETTLEMENT)
+        panel = build_bonds_panel(make_prices(quote("TSTAD", bid=99.0, ask=101.0)), {}, SETTLEMENT)
         assert panel.iloc[0]["Spread (%)"] == pytest.approx(2.0)
 
     @pytest.mark.parametrize(
@@ -121,33 +131,33 @@ class TestSpreadDePuntas:
         ],
     )
     def test_sin_dos_puntas_validas_no_hay_spread(self, bid, ask):
-        panel = build_bonds_panel(make_prices(quote("T", bid=bid, ask=ask)), {}, SETTLEMENT)
+        panel = build_bonds_panel(make_prices(quote("TSTAD", bid=bid, ask=ask)), {}, SETTLEMENT)
         assert np.isnan(panel.iloc[0]["Spread (%)"])
 
 
 class TestMedianaYOrden:
     def test_ordena_de_mayor_a_menor_tir(self):
-        prices = make_prices(quote("CARO", price=120.0), quote("BARATO", price=80.0))
-        catalog = {"CARO": make_terms("CARO"), "BARATO": make_terms("BARATO")}
+        prices = make_prices(quote("CARAD", price=120.0), quote("BARAD", price=80.0))
+        catalog = {"CARAD": make_terms("CARAD"), "BARAD": make_terms("BARAD")}
         panel = build_bonds_panel(prices, catalog, SETTLEMENT)
-        assert list(panel["Ticker"]) == ["BARATO", "CARO"]
+        assert list(panel["Ticker"]) == ["BARAD", "CARAD"]
 
     def test_las_ons_sin_tir_quedan_al_final(self):
-        prices = make_prices(quote("RARO1"), quote("TEST1"))
-        panel = build_bonds_panel(prices, {"TEST1": make_terms("TEST1")}, SETTLEMENT)
-        assert list(panel["Ticker"]) == ["TEST1", "RARO1"]
+        prices = make_prices(quote("RARAD"), quote("TSTAD"))
+        panel = build_bonds_panel(prices, {"TSTAD": make_terms("TSTAD")}, SETTLEMENT)
+        assert list(panel["Ticker"]) == ["TSTAD", "RARAD"]
 
     def test_expone_la_mediana_de_tir_del_panel(self):
-        prices = make_prices(quote("TEST1", price=90.0), quote("TEST2", price=110.0))
-        catalog = {"TEST1": make_terms("TEST1"), "TEST2": make_terms("TEST2")}
+        prices = make_prices(quote("TSTAD", price=90.0), quote("TSTBD", price=110.0))
+        catalog = {"TSTAD": make_terms("TSTAD"), "TSTBD": make_terms("TSTBD")}
         panel = build_bonds_panel(prices, catalog, SETTLEMENT)
         assert panel.attrs["median_ytm_pct"] == pytest.approx(panel["TIR (%)"].median())
 
 
 class TestConvencionDePrecio:
     def test_precio_limpio_rinde_menos_que_el_mismo_precio_sucio(self):
-        prices = make_prices(quote("TEST1", price=100.0))
-        catalog = {"TEST1": make_terms("TEST1")}
+        prices = make_prices(quote("TSTAD", price=100.0))
+        catalog = {"TSTAD": make_terms("TSTAD")}
         settlement = date(2025, 4, 15)  # media rueda de cupón devengada
         sucio = build_bonds_panel(prices, catalog, settlement, price_is_dirty=True)
         limpio = build_bonds_panel(prices, catalog, settlement, price_is_dirty=False)
@@ -159,8 +169,8 @@ class TestSpreadContraElTesoro:
 
     def test_mide_el_spread_contra_el_tramo_de_duration_equivalente(self):
         panel = build_bonds_panel(
-            make_prices(quote("TEST1", price=100.0)),
-            {"TEST1": make_terms("TEST1")},
+            make_prices(quote("TSTAD", price=100.0)),
+            {"TSTAD": make_terms("TSTAD")},
             SETTLEMENT,
             treasury_curve=self.CURVE,
         )
@@ -170,7 +180,7 @@ class TestSpreadContraElTesoro:
 
     def test_sin_curva_no_se_informa_spread(self):
         panel = build_bonds_panel(
-            make_prices(quote("TEST1")), {"TEST1": make_terms("TEST1")}, SETTLEMENT, treasury_curve={}
+            make_prices(quote("TSTAD")), {"TSTAD": make_terms("TSTAD")}, SETTLEMENT, treasury_curve={}
         )
         assert np.isnan(panel.iloc[0]["Spread vs UST (pb)"])
 
@@ -198,3 +208,47 @@ class TestInterpolacionDeLaCurva:
 
     def test_sin_curva_no_hay_interpolacion(self):
         assert interpolate_treasury_yield({}, 5.0) is None
+
+
+class TestMonedaDeLaEspecie:
+    """
+    Una misma ON cotiza en pesos (especie O) y en dólares (D y C). Descontar un
+    flujo en dólares contra el precio en pesos devuelve una TIR sin sentido
+    económico, así que el panel exige que las monedas coincidan.
+    """
+
+    def test_la_especie_en_pesos_de_un_bono_en_dolares_no_tiene_tir(self):
+        panel = build_bonds_panel(
+            make_prices(quote("TSTAO", price=152_000.0)), {"TSTAO": make_terms("TSTAO")}, SETTLEMENT
+        )
+        row = panel.iloc[0]
+        assert bool(row["En Catálogo"]) is True
+        assert np.isnan(row["TIR (%)"])
+        assert row["Moneda Precio"] == "ARS"
+
+    def test_la_especie_en_dolares_del_mismo_bono_si_tiene_tir(self):
+        panel = build_bonds_panel(
+            make_prices(quote("TSTAD", price=100.0)), {"TSTAO": make_terms("TSTAO")}, SETTLEMENT
+        )
+        row = panel.iloc[0]
+        assert row["TIR (%)"] == pytest.approx(10.25, abs=0.05)
+        assert row["Moneda Precio"] == "USD"
+
+    def test_una_fila_del_catalogo_cubre_las_tres_especies_del_bono(self):
+        prices = make_prices(quote("TSTAO"), quote("TSTAD"), quote("TSTAC"))
+        panel = build_bonds_panel(prices, {"TSTAO": make_terms("TSTAO")}, SETTLEMENT)
+        assert panel["En Catálogo"].all()
+        assert set(panel["Emisor"]) == {"Emisor TSTAO"}
+
+    def test_informa_la_especie_de_liquidacion_de_cada_ticker(self):
+        prices = make_prices(quote("TSTAO"), quote("TSTAD"), quote("TSTAC"))
+        panel = build_bonds_panel(prices, {}, SETTLEMENT)
+        by_ticker = dict(zip(panel["Ticker"], panel["Liquidación"], strict=True))
+        assert by_ticker["TSTAO"] == BOND_SETTLEMENT_PESOS
+        assert by_ticker["TSTAD"] == BOND_SETTLEMENT_MEP
+        assert by_ticker["TSTAC"] == BOND_SETTLEMENT_CABLE
+
+    def test_un_ticker_que_no_sigue_la_convencion_queda_sin_especie(self):
+        panel = build_bonds_panel(make_prices(quote("RARO")), {}, SETTLEMENT)
+        assert panel.iloc[0]["Liquidación"] == BOND_SETTLEMENT_UNKNOWN
+        assert np.isnan(panel.iloc[0]["TIR (%)"])

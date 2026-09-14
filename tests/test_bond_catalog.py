@@ -12,7 +12,21 @@ from datetime import date
 
 import pytest
 
-from bonds.catalog import DEFAULT_CATALOG_PATH, REQUIRED_COLUMNS, load_catalog
+from bonds.catalog import (
+    DEFAULT_CATALOG_PATH,
+    REQUIRED_COLUMNS,
+    base_ticker_of,
+    find_terms,
+    load_catalog,
+    quote_currency_of,
+    settlement_of,
+)
+from constants import (
+    BOND_SETTLEMENT_CABLE,
+    BOND_SETTLEMENT_MEP,
+    BOND_SETTLEMENT_PESOS,
+    BOND_SETTLEMENT_UNKNOWN,
+)
 
 HEADER = ",".join(REQUIRED_COLUMNS)
 
@@ -194,3 +208,69 @@ class TestArchivoInvalido:
         terms, errors = load_catalog(path)
         assert terms == {}
         assert "faltan columnas obligatorias" in errors[0]
+
+
+class TestEspeciesDeLiquidacion:
+    """
+    En BYMA una misma ON cotiza en tres especies según la última letra del
+    ticker: O liquida en pesos, D en dólar MEP y C en dólar cable. Las tres
+    comparten cupón, vencimiento y cronograma, así que el catálogo necesita
+    una sola fila por bono, no tres.
+    """
+
+    @pytest.mark.parametrize(
+        "ticker,esperado",
+        [
+            ("YMCJO", BOND_SETTLEMENT_PESOS),
+            ("YMCJD", BOND_SETTLEMENT_MEP),
+            ("YMCJC", BOND_SETTLEMENT_CABLE),
+        ],
+    )
+    def test_lee_la_especie_desde_la_ultima_letra(self, ticker, esperado):
+        assert settlement_of(ticker) == esperado
+
+    @pytest.mark.parametrize("ticker", ["YMCJ", "YMCJDD", "YMCJX", "", "  "])
+    def test_un_ticker_fuera_de_la_convencion_no_se_adivina(self, ticker):
+        assert settlement_of(ticker) == BOND_SETTLEMENT_UNKNOWN
+        assert quote_currency_of(ticker) is None
+
+    def test_la_moneda_del_precio_sale_de_la_especie_no_del_bono(self):
+        # El mismo bono en dólares cotiza en pesos si se opera la especie O.
+        assert quote_currency_of("YMCJO") == "ARS"
+        assert quote_currency_of("YMCJD") == "USD"
+        assert quote_currency_of("YMCJC") == "USD"
+
+    @pytest.mark.parametrize("ticker", ["YMCJO", "YMCJD", "YMCJC"])
+    def test_las_tres_especies_comparten_raiz(self, ticker):
+        assert base_ticker_of(ticker) == "YMCJ"
+
+    def test_un_ticker_sin_especie_es_su_propia_raiz(self):
+        assert base_ticker_of("RARO") == "RARO"
+
+    def test_la_normalizacion_ignora_mayusculas_y_espacios(self):
+        assert base_ticker_of(" ymcjd ") == "YMCJ"
+        assert settlement_of(" ymcjd ") == BOND_SETTLEMENT_MEP
+
+
+class TestBusquedaDeCondiciones:
+    def test_una_fila_cargada_como_especie_o_cubre_las_especies_d_y_c(self, tmp_path):
+        terms, _ = load_catalog(write_catalog(tmp_path, VALID_ROW))
+        assert find_terms(terms, "YMCJD") is terms["YMCJO"]
+        assert find_terms(terms, "YMCJC") is terms["YMCJO"]
+
+    def test_el_ticker_exacto_le_gana_a_la_raiz(self, tmp_path):
+        # Permite cargar una especie puntual con condiciones distintas sin que
+        # la fila genérica del bono la pise.
+        especifica = VALID_ROW.replace("YMCJO", "YMCJD", 1).replace("YPF S.A.", "YPF especie D")
+        terms, errors = load_catalog(write_catalog(tmp_path, VALID_ROW, especifica))
+        assert errors == []
+        assert find_terms(terms, "YMCJD").issuer == "YPF especie D"
+        assert find_terms(terms, "YMCJO").issuer == "YPF S.A."
+
+    def test_un_ticker_ajeno_al_catalogo_no_matchea(self, tmp_path):
+        terms, _ = load_catalog(write_catalog(tmp_path, VALID_ROW))
+        assert find_terms(terms, "ZZZZD") is None
+
+    def test_la_busqueda_normaliza_el_ticker(self, tmp_path):
+        terms, _ = load_catalog(write_catalog(tmp_path, VALID_ROW))
+        assert find_terms(terms, " ymcjd ") is terms["YMCJO"]
