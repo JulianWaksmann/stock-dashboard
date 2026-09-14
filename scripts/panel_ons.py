@@ -30,12 +30,34 @@ from pathlib import Path
 
 import pandas as pd
 
+# El script vive en scripts/ y usa los módulos del proyecto, así que agrega la
+# raíz del repositorio al path. Copiarlo suelto a otra carpeta no alcanza: lo
+# que importa está en bonds/, no acá.
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from bonds.byma_source import fetch_byma_bond_prices  # noqa: E402
-from bonds.catalog import load_catalog  # noqa: E402
-from bonds.flows_source import fetch_community_flows  # noqa: E402
-from bonds.panel import apply_bond_filters, build_bonds_panel  # noqa: E402
+try:
+    from bonds.byma_source import fetch_byma_bond_prices  # noqa: E402
+    from bonds.catalog import load_catalog  # noqa: E402
+    from bonds.flows_source import fetch_community_flows  # noqa: E402
+    from bonds.panel import apply_bond_filters, build_bonds_panel  # noqa: E402
+except ModuleNotFoundError as exc:
+    # Sin este mensaje, correr el script fuera del repositorio falla con un
+    # "No module named 'bonds'" que no dice qué hacer al respecto.
+    print(
+        f"No se encontró el módulo '{exc.name}'.\n\n"
+        "Este script forma parte del proyecto y usa el motor de cálculo que vive en bonds/,\n"
+        "así que tiene que correrse desde adentro del repositorio:\n\n"
+        "    git clone https://github.com/JulianWaksmann/stock-dashboard.git\n"
+        "    cd stock-dashboard\n"
+        "    git checkout corporate-bonds-tab\n"
+        "    pip install -r requirements.txt\n"
+        "    python scripts/panel_ons.py\n\n"
+        "Si ya tenés el repositorio, entrá a su carpeta y corré 'python scripts/panel_ons.py'\n"
+        "desde ahí, en lugar de copiar el archivo suelto a otro directorio.",
+        file=sys.stderr,
+    )
+    raise SystemExit(1) from exc
+
 from constants import (  # noqa: E402
     BOND_FILTER_LAW_ALL,
     BOND_FILTER_LIQUIDITY_ALL,
