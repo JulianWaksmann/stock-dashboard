@@ -254,3 +254,17 @@ BOND_PRICE_CONVENTION_OPTIONS: Final[tuple[str, ...]] = (
     BOND_PRICE_DIRTY,
     BOND_PRICE_CLEAN,
 )
+
+# ----------------------------------------------------------------------
+# Secciones del tablero (selector superior de app.py)
+#
+# Es un selector y no `st.tabs` porque Streamlit ejecuta el cuerpo de todas
+# las pestañas en cada corrida: con pestañas nativas, mirar acciones
+# dispararía igual la descarga de precios de ONs. Con el selector, cada
+# sección consulta sus fuentes recién cuando se la elige.
+# ----------------------------------------------------------------------
+SECTION_STOCKS: Final[str] = "📈 Acciones (Confluencia & Smart Money)"
+SECTION_BONDS: Final[str] = "💵 Bonos Corporativos Argentinos (ONs)"
+
+SECTION_OPTIONS: Final[tuple[str, ...]] = (SECTION_STOCKS, SECTION_BONDS)
+
