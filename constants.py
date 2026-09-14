@@ -370,3 +370,60 @@ BOND_TOP_VOLUME_SIZES: Final[dict[str, int]] = {
     BOND_FILTER_LIQUIDITY_TOP_20: 20,
     BOND_FILTER_LIQUIDITY_TOP_50: 50,
 }
+
+# ----------------------------------------------------------------------
+# Puntaje de Oportunidad (0-100).
+#
+# El semáforo por puntos cuenta condiciones cumplidas, y eso empareja cosas
+# que no son iguales: un bono que roza el umbral de liquidez suma lo mismo
+# que uno que lo supera diez veces. El puntaje pondera cada dimensión de
+# forma continua, comparando a cada ON contra el resto del panel del día.
+#
+# Los pesos son un criterio de inversión explícito, no una verdad: dicen
+# que el rendimiento relativo pesa más que todo lo demás, que la liquidez
+# importa casi tanto porque un rendimiento que no podés ejecutar no existe,
+# y que la jurisdicción es un matiz y no el eje de la decisión. Se tocan
+# acá, en un solo lugar, y suman 100.
+# ----------------------------------------------------------------------
+BOND_SCORE_YIELD: Final[str] = "Rendimiento"
+BOND_SCORE_RATE_RISK: Final[str] = "Riesgo de tasa"
+BOND_SCORE_LIQUIDITY: Final[str] = "Liquidez"
+BOND_SCORE_PARITY: Final[str] = "Paridad"
+BOND_SCORE_JURISDICTION: Final[str] = "Jurisdicción"
+
+BOND_SCORE_WEIGHTS: Final[dict[str, float]] = {
+    BOND_SCORE_YIELD: 35.0,
+    BOND_SCORE_LIQUIDITY: 25.0,
+    BOND_SCORE_RATE_RISK: 20.0,
+    BOND_SCORE_PARITY: 10.0,
+    BOND_SCORE_JURISDICTION: 10.0,
+}
+
+# Pendiente del castigo por prima excesiva. Pasado el umbral de riesgo, cada
+# punto porcentual de TIR de más se cuenta como este múltiplo de puntos de
+# menos, de modo que el puntaje de rendimiento baje de verdad en lugar de
+# empatar con el percentil, que sigue subiendo. Con pendiente 2, un bono que
+# supera el umbral por 5 pp puntúa como uno que rinde 10 pp por debajo de él.
+BOND_SCORE_EXCESS_PENALTY_SLOPE: Final[float] = 2.0
+
+# Dentro de Liquidez, cuánto pesa el spread de puntas frente al volumen.
+# El spread es el costo cierto de entrar y salir; el volumen dice si ese
+# spread se sostiene en tamaño. Van casi a la par.
+BOND_SCORE_SPREAD_SHARE: Final[float] = 0.5
+
+# Puntaje de jurisdicción. Ley extranjera no es garantía de cobro, pero
+# históricamente cotiza con menor rendimiento exigido: el mercado paga por
+# esa diferencia, así que el puntaje la refleja sin volverla decisiva.
+BOND_SCORE_LAW_NY: Final[float] = 100.0
+BOND_SCORE_LAW_ARG: Final[float] = 40.0
+
+# Cobertura mínima: fracción del peso total que tiene que poder evaluarse
+# para publicar un puntaje. Una ON sin liquidez ni paridad conocidas se
+# estaría calificando con poco más que su TIR, y ese número diría más sobre
+# lo que falta que sobre el bono.
+BOND_SCORE_MIN_COVERAGE: Final[float] = 0.5
+
+# Cortes del puntaje a etiqueta del semáforo.
+BOND_SCORE_VERY_ATTRACTIVE_MIN: Final[float] = 70.0
+BOND_SCORE_ATTRACTIVE_MIN: Final[float] = 55.0
+BOND_SCORE_NEUTRAL_MIN: Final[float] = 40.0

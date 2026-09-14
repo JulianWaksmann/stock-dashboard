@@ -24,18 +24,35 @@ from bonds.panel import apply_bond_filters
 from components.bonds_table import render_bonds_table
 from constants import (
     BOND_LAW_FILTER_OPTIONS,
-    BOND_LIQUID_SPREAD_MAX_PCT,
     BOND_LIQUIDITY_FILTER_OPTIONS,
+    BOND_MIN_YEARS_FOR_GRADING,
     BOND_PARITY_DISCOUNT_MAX,
     BOND_PRICE_CONVENTION_OPTIONS,
     BOND_PRICE_DIRTY,
     BOND_RISK_YIELD_PREMIUM_PP,
+    BOND_SCORE_ATTRACTIVE_MIN,
+    BOND_SCORE_JURISDICTION,
+    BOND_SCORE_LIQUIDITY,
+    BOND_SCORE_MIN_COVERAGE,
+    BOND_SCORE_NEUTRAL_MIN,
+    BOND_SCORE_PARITY,
+    BOND_SCORE_RATE_RISK,
+    BOND_SCORE_VERY_ATTRACTIVE_MIN,
+    BOND_SCORE_WEIGHTS,
+    BOND_SCORE_YIELD,
     BOND_SETTLEMENT_FILTER_OPTIONS,
-    BOND_SHORT_DURATION_MAX_YEARS,
     BOND_SIGNAL_FILTER_OPTIONS,
     BOND_SOURCE_NONE,
-    BOND_YIELD_PREMIUM_PP,
 )
+
+# Qué mide cada dimensión del puntaje, para la tabla de la metodología.
+_EXPLICACION_DIMENSION = {
+    BOND_SCORE_YIELD: "Cuánto rinde frente a sus pares, con castigo por prima excesiva.",
+    BOND_SCORE_LIQUIDITY: "Spread de puntas y volumen operado: si el rendimiento es ejecutable.",
+    BOND_SCORE_RATE_RISK: "Duration modificada: cuánto cae el precio si suben las tasas.",
+    BOND_SCORE_PARITY: "Si cotiza bajo la par, parte del retorno llega como ganancia de capital.",
+    BOND_SCORE_JURISDICTION: "Ley aplicable: dónde se litiga un default.",
+}
 
 # Tope del filtro de duration. 15 años cubre con margen el tramo más largo del
 # universo corporativo argentino en dólares.
@@ -112,14 +129,14 @@ def _render_kpis(df: pd.DataFrame):
         )
 
     with columns[4]:
-        spreads = df["Spread (%)"].dropna()
-        liquid = (spreads <= BOND_LIQUID_SPREAD_MAX_PCT).sum() if not spreads.empty else 0
+        scores = df["Puntaje"].dropna() if "Puntaje" in df.columns else pd.Series(dtype=float)
+        best = int((scores >= BOND_SCORE_VERY_ATTRACTIVE_MIN).sum()) if not scores.empty else 0
         st.metric(
-            "ONs Líquidas",
-            f"{liquid}",
-            delta=f"spread ≤ {BOND_LIQUID_SPREAD_MAX_PCT:.0f}%",
+            "Puntaje Mediano",
+            f"{scores.median():.0f}" if not scores.empty else "N/A",
+            delta=f"{best} por encima de {BOND_SCORE_VERY_ATTRACTIVE_MIN:.0f}",
             delta_color="off",
-            help="Especies con las dos puntas cerca entre sí: se puede entrar y salir sin regalar rendimiento.",
+            help="El puntaje es relativo al panel del día, así que la mediana ronda 50 por construcción. Lo informativo es cuántas ONs se despegan.",
         )
 
 
@@ -248,31 +265,49 @@ def _render_glossary():
 
 
 def _render_methodology():
-    """Documenta el sistema de grados y los supuestos de cálculo."""
-    with st.expander("ℹ️ Cómo se calcula el Atractivo (Sistema de Grados)"):
+    """Documenta cómo se arma el puntaje y con qué supuestos se calcula."""
+    with st.expander("ℹ️ Cómo se calcula el Puntaje de Oportunidad"):
+        pesos = "\n".join(
+            f"| **{dimension}** | {peso:.0f}% | {_EXPLICACION_DIMENSION[dimension]} |"
+            for dimension, peso in BOND_SCORE_WEIGHTS.items()
+        )
         st.markdown(
             f"""
-Un bono no se compara contra su propio pasado sino **contra sus pares del mismo día**: una TIR
-del 11% es excelente o mediocre según dónde esté cotizando el resto del panel corporativo
-argentino. Por eso la referencia de todos los umbrales de rendimiento es la **mediana de TIR del
-panel**, no un número fijo.
+Cada ON recibe un puntaje de **0 a 100**. No es una nota absoluta: mide cómo se compara con **el
+resto del panel del día**. Una TIR del 11% es excelente o mediocre según dónde esté cotizando todo
+lo demás, así que cada dimensión se puntúa por su posición dentro del panel y no contra un umbral
+fijo que diría cosas opuestas en dos momentos del ciclo.
 
-**Requisito obligatorio:** tener una TIR calculable. Sin condiciones de emisión en el catálogo
-no hay flujo de fondos y no hay nada que evaluar (⚪ SIN DATOS).
+Por construcción, **un bono promedio ronda 50**. Lo informativo es quién se despega.
 
-**Alerta excluyente:** TIR por encima de la mediana + {BOND_RISK_YIELD_PREMIUM_PP:.0f} puntos
-porcentuales → **🚨 ALERTA DE RIESGO**. Una prima así sobre los pares no es un bono barato: es el
-mercado poniéndole precio a una probabilidad de default o de reestructuración.
+| Dimensión | Peso | Qué mide |
+| --- | --- | --- |
+{pesos}
 
-**Puntos (1 cada uno):**
+**Tres reglas que hacen honesto al número:**
 
-1. **Premio de rendimiento** — TIR ≥ mediana del panel + {BOND_YIELD_PREMIUM_PP:.0f} pp.
-2. **Riesgo de tasa acotado** — Duration modificada ≤ {BOND_SHORT_DURATION_MAX_YEARS:.0f} años.
-3. **Cotiza bajo la par** — Paridad < {BOND_PARITY_DISCOUNT_MAX:.0f}%.
-4. **Liquidez** — Spread de puntas ≤ {BOND_LIQUID_SPREAD_MAX_PCT:.0f}%.
-5. **Jurisdicción** — Ley Nueva York.
+1. **Más TIR no es siempre mejor.** Pasada una prima de {BOND_RISK_YIELD_PREMIUM_PP:.0f} puntos
+   porcentuales sobre la mediana del panel, el puntaje de rendimiento empieza a caer y llega a
+   cero al doble de esa prima. Ahí el mercado no regala rendimiento: le está poniendo precio a una
+   probabilidad de default. Esos bonos se marcan 🚨 **ALERTA DE RIESGO** y no compiten por el
+   primer puesto.
+2. **Lo que no se puede medir no puntúa cero: se excluye.** Si de una ON no se conoce la ley
+   aplicable, esa dimensión sale del cálculo y su peso se reparte entre las demás. Puntuar cero
+   castigaría al bono por un dato que falta en nuestra fuente, no por algo que le pase al bono.
+   La columna **Cobertura** dice qué fracción del peso se pudo medir de verdad.
+3. **Con muy poco medido no hay puntaje.** Por debajo del {BOND_SCORE_MIN_COVERAGE:.0%} de
+   cobertura no se publica número: saldría casi solo de la TIR y diría más sobre lo que falta que
+   sobre la oportunidad.
 
-**Resultado:** 4-5 puntos → 🌟 MUY ATRACTIVO | 3 → 🟢 ATRACTIVO | 2 → 🟡 NEUTRAL | 0-1 → 🟠 POCO ATRACTIVO.
+**Del puntaje a la etiqueta:** ≥ {BOND_SCORE_VERY_ATTRACTIVE_MIN:.0f} 🌟 MUY ATRACTIVO ·
+≥ {BOND_SCORE_ATTRACTIVE_MIN:.0f} 🟢 ATRACTIVO · ≥ {BOND_SCORE_NEUTRAL_MIN:.0f} 🟡 NEUTRAL ·
+por debajo 🟠 POCO ATRACTIVO. Dos casos ganan sobre el puntaje: la alerta de riesgo de arriba, y
+⏳ **MUY CORTO** para las ONs a menos de {BOND_MIN_YEARS_FOR_GRADING:.2f} años del vencimiento,
+donde anualizar el retorno de unas semanas convierte un centavo de precio en decenas de puntos de
+TIR.
+
+Los pesos están en `constants.py` (`BOND_SCORE_WEIGHTS`). Son un criterio de inversión explícito,
+no una verdad: si para vos la liquidez pesa más que el rendimiento, cambialos ahí.
 
 ---
 
@@ -399,7 +434,21 @@ def render_bonds_panel():
             use_container_width=True,
         )
 
-    render_bonds_table(df_filtered)
+    vista_col, desglose_col = st.columns(2)
+    with vista_col:
+        vista_completa = st.checkbox(
+            "Ver todas las columnas",
+            value=False,
+            help="Agrega puntas, convexidad, valor técnico, interés corrido, calificación y demás detalle de segundo orden.",
+        )
+    with desglose_col:
+        ver_desglose = st.checkbox(
+            "Ver desglose del puntaje",
+            value=False,
+            help="Muestra cuánto aporta cada dimensión al Puntaje de Oportunidad, y qué fracción del peso se pudo medir.",
+        )
+
+    render_bonds_table(df_filtered, full=vista_completa, breakdown=ver_desglose)
 
     _render_glossary()
     _render_methodology()

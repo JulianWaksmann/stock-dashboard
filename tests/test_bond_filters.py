@@ -37,10 +37,11 @@ _ESPECIES = {
 }
 
 
-def fila(ticker: str, volumen: float, tir: float = 9.0, **overrides) -> dict:
+def fila(ticker: str, volumen: float, tir: float = 9.0, puntaje: float = 50.0, **overrides) -> dict:
     liquidacion, moneda = _ESPECIES[ticker[-1]]
     fila_base = {
         "Ticker": ticker,
+        "Puntaje": puntaje,
         "Liquidación": liquidacion,
         "Moneda Precio": moneda,
         "Volumen": volumen,
@@ -154,13 +155,18 @@ class TestRecortesSimples:
         rows = [fila("AAAAD", 900.0), fila("BBBBD", 800.0, tir=np.nan)]
         assert list(filtrar(rows, only_with_yield=True)["Ticker"]) == ["AAAAD"]
 
-    def test_devuelve_ordenado_por_tir_descendente(self):
-        rows = [fila("AAAAD", 900.0, tir=5.0), fila("BBBBD", 800.0, tir=12.0)]
+    def test_devuelve_ordenado_por_puntaje_descendente(self):
+        rows = [fila("AAAAD", 900.0, puntaje=30.0), fila("BBBBD", 800.0, puntaje=80.0)]
+        resultado = filtrar(rows, settlement_filter=BOND_FILTER_SETTLEMENT_USD)
+        assert list(resultado["Ticker"]) == ["BBBBD", "AAAAD"]
+
+    def test_a_igual_puntaje_desempata_por_tir(self):
+        rows = [fila("AAAAD", 900.0, puntaje=60.0, tir=5.0), fila("BBBBD", 800.0, puntaje=60.0, tir=12.0)]
         resultado = filtrar(rows, settlement_filter=BOND_FILTER_SETTLEMENT_USD)
         assert list(resultado["Ticker"]) == ["BBBBD", "AAAAD"]
 
     def test_un_panel_vacio_no_rompe(self):
-        vacio = pd.DataFrame(columns=["Ticker", "Liquidación", "Moneda Precio", "Volumen", "TIR (%)", "Duration Mod.", "Atractivo", "Ley"])
+        vacio = pd.DataFrame(columns=["Ticker", "Puntaje", "Liquidación", "Moneda Precio", "Volumen", "TIR (%)", "Duration Mod.", "Atractivo", "Ley"])
         assert apply_bond_filters(
             vacio,
             settlement_filter=BOND_FILTER_SETTLEMENT_USD,

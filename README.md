@@ -86,24 +86,48 @@ For every ON whose issue terms are known, the section derives, per 100 of origin
 
 An in-app glossary explains every one of these in plain Spanish, next to the table.
 
-### Attractiveness grading
+### Opportunity score
 
-Bonds are graded **against their peers on the same day**, not against their own history: an 11%
-yield is excellent or mediocre depending on where the rest of the corporate panel trades. The
-reference for every yield threshold is therefore the **panel's median YTM**.
+Every bond gets a **0-100 score**, and the label comes from it. It is not an absolute grade: each
+dimension is scored by where the bond sits **within that day's panel**. An 11% yield is excellent
+or mediocre depending on where everything else trades, so a fixed threshold would say opposite
+things at two points of the cycle. By construction an average bond lands near 50; what matters is
+who pulls away.
 
-* **Mandatory:** a computable YTM. Without issue terms there is no cash flow to discount (⚪ SIN DATOS).
-* **Excluding alert:** YTM above the median + `BOND_RISK_YIELD_PREMIUM_PP` → 🚨 **ALERTA DE RIESGO**.
-  A premium that large over peers is the market pricing default risk, not a cheap bond.
-* **Points, one each:** yield premium over the median; modified duration ≤ `BOND_SHORT_DURATION_MAX_YEARS`;
-  parity below par; bid/ask spread ≤ `BOND_LIQUID_SPREAD_MAX_PCT`; New York law.
-* 4-5 points → 🌟 **MUY ATRACTIVO** · 3 → 🟢 **ATRACTIVO** · 2 → 🟡 **NEUTRAL** · 0-1 → 🟠 **POCO ATRACTIVO**.
-* **Excluded from grading:** bonds under `BOND_MIN_YEARS_FOR_GRADING` from maturity (⏳ **MUY CORTO**).
-  Annualizing a three-week return turns one cent of price into tens of points of yield, so those
-  bonds would otherwise top the panel or trigger a risk alert on pure arithmetic artifact. They are
-  also left out of the panel median, so they cannot drag the reference everything else is graded against.
+| Dimension | Weight | What it measures |
+| --- | --- | --- |
+| Yield | 35% | Return against peers, penalized for an excessive premium |
+| Liquidity | 25% | Bid/ask spread and traded volume — whether the yield is executable |
+| Rate risk | 20% | Modified duration |
+| Parity | 10% | Below par means part of the return arrives as capital gain |
+| Jurisdiction | 10% | Governing law |
 
-All labels and thresholds live in `constants.py`, same as the equity engine.
+Three rules keep the number honest:
+
+1. **More yield is not always better.** Past a premium of `BOND_RISK_YIELD_PREMIUM_PP` over the
+   panel median, the penalty is applied to the yield *before* ranking, not to the percentile after.
+   Multiplying a percentile by a decaying factor does not work: the percentile rises with yield as
+   the factor falls, the two cancel, and between two already-penalized bonds the riskier one can
+   score higher — exactly what the rule exists to prevent.
+2. **What cannot be measured scores nothing, not zero.** A missing dimension is dropped and its
+   weight redistributed over the rest. Scoring it zero would punish the bond for a gap in our
+   source rather than anything about the bond. A `Cobertura` column reports how much of the weight
+   was actually measured.
+3. **Too little measured, no score at all.** Below `BOND_SCORE_MIN_COVERAGE` the number would come
+   almost entirely from the yield and would say more about what is missing than about the bond.
+
+Score to label: ≥70 🌟 MUY ATRACTIVO · ≥55 🟢 ATRACTIVO · ≥40 🟡 NEUTRAL · below 🟠 POCO ATRACTIVO.
+Two cases override the score: 🚨 **ALERTA DE RIESGO** for the premium above, and ⏳ **MUY CORTO**
+for bonds under `BOND_MIN_YEARS_FOR_GRADING` from maturity, where annualizing a few weeks' return
+turns one cent of price into tens of points of yield. Both are also excluded from the panel median,
+so an arithmetic artifact cannot drag the reference everything else is graded against.
+
+Weights live in `constants.py` (`BOND_SCORE_WEIGHTS`). They are an explicit investment opinion, not
+a truth: if liquidity matters more to you than yield, that is where to say so.
+
+The table shows the essentials by default — score, yield, duration, parity, spread, volume — with
+the full column set and the per-dimension score breakdown behind toggles. A twenty-column table
+does not get read, it gets scanned.
 
 ### Where the data comes from
 
@@ -187,6 +211,11 @@ are not comparable. They stay visible in the table; only their influence on the 
 
 ### Modeling limits
 
+* **The amortization schedule is not taken from BYMA.** Its technical-sheet endpoint carries issue
+  date, maturity, coupon, currency, governing-law country, minimum denomination and residual
+  amount — but the amortization schedule comes as free prose ("amortized in 4 annual instalments,
+  that is on 30 September 2030, ..."). Parsing that per issuer is a guess dressed as data, so the
+  schedule keeps coming from the resolved cash flows instead.
 * **Fixed-rate bonds only.** CER, dollar-linked, Badlar and TAMAR ONs cannot be modeled here:
   their future cash flow is not determined today. Loading one would produce a meaningless YTM.
 * No step-up coupons and no call/put schedules.

@@ -17,12 +17,29 @@ from __future__ import annotations
 
 import math
 
-from bonds.catalog import LAW_NEW_YORK
+import numpy as np
+import pandas as pd
+
+from bonds.catalog import LAW_ARGENTINA, LAW_NEW_YORK
 from constants import (
     BOND_LIQUID_SPREAD_MAX_PCT,
     BOND_MIN_YEARS_FOR_GRADING,
     BOND_PARITY_DISCOUNT_MAX,
     BOND_RISK_YIELD_PREMIUM_PP,
+    BOND_SCORE_ATTRACTIVE_MIN,
+    BOND_SCORE_EXCESS_PENALTY_SLOPE,
+    BOND_SCORE_JURISDICTION,
+    BOND_SCORE_LAW_ARG,
+    BOND_SCORE_LAW_NY,
+    BOND_SCORE_LIQUIDITY,
+    BOND_SCORE_MIN_COVERAGE,
+    BOND_SCORE_NEUTRAL_MIN,
+    BOND_SCORE_PARITY,
+    BOND_SCORE_RATE_RISK,
+    BOND_SCORE_SPREAD_SHARE,
+    BOND_SCORE_VERY_ATTRACTIVE_MIN,
+    BOND_SCORE_WEIGHTS,
+    BOND_SCORE_YIELD,
     BOND_SHORT_DURATION_MAX_YEARS,
     BOND_SIGNAL_ATTRACTIVE,
     BOND_SIGNAL_LOW,
@@ -134,5 +151,139 @@ def evaluate_bond_attractiveness(
     if score == 3:
         return BOND_SIGNAL_ATTRACTIVE
     if score == 2:
+        return BOND_SIGNAL_NEUTRAL
+    return BOND_SIGNAL_LOW
+
+
+def _percentile(series: pd.Series, higher_is_better: bool = True) -> pd.Series:
+    """
+    Convierte una métrica en un puntaje 0-100 por su posición en el panel.
+
+    Se usa el percentil y no una escala absoluta porque no existe un "bueno"
+    fijo en este mercado: una duration de 3 años es corta o larga según lo que
+    haya en oferta ese día, igual que una TIR del 11%. El percentil responde
+    la pregunta que importa —cómo se compara con las alternativas reales de
+    hoy— y se recalibra solo cuando el mercado se mueve.
+    """
+    ranked = series.rank(pct=True, na_option="keep") * 100.0
+    return ranked if higher_is_better else 100.0 - ranked
+
+
+def _yield_subscore(ytm: pd.Series, median_ytm: float) -> pd.Series:
+    """
+    Puntaje de rendimiento, con castigo por prima excesiva.
+
+    Más TIR es mejor solo hasta cierto punto. Pasada la prima que separa una
+    oportunidad de un problema de crédito, el mercado no está regalando
+    rendimiento: está poniéndole precio a una probabilidad de default. A
+    partir de ahí el puntaje se derrite linealmente y llega a cero cuando la
+    prima duplica ese umbral, de modo que un bono en problemas no puede
+    encabezar el panel por el solo hecho de rendir mucho.
+    """
+    if not _is_number(median_ytm):
+        return _percentile(ytm, higher_is_better=True)
+
+    # El castigo se aplica sobre la TIR ANTES de rankear, no sobre el percentil
+    # después. Multiplicar el percentil por un factor decreciente no alcanza:
+    # el percentil sube con la TIR al mismo tiempo que el factor baja, los dos
+    # efectos se cancelan y entre dos bonos ya castigados puede puntuar más
+    # alto el que rinde más, que es exactamente lo que esta regla evita.
+    cap = float(median_ytm) + BOND_RISK_YIELD_PREMIUM_PP
+    excess = (ytm - cap).clip(lower=0.0)
+    effective = ytm - excess * (1.0 + BOND_SCORE_EXCESS_PENALTY_SLOPE)
+    return _percentile(effective, higher_is_better=True)
+
+
+def _liquidity_subscore(spread_pct: pd.Series, volume: pd.Series) -> pd.Series:
+    """
+    Puntaje de liquidez: spread de puntas y volumen operado.
+
+    Son dos caras de lo mismo y ninguna alcanza sola. El spread es el costo
+    cierto de entrar y salir; el volumen dice si ese spread se sostiene en
+    tamaño o es una punta simbólica por diez nominales. Si falta uno, se usa
+    el otro en vez de descartar la dimensión entera.
+    """
+    tightness = _percentile(spread_pct, higher_is_better=False)
+    depth = _percentile(volume, higher_is_better=True)
+
+    combined = (
+        tightness * BOND_SCORE_SPREAD_SHARE + depth * (1.0 - BOND_SCORE_SPREAD_SHARE)
+    )
+    return combined.fillna(tightness).fillna(depth)
+
+
+def _jurisdiction_subscore(law: pd.Series) -> pd.Series:
+    """Puntaje de jurisdicción. Una ley desconocida no puntúa: se abstiene."""
+    normalized = law.fillna("").astype(str).str.strip().str.upper()
+    scores = pd.Series(np.nan, index=law.index, dtype=float)
+    scores[normalized == LAW_NEW_YORK] = BOND_SCORE_LAW_NY
+    scores[normalized == LAW_ARGENTINA] = BOND_SCORE_LAW_ARG
+    return scores
+
+
+def compute_opportunity_scores(df: pd.DataFrame, median_ytm: float | None = None) -> pd.DataFrame:
+    """
+    Puntaje de Oportunidad de cada ON, de 0 a 100, con su desagregado.
+
+    Devuelve una columna por dimensión, el puntaje total y la cobertura: qué
+    fracción del peso total se pudo evaluar de verdad.
+
+    La regla que hace honesto al número: **una dimensión que no se puede medir
+    no puntúa cero, se excluye y los pesos se renormalizan sobre lo que sí se
+    midió**. Puntuar cero castigaría al bono por un dato que falta en nuestra
+    fuente y no por nada que le pase al bono. Y si queda demasiado poco por
+    medir, no se publica puntaje: un número que sale casi solo de la TIR diría
+    más sobre lo que no sabemos que sobre la oportunidad.
+    """
+    if df.empty:
+        return pd.DataFrame(index=df.index)
+
+    if median_ytm is None:
+        median_ytm = df.attrs.get("median_ytm_pct", np.nan)
+
+    subscores = pd.DataFrame(
+        {
+            BOND_SCORE_YIELD: _yield_subscore(df["TIR (%)"], median_ytm),
+            BOND_SCORE_LIQUIDITY: _liquidity_subscore(df["Spread (%)"], df["Volumen"]),
+            BOND_SCORE_RATE_RISK: _percentile(df["Duration Mod."], higher_is_better=False),
+            BOND_SCORE_PARITY: _percentile(df["Paridad (%)"], higher_is_better=False),
+            BOND_SCORE_JURISDICTION: _jurisdiction_subscore(df["Ley"]),
+        },
+        index=df.index,
+    )
+
+    weights = pd.Series(BOND_SCORE_WEIGHTS)
+    measured = subscores.notna()
+    available_weight = measured.mul(weights, axis=1).sum(axis=1)
+    weighted_total = subscores.fillna(0.0).mul(weights, axis=1).sum(axis=1)
+
+    total_weight = float(weights.sum())
+    coverage = available_weight / total_weight
+    score = (weighted_total / available_weight.replace(0.0, np.nan)).where(
+        coverage >= BOND_SCORE_MIN_COVERAGE
+    )
+
+    result = subscores.copy()
+    result["Puntaje"] = score
+    result["Cobertura"] = coverage * 100.0
+    return result
+
+
+def label_from_score(score: float | None) -> str:
+    """
+    Traduce el puntaje a la etiqueta del semáforo.
+
+    Los cortes son deliberadamente exigentes del lado alto: como el puntaje es
+    relativo al panel, un bono promedio da alrededor de 50, y llamar
+    "atractivo" a lo promedio vaciaría la palabra.
+    """
+    if not _is_number(score):
+        return BOND_SIGNAL_NO_DATA
+    value = float(score)
+    if value >= BOND_SCORE_VERY_ATTRACTIVE_MIN:
+        return BOND_SIGNAL_VERY_ATTRACTIVE
+    if value >= BOND_SCORE_ATTRACTIVE_MIN:
+        return BOND_SIGNAL_ATTRACTIVE
+    if value >= BOND_SCORE_NEUTRAL_MIN:
         return BOND_SIGNAL_NEUTRAL
     return BOND_SIGNAL_LOW

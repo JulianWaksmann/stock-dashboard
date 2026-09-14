@@ -21,7 +21,7 @@ import pandas as pd
 from bonds.bond_math import analyze_bond, analyze_cashflows, year_fraction
 from bonds.catalog import BondTerms, base_ticker_of, find_terms, quote_currency_of, settlement_of
 from bonds.flows_source import BondFlows
-from bonds.scoring import evaluate_bond_attractiveness
+from bonds.scoring import compute_opportunity_scores, evaluate_bond_attractiveness, label_from_score
 from constants import (
     BOND_ATTRACTIVE_SIGNALS,
     BOND_FILTER_LAW_ARG,
@@ -40,6 +40,7 @@ from constants import (
     BOND_SIGNAL_NO_DATA,
     BOND_SIGNAL_RISK,
     BOND_SIGNAL_VERY_ATTRACTIVE,
+    BOND_SIGNAL_VERY_SHORT,
     BOND_SOURCE_CATALOG,
     BOND_SOURCE_NONE,
     BOND_TOP_VOLUME_SIZES,
@@ -263,8 +264,19 @@ def build_bonds_panel(
     long_enough = df["Años al Vto."] >= BOND_MIN_YEARS_FOR_GRADING
     comparable = df.loc[traded & long_enough, "TIR (%)"].dropna()
     median_ytm = comparable.median() if not comparable.empty else np.nan
-    df["Atractivo"] = [
-        evaluate_bond_attractiveness(
+    # El puntaje pondera cada dimensión contra el resto del panel, así que
+    # necesita todas las filas calculadas: por eso va en esta segunda pasada.
+    scores = compute_opportunity_scores(df, median_ytm)
+    for column in scores.columns:
+        df[column] = scores[column]
+
+    # La etiqueta sale del puntaje, salvo los dos casos que el puntaje no
+    # puede expresar: una prima de riesgo que delata estrés crediticio y una
+    # vida residual tan corta que la TIR deja de ser comparable. Esos dos se
+    # resuelven antes y ganan.
+    labels = []
+    for record in df.to_dict("records"):
+        override = evaluate_bond_attractiveness(
             ytm_pct=record["TIR (%)"],
             median_ytm_pct=median_ytm,
             modified_duration=record["Duration Mod."],
@@ -273,10 +285,17 @@ def build_bonds_panel(
             law=record["Ley"],
             years_to_maturity=record["Años al Vto."],
         )
-        for record in df.to_dict("records")
-    ]
+        if override in (BOND_SIGNAL_RISK, BOND_SIGNAL_VERY_SHORT, BOND_SIGNAL_NO_DATA):
+            labels.append(override)
+        else:
+            labels.append(label_from_score(record["Puntaje"]))
+    df["Atractivo"] = labels
     df.attrs["median_ytm_pct"] = median_ytm
-    return df.sort_values(["TIR (%)"], ascending=False, na_position="last").reset_index(drop=True)
+    # Se ordena por puntaje y no por TIR: la pregunta del panel es cuál es la
+    # mejor oportunidad, no cuál rinde más nominalmente.
+    return df.sort_values(
+        ["Puntaje", "TIR (%)"], ascending=False, na_position="last"
+    ).reset_index(drop=True)
 
 
 def _collapse_to_one_row_per_bond(df: pd.DataFrame) -> pd.DataFrame:
@@ -365,4 +384,9 @@ def apply_bond_filters(
 
     # Se devuelve en el mismo orden que arma build_bonds_panel (mayor TIR
     # primero), que los pasos de ranking y deduplicación alteran.
-    return filtered.sort_values("TIR (%)", ascending=False, na_position="last").reset_index(drop=True)
+    # Se ordena por puntaje y, a igualdad, por TIR. Se toman solo las columnas
+    # presentes para que la función siga sirviendo sobre un panel recortado.
+    sort_columns = [c for c in ("Puntaje", "TIR (%)") if c in filtered.columns]
+    if sort_columns:
+        filtered = filtered.sort_values(sort_columns, ascending=False, na_position="last")
+    return filtered.reset_index(drop=True)
