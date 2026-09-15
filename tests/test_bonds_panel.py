@@ -28,6 +28,12 @@ from constants import (
     BOND_SIGNAL_NO_DATA,
     BOND_SOURCE_CATALOG,
     BOND_SOURCE_NONE,
+    BOND_VOLUME_HIGH,
+    BOND_VOLUME_LOW,
+    BOND_VOLUME_MEDIUM,
+    BOND_VOLUME_NONE,
+    BOND_VOLUME_QUARTILE_COLUMN,
+    BOND_VOLUME_VERY_HIGH,
 )
 
 SETTLEMENT = date(2025, 1, 15)
@@ -470,3 +476,67 @@ class TestPuntajeSobreUnPanelRealista:
         sin_tir = panel[panel["TIR (%)"].isna()]
         assert len(sin_tir) == 40
         assert sin_tir["Puntaje"].isna().all()
+
+
+class TestCuartilDeVolumen:
+    """
+    El cuartil traduce el volumen a una lectura rápida de liquidez. Las dos
+    decisiones que lo hacen correcto —rankear dentro de cada moneda y dejar el
+    volumen cero fuera del cálculo— son justo las que se pierden si alguien
+    reescribe esto como un `qcut` sobre la columna entera.
+    """
+
+    def _panel(self, *quotes):
+        return build_bonds_panel(make_prices(*quotes), {}, SETTLEMENT)
+
+    def test_las_que_no_operaron_no_son_el_cuartil_mas_bajo(self):
+        panel = self._panel(
+            quote("AAAAD", Volumen=1000.0),
+            quote("BBBBD", Volumen=0.0),
+        )
+        por_ticker = panel.set_index("Ticker")[BOND_VOLUME_QUARTILE_COLUMN]
+        assert por_ticker["BBBBD"] == BOND_VOLUME_NONE
+        assert por_ticker["AAAAD"] != BOND_VOLUME_NONE
+
+    def test_el_ranking_es_dentro_de_cada_moneda(self):
+        # La especie en pesos opera un número enorme por estar en pesos, no por
+        # ser más líquida. Rankeadas juntas se llevaría el cuartil más alto y
+        # dejaría a las de dólares en el piso.
+        panel = self._panel(
+            quote("AAAAO", Volumen=500_000_000.0),
+            quote("BBBBO", Volumen=400_000_000.0),
+            quote("CCCCD", Volumen=900.0),
+            quote("DDDDD", Volumen=100.0),
+        )
+        por_ticker = panel.set_index("Ticker")[BOND_VOLUME_QUARTILE_COLUMN]
+        # La más operada de cada moneda comparte el cuartil más alto.
+        assert por_ticker["AAAAO"] == por_ticker["CCCCD"] == BOND_VOLUME_VERY_HIGH
+        assert por_ticker["BBBBO"] == por_ticker["DDDDD"]
+
+    def test_reparte_las_cuatro_etiquetas_sobre_una_escala_pareja(self):
+        quotes = [quote(f"T{i:03d}D", Volumen=float(i) * 100) for i in range(1, 9)]
+        panel = self._panel(*quotes)
+        etiquetas = panel[BOND_VOLUME_QUARTILE_COLUMN]
+        assert set(etiquetas) == {
+            BOND_VOLUME_LOW,
+            BOND_VOLUME_MEDIUM,
+            BOND_VOLUME_HIGH,
+            BOND_VOLUME_VERY_HIGH,
+        }
+        # Las dos más operadas caen en el cuartil más alto, las dos menos en el
+        # más bajo: con ocho valores parejos cada cuartil se lleva dos.
+        por_ticker = panel.set_index("Ticker")[BOND_VOLUME_QUARTILE_COLUMN]
+        assert por_ticker["T008D"] == por_ticker["T007D"] == BOND_VOLUME_VERY_HIGH
+        assert por_ticker["T001D"] == por_ticker["T002D"] == BOND_VOLUME_LOW
+
+    def test_un_panel_sin_volumen_no_rompe(self):
+        panel = self._panel(quote("AAAAD", Volumen=0.0), quote("BBBBD", Volumen=0.0))
+        assert (panel[BOND_VOLUME_QUARTILE_COLUMN] == BOND_VOLUME_NONE).all()
+
+    def test_el_cuartil_no_depende_de_los_filtros(self):
+        # Se calcula sobre el panel entero: "muy alto" significa muy alto en el
+        # mercado, no entre las filas que quedaron en pantalla.
+        quotes = [quote(f"T{i:03d}D", Volumen=float(i) * 100) for i in range(1, 9)]
+        panel = self._panel(*quotes)
+        recorte = panel[panel["Ticker"].isin(["T001D", "T002D"])]
+        assert (recorte[BOND_VOLUME_QUARTILE_COLUMN] == BOND_VOLUME_LOW).all()

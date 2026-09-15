@@ -27,6 +27,7 @@ from constants import (
     BOND_SIGNAL_LOW,
     BOND_SIGNAL_RISK,
     BOND_SIGNAL_VERY_ATTRACTIVE,
+    BOND_VOLUME_QUARTILE_COLUMN,
 )
 from theme import (
     COLOR_NEGATIVE,
@@ -66,6 +67,7 @@ ESSENTIAL_COLUMNS = [
     "Paridad (%)",
     "Spread (%)",
     "Volumen",
+    BOND_VOLUME_QUARTILE_COLUMN,
     "Precio",
     "Vencimiento",
     "Ley",
@@ -102,6 +104,7 @@ FULL_COLUMNS = [
     "Vencimiento",
     "Spread (%)",
     "Volumen",
+    BOND_VOLUME_QUARTILE_COLUMN,
     "Lámina Mínima",
     "Garantía",
     "ISIN",
@@ -293,6 +296,18 @@ def render_bonds_table(df: pd.DataFrame, full: bool = False, breakdown: bool = F
             help="Diferencia entre punta vendedora y compradora sobre el punto medio. Es el costo de entrar y salir: la medida práctica de liquidez.",
         ),
         "Volumen": st.column_config.NumberColumn("Volumen", format="%.0f"),
+        BOND_VOLUME_QUARTILE_COLUMN: st.column_config.TextColumn(
+            "Vol. (cuartil)",
+            width="small",
+            help=(
+                "Cuartil de volumen operado, calculado DENTRO de cada moneda: el "
+                "volumen de la especie en pesos está en pesos y el de la MEP en "
+                "dólares, así que un ranking conjunto no compararía lo mismo. "
+                "Se mide contra el panel entero del mercado, no contra las filas "
+                "que dejaron los filtros. Las que no operaron no entran al "
+                "cálculo: se etiquetan aparte."
+            ),
+        ),
         "Garantía": st.column_config.TextColumn(
             "Garantía",
             width="small",

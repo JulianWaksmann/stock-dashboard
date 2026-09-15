@@ -49,6 +49,12 @@ from constants import (
     BOND_SOURCE_CATALOG,
     BOND_SOURCE_NONE,
     BOND_TOP_VOLUME_SIZES,
+    BOND_VOLUME_HIGH,
+    BOND_VOLUME_LOW,
+    BOND_VOLUME_MEDIUM,
+    BOND_VOLUME_NONE,
+    BOND_VOLUME_QUARTILE_COLUMN,
+    BOND_VOLUME_VERY_HIGH,
 )
 
 logger = logging.getLogger(__name__)
@@ -427,6 +433,11 @@ def build_bonds_panel(
     # debajo de BOND_SCORE_MIN_DIMENSION_COVERAGE y se descartan para todos:
     # queda solo liquidez, cuyo peso no llega a BOND_SCORE_MIN_COVERAGE, y
     # entonces NINGUNA ON recibe puntaje. El cuadro entero sale "⚪ SIN DATOS".
+    # El cuartil de volumen se calcula acá, sobre el panel entero de cada
+    # moneda, y no después de filtrar: "muy alto" tiene que significar muy alto
+    # en el mercado, no muy alto entre las filas que quedaron en pantalla.
+    df[BOND_VOLUME_QUARTILE_COLUMN] = volume_quartiles(df)
+
     is_comparable = traded & long_enough & df["TIR (%)"].notna()
     median_ytm = df.loc[is_comparable, "TIR (%)"].median() if is_comparable.any() else np.nan
     # El puntaje pondera cada dimensión contra el resto del panel, así que
@@ -480,6 +491,55 @@ def _collapse_to_one_row_per_bond(df: pd.DataFrame) -> pd.DataFrame:
         "Volumen", ascending=False, na_position="last"
     )
     return ranked.drop_duplicates("_raiz", keep="first").drop(columns="_raiz")
+
+
+def volume_quartiles(df: pd.DataFrame) -> pd.Series:
+    """
+    Traduce el volumen operado a un cuartil legible, dentro de cada moneda.
+
+    El número crudo no se compara de un vistazo: 86.000 es mucho o poco según
+    contra qué. El cuartil responde "¿de las que operaron, esta está entre las
+    más líquidas o entre las menos?".
+
+    Dos decisiones que cambian el resultado, y por eso están acá y no en la
+    capa de dibujo:
+
+      * **Se rankea por moneda.** El volumen de la especie en pesos está en
+        pesos y el de la MEP en dólares. Un ranking conjunto pondría a casi
+        toda la plaza en pesos en el cuartil más alto por tener el número más
+        grande, no por operar más.
+      * **Volumen cero queda afuera del cálculo.** No es el cuartil más bajo,
+        es "no operó", y es la mayoría del panel: dejarlo entrar empatado
+        correría a las que sí operaron poco hacia cuartiles que no les
+        corresponden.
+
+    Se usa el rank porcentual y no `pd.qcut` porque el volumen tiene muchos
+    empates y qcut falla —o devuelve menos de cuatro grupos— cuando los bordes
+    de los cuartiles caen sobre el mismo valor.
+    """
+    quartiles = pd.Series(BOND_VOLUME_NONE, index=df.index, dtype=object)
+    if df.empty or "Volumen" not in df.columns:
+        return quartiles
+
+    volume = pd.to_numeric(df["Volumen"], errors="coerce")
+    traded = volume > 0
+    if not traded.any():
+        return quartiles
+
+    if "Moneda Precio" in df.columns:
+        groups = df["Moneda Precio"]
+    else:
+        groups = pd.Series("", index=df.index)
+
+    # El rank se calcula solo sobre las que operaron: `where` deja NaN en el
+    # resto y pandas lo excluye del ranking en vez de ubicarlo en el piso.
+    position = volume.where(traded).groupby(groups, dropna=False).rank(pct=True)
+
+    quartiles[traded & (position <= 0.25)] = BOND_VOLUME_LOW
+    quartiles[traded & (position > 0.25) & (position <= 0.50)] = BOND_VOLUME_MEDIUM
+    quartiles[traded & (position > 0.50) & (position <= 0.75)] = BOND_VOLUME_HIGH
+    quartiles[traded & (position > 0.75)] = BOND_VOLUME_VERY_HIGH
+    return quartiles
 
 
 def _top_by_volume_within_currency(df: pd.DataFrame, top_n: int) -> pd.DataFrame:

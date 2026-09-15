@@ -486,3 +486,46 @@ BOND_SCORE_NEUTRAL_MIN: Final[float] = 40.0
 # que el panel muestra por defecto y las únicas cuyo precio es ejecutable.
 # ----------------------------------------------------------------------
 BYMA_TERMS_FETCH_LIMIT: Final[int] = 150
+
+# ----------------------------------------------------------------------
+# Cuartil de volumen operado (columna "Volumen (cuartil)").
+#
+# Traduce el volumen a una lectura rápida de liquidez. El número crudo no
+# se puede comparar de un vistazo: 86.000 es mucho o poco según contra qué.
+#
+# Dos decisiones que cambian el resultado:
+#
+#   1. **Los cuartiles se calculan DENTRO de cada moneda.** El volumen de la
+#      especie en pesos está expresado en pesos y el de la especie MEP en
+#      dólares. Mezclarlas pondría a casi todas las especies en pesos en el
+#      cuartil alto por tener el número más grande, no por operar más. Es el
+#      mismo motivo por el que `_top_by_volume_within_currency` rankea por
+#      moneda.
+#
+#   2. **Volumen cero no es el cuartil más bajo: es "sin operar".** Las
+#      especies que no negociaron son mayoría en el panel, y dejarlas entrar
+#      al cuartil las repartiría empatadas por la mitad de la escala,
+#      arrastrando hacia abajo a las que sí operaron poco. Se etiquetan
+#      aparte y no participan del cálculo.
+#
+# Se calculan sobre el panel completo de cada moneda y no sobre lo que
+# dejen los filtros: "muy alto" tiene que significar muy alto en el mercado,
+# no muy alto entre las treinta filas que quedaron en pantalla.
+# ----------------------------------------------------------------------
+BOND_VOLUME_VERY_HIGH: Final[str] = "🔵 Muy alto"
+BOND_VOLUME_HIGH: Final[str] = "🟢 Alto"
+BOND_VOLUME_MEDIUM: Final[str] = "🟡 Medio"
+BOND_VOLUME_LOW: Final[str] = "🟠 Bajo"
+BOND_VOLUME_NONE: Final[str] = "⚪ Sin operar"
+
+# De mayor a menor, para que la interfaz no reconstruya el orden a mano.
+BOND_VOLUME_QUARTILES: Final[tuple[str, ...]] = (
+    BOND_VOLUME_VERY_HIGH,
+    BOND_VOLUME_HIGH,
+    BOND_VOLUME_MEDIUM,
+    BOND_VOLUME_LOW,
+    BOND_VOLUME_NONE,
+)
+
+# Nombre de la columna, junto a "Volumen".
+BOND_VOLUME_QUARTILE_COLUMN: Final[str] = "Volumen (cuartil)"
