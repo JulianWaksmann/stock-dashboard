@@ -28,6 +28,7 @@ from constants import (
     BOND_SETTLEMENT_PESOS,
     BOND_SIGNAL_NEUTRAL,
     BOND_SIGNAL_VERY_ATTRACTIVE,
+    BOND_SIGNAL_VERY_SHORT,
 )
 
 _ESPECIES = {
@@ -203,3 +204,61 @@ class TestTopNPorMoneda:
         rows = [fila(f"E{i:03}D", 100.0) for i in range(30)]
         resultado = filtrar(rows, liquidity_filter=BOND_FILTER_LIQUIDITY_TOP_20)
         assert len(resultado) == 20
+
+
+class TestFiltroDeVencimientoCercano:
+    """
+    Las ONs a semanas del vencimiento se ocultan por defecto: su TIR anualizada
+    es un artefacto aritmético, no una medida de rendimiento, y por eso mismo
+    ya están excluidas del panel comparable y no reciben puntaje.
+    """
+
+    def _panel(self):
+        return pd.DataFrame(
+            [
+                {"Ticker": "LARGAD", "Años al Vto.": 4.0, "Moneda Precio": "USD",
+                 "Volumen": 100.0, "TIR (%)": 7.0, "Atractivo": BOND_SIGNAL_NEUTRAL,
+                 "Ley": "NY", "Duration Mod.": 3.0, "Liquidación": BOND_SETTLEMENT_MEP},
+                {"Ticker": "CORTAD", "Años al Vto.": 0.15, "Moneda Precio": "USD",
+                 "Volumen": 100.0, "TIR (%)": 22.0, "Atractivo": BOND_SIGNAL_VERY_SHORT,
+                 "Ley": "NY", "Duration Mod.": 0.1, "Liquidación": BOND_SETTLEMENT_MEP},
+                {"Ticker": "JUSTAD", "Años al Vto.": 0.25, "Moneda Precio": "USD",
+                 "Volumen": 100.0, "TIR (%)": 9.0, "Atractivo": BOND_SIGNAL_NEUTRAL,
+                 "Ley": "NY", "Duration Mod.": 0.2, "Liquidación": BOND_SETTLEMENT_MEP},
+            ]
+        )
+
+    def _filtrar(self, **extra):
+        return apply_bond_filters(
+            self._panel(),
+            settlement_filter=BOND_FILTER_SETTLEMENT_ALL,
+            liquidity_filter=BOND_FILTER_LIQUIDITY_ALL,
+            signal_filter=BOND_FILTER_SIGNAL_ALL,
+            law_filter=BOND_FILTER_LAW_ALL,
+            **extra,
+        )
+
+    def test_por_defecto_se_ocultan(self):
+        assert set(self._filtrar()["Ticker"]) == {"LARGAD", "JUSTAD"}
+
+    def test_el_umbral_es_inclusivo(self):
+        # Exactamente 3 meses se muestra: el corte es "menos de", no "hasta".
+        assert "JUSTAD" in set(self._filtrar()["Ticker"])
+
+    def test_se_pueden_pedir_explicitamente(self):
+        resultado = self._filtrar(include_near_maturity=True)
+        assert set(resultado["Ticker"]) == {"LARGAD", "CORTAD", "JUSTAD"}
+
+    def test_una_on_sin_plazo_conocido_no_se_oculta(self):
+        # Sin fecha de vencimiento no se sabe si está por vencer. Ocultarla
+        # sería castigarla por un dato que falta en la fuente.
+        panel = self._panel()
+        panel.loc[panel["Ticker"] == "LARGAD", "Años al Vto."] = np.nan
+        resultado = apply_bond_filters(
+            panel,
+            settlement_filter=BOND_FILTER_SETTLEMENT_ALL,
+            liquidity_filter=BOND_FILTER_LIQUIDITY_ALL,
+            signal_filter=BOND_FILTER_SIGNAL_ALL,
+            law_filter=BOND_FILTER_LAW_ALL,
+        )
+        assert "LARGAD" in set(resultado["Ticker"])

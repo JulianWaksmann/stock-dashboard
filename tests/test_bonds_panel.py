@@ -17,10 +17,15 @@ import pytest
 from bonds.bond_math import CashFlow
 from bonds.catalog import BondTerms
 from bonds.flows_source import COMMUNITY_FLOWS_SOURCE_NAME, BondFlows
-from bonds.panel import build_bonds_panel, interpolate_treasury_yield
+from bonds.panel import apply_bond_filters, build_bonds_panel, interpolate_treasury_yield
 from constants import (
+    BOND_FILTER_LAW_ALL,
+    BOND_FILTER_LIQUIDITY_ALL,
+    BOND_FILTER_SETTLEMENT_ALL,
+    BOND_FILTER_SIGNAL_ALL,
     BOND_PRICE_CLEAN,
     BOND_PRICE_DIRTY,
+    BOND_SCORE_WEIGHTS,
     BOND_SETTLEMENT_CABLE,
     BOND_SETTLEMENT_MEP,
     BOND_SETTLEMENT_PESOS,
@@ -28,6 +33,12 @@ from constants import (
     BOND_SIGNAL_NO_DATA,
     BOND_SOURCE_CATALOG,
     BOND_SOURCE_NONE,
+    BOND_VOLUME_HIGH,
+    BOND_VOLUME_LOW,
+    BOND_VOLUME_MEDIUM,
+    BOND_VOLUME_NONE,
+    BOND_VOLUME_QUARTILE_COLUMN,
+    BOND_VOLUME_VERY_HIGH,
 )
 
 SETTLEMENT = date(2025, 1, 15)
@@ -416,3 +427,174 @@ class TestConvencionDePrecioAplicada:
         sucio = build_bonds_panel(prices, catalogo, settlement, price_is_dirty=True)
         assert limpio.iloc[0]["TIR (%)"] < sucio.iloc[0]["TIR (%)"]
         assert limpio.iloc[0]["Convención Aplicada"] == BOND_PRICE_CLEAN
+
+
+class TestPuntajeSobreUnPanelRealista:
+    """
+    El panel de BYMA trae el mercado entero y solo una fracción mínima de las
+    especies tiene cronograma de pagos conocido. Ese desbalance es el caso
+    normal, no el excepcional, y es el que rompió el cuadro en producción: el
+    ranking se hacía contra las ~2700 filas del panel completo, así que
+    rendimiento y riesgo de tasa (que solo existen donde hay cronograma)
+    quedaban por debajo de la cobertura mínima de dimensión y se descartaban
+    para todos. Sobrevivía únicamente liquidez, cuyo peso no alcanza la
+    cobertura mínima para publicar puntaje, y el cuadro entero salía
+    "⚪ SIN DATOS".
+    """
+
+    def _panel(self, con_cronograma: int = 6, sin_cronograma: int = 40):
+        quotes = []
+        catalogo = {}
+        for i in range(con_cronograma):
+            ticker = f"CAL{i}D"
+            quotes.append(quote(ticker, price=95.0 + i, bid=94.0 + i, ask=96.0 + i))
+            catalogo[ticker] = make_terms(ticker, coupon_rate=8.0 + i * 0.5)
+        for i in range(sin_cronograma):
+            quotes.append(quote(f"NAD{i}D", price=100.0 + i, volume=500.0 + i))
+        return build_bonds_panel(make_prices(*quotes), catalogo, SETTLEMENT)
+
+    def test_las_ons_con_cronograma_reciben_puntaje(self):
+        panel = self._panel()
+        con_tir = panel[panel["TIR (%)"].notna()]
+        assert len(con_tir) == 6
+        assert con_tir["Puntaje"].notna().all(), (
+            "Ninguna ON recibió puntaje: el ranking se está haciendo contra el "
+            "panel completo en vez de contra el subconjunto comparable."
+        )
+
+    def test_ninguna_queda_etiquetada_sin_datos(self):
+        panel = self._panel()
+        con_tir = panel[panel["TIR (%)"].notna()]
+        assert not (con_tir["Atractivo"] == BOND_SIGNAL_NO_DATA).any()
+
+    def test_las_dimensiones_medibles_no_se_descartan(self):
+        # Rendimiento y riesgo de tasa se conocen para el 100% de las ONs
+        # comparables, aunque sean un puñado dentro de un panel enorme.
+        panel = self._panel()
+        con_tir = panel[panel["TIR (%)"].notna()]
+        assert con_tir["Rendimiento"].notna().all()
+        assert con_tir["Riesgo de tasa"].notna().all()
+
+    def test_las_especies_sin_cronograma_siguen_sin_puntaje(self):
+        # El arreglo no debe inventar puntajes donde no hay con qué calcularlos.
+        panel = self._panel()
+        sin_tir = panel[panel["TIR (%)"].isna()]
+        assert len(sin_tir) == 40
+        assert sin_tir["Puntaje"].isna().all()
+
+
+class TestCuartilDeVolumen:
+    """
+    El cuartil traduce el volumen a una lectura rápida de liquidez. Las dos
+    decisiones que lo hacen correcto —rankear dentro de cada moneda y dejar el
+    volumen cero fuera del cálculo— son justo las que se pierden si alguien
+    reescribe esto como un `qcut` sobre la columna entera.
+    """
+
+    def _panel(self, *quotes):
+        return build_bonds_panel(make_prices(*quotes), {}, SETTLEMENT)
+
+    def test_las_que_no_operaron_no_son_el_cuartil_mas_bajo(self):
+        panel = self._panel(
+            quote("AAAAD", Volumen=1000.0),
+            quote("BBBBD", Volumen=0.0),
+        )
+        por_ticker = panel.set_index("Ticker")[BOND_VOLUME_QUARTILE_COLUMN]
+        assert por_ticker["BBBBD"] == BOND_VOLUME_NONE
+        assert por_ticker["AAAAD"] != BOND_VOLUME_NONE
+
+    def test_el_ranking_es_dentro_de_cada_moneda(self):
+        # La especie en pesos opera un número enorme por estar en pesos, no por
+        # ser más líquida. Rankeadas juntas se llevaría el cuartil más alto y
+        # dejaría a las de dólares en el piso.
+        panel = self._panel(
+            quote("AAAAO", Volumen=500_000_000.0),
+            quote("BBBBO", Volumen=400_000_000.0),
+            quote("CCCCD", Volumen=900.0),
+            quote("DDDDD", Volumen=100.0),
+        )
+        por_ticker = panel.set_index("Ticker")[BOND_VOLUME_QUARTILE_COLUMN]
+        # La más operada de cada moneda comparte el cuartil más alto.
+        assert por_ticker["AAAAO"] == por_ticker["CCCCD"] == BOND_VOLUME_VERY_HIGH
+        assert por_ticker["BBBBO"] == por_ticker["DDDDD"]
+
+    def test_reparte_las_cuatro_etiquetas_sobre_una_escala_pareja(self):
+        quotes = [quote(f"T{i:03d}D", Volumen=float(i) * 100) for i in range(1, 9)]
+        panel = self._panel(*quotes)
+        etiquetas = panel[BOND_VOLUME_QUARTILE_COLUMN]
+        assert set(etiquetas) == {
+            BOND_VOLUME_LOW,
+            BOND_VOLUME_MEDIUM,
+            BOND_VOLUME_HIGH,
+            BOND_VOLUME_VERY_HIGH,
+        }
+        # Las dos más operadas caen en el cuartil más alto, las dos menos en el
+        # más bajo: con ocho valores parejos cada cuartil se lleva dos.
+        por_ticker = panel.set_index("Ticker")[BOND_VOLUME_QUARTILE_COLUMN]
+        assert por_ticker["T008D"] == por_ticker["T007D"] == BOND_VOLUME_VERY_HIGH
+        assert por_ticker["T001D"] == por_ticker["T002D"] == BOND_VOLUME_LOW
+
+    def test_un_panel_sin_volumen_no_rompe(self):
+        panel = self._panel(quote("AAAAD", Volumen=0.0), quote("BBBBD", Volumen=0.0))
+        assert (panel[BOND_VOLUME_QUARTILE_COLUMN] == BOND_VOLUME_NONE).all()
+
+    def test_el_cuartil_no_cambia_al_filtrar(self):
+        # Se mide contra el panel analizable, no contra lo que quede en
+        # pantalla, para que coincida con la población contra la que se puntúa
+        # la liquidez. Si se recalculara al filtrar, la misma fila podría
+        # mostrar cuartil "Bajo" y subpuntaje de liquidez alto a la vez.
+        quotes = [quote(f"T{i:03d}D", Volumen=float(i) * 100) for i in range(1, 13)]
+        panel = self._panel(*quotes)
+        antes = panel.set_index("Ticker")[BOND_VOLUME_QUARTILE_COLUMN]
+        recorte = apply_bond_filters(
+            panel[panel["Ticker"].isin(["T001D", "T002D", "T003D"])],
+            settlement_filter=BOND_FILTER_SETTLEMENT_ALL,
+            liquidity_filter=BOND_FILTER_LIQUIDITY_ALL,
+            signal_filter=BOND_FILTER_SIGNAL_ALL,
+            law_filter=BOND_FILTER_LAW_ALL,
+        )
+        despues = recorte.set_index("Ticker")[BOND_VOLUME_QUARTILE_COLUMN]
+        for ticker in despues.index:
+            assert despues[ticker] == antes[ticker], (
+                f"{ticker} cambió de cuartil al filtrar: el cuartil dejaría de "
+                "coincidir con el subpuntaje de liquidez"
+            )
+
+    def test_mas_volumen_nunca_da_un_cuartil_mas_bajo(self):
+        quotes = [quote(f"T{i:03d}D", Volumen=float(i) * 100) for i in range(1, 13)]
+        panel = self._panel(*quotes).set_index("Ticker")
+        orden = {
+            BOND_VOLUME_NONE: 0,
+            BOND_VOLUME_LOW: 1,
+            BOND_VOLUME_MEDIUM: 2,
+            BOND_VOLUME_HIGH: 3,
+            BOND_VOLUME_VERY_HIGH: 4,
+        }
+        niveles = [orden[panel.loc[f"T{i:03d}D", BOND_VOLUME_QUARTILE_COLUMN]] for i in range(1, 13)]
+        assert niveles == sorted(niveles)
+
+
+class TestNombresDeColumnaQueNoPuedenChocar:
+    """
+    `build_bonds_panel` vuelca los subpuntajes al cuadro por nombre de columna.
+    Si una dimensión del puntaje se llama igual que una columna de datos, el
+    subpuntaje la pisa y el dato desaparece de la tabla sin ningún error.
+
+    Pasó de verdad: la dimensión de crédito se llamó "Calificación", igual que
+    la columna que muestra la nota del emisor, y la nota se perdió.
+    """
+
+    def test_ninguna_dimension_del_puntaje_se_llama_como_una_columna_de_datos(self):
+        panel = build_bonds_panel(make_prices(quote("TSTAD")), {"TSTAD": make_terms("TSTAD")}, SETTLEMENT)
+        # Las columnas que el panel arma ANTES de volcar los subpuntajes.
+        columnas_de_datos = {
+            "Ticker", "Emisor", "Calificación", "Ley", "Precio", "TIR (%)",
+            "Duration Mod.", "Paridad (%)", "Spread (%)", "Volumen", "Fuente",
+        }
+        choques = columnas_de_datos & set(BOND_SCORE_WEIGHTS)
+        assert not choques, f"la dimensión {choques} pisaría una columna de datos"
+        assert panel.loc[0, "Calificación"] == "AAA"
+
+    def test_la_calificacion_del_emisor_sobrevive_al_volcado_de_puntajes(self):
+        panel = build_bonds_panel(make_prices(quote("TSTAD")), {"TSTAD": make_terms("TSTAD", rating="AA+")}, SETTLEMENT)
+        assert panel.loc[0, "Calificación"] == "AA+"

@@ -2,11 +2,16 @@
 components/bonds_table.py - Cuadro comparativo de Obligaciones Negociables.
 
 Es el equivalente de `screener_table.py` para renta fija. Mantiene la misma
-gramática visual (semáforo coloreado a la izquierda, porcentajes en verde/rojo)
-para que las dos pestañas se lean igual, pero el orden de las columnas responde
-a cómo se evalúa un bono y no una acción: primero rendimiento (TIR), después
-riesgo (duration, paridad), después liquidez, y recién al final los datos
-descriptivos del emisor.
+gramática visual (porcentajes en verde/rojo) para que las dos pestañas se lean
+igual, pero el orden de las columnas responde a cómo se evalúa un bono y no una
+acción: primero rendimiento (TIR), después riesgo (duration, paridad), después
+liquidez, y recién al final los datos descriptivos del emisor.
+
+La columna "Atractivo" no se muestra: es la traducción del Puntaje a una
+etiqueta, y teniendo el puntaje al lado decía lo mismo dos veces ocupando el
+ancho de la izquierda. El dato sigue en el DataFrame, porque el filtro por
+atractivo y el panel de alertas lo usan, y `style_bond_signal` sigue disponible
+para cuando la columna esté presente (vista de desglose o un llamador futuro).
 """
 
 import pandas as pd
@@ -17,11 +22,13 @@ from constants import (
     BOND_SCORE_LIQUIDITY,
     BOND_SCORE_PARITY,
     BOND_SCORE_RATE_RISK,
+    BOND_SCORE_RATING,
     BOND_SCORE_YIELD,
     BOND_SIGNAL_ATTRACTIVE,
     BOND_SIGNAL_LOW,
     BOND_SIGNAL_RISK,
     BOND_SIGNAL_VERY_ATTRACTIVE,
+    BOND_VOLUME_QUARTILE_COLUMN,
 )
 from theme import (
     COLOR_NEGATIVE,
@@ -43,21 +50,26 @@ from theme import (
 VERIFIED_BADGE = "✅ Verificado"
 UNVERIFIED_BADGE = "⚠️ Sin verificar"
 
+# Columnas que identifican la fila. No se ocultan aunque vengan vacías: sin
+# ellas no se sabe de qué bono habla cada renglón.
+_NEVER_HIDE = frozenset({"Ticker", "Emisor"})
+
 # Lo esencial para decidir, en orden de lectura: qué tan buena es la
 # oportunidad, de qué bono se trata, cuánto rinde, cuánto riesgo tiene y si se
 # puede operar. Todo lo demás (puntas, cantidades, convexidad, valor técnico,
 # interés corrido) es detalle de segundo orden y vive detrás del interruptor
 # de vista completa: una tabla de veinte columnas no se lee, se escanea.
 ESSENTIAL_COLUMNS = [
-    "Atractivo",
     "Puntaje",
     "Ticker",
     "Emisor",
     "TIR (%)",
+    "Calificación",
     "Duration Mod.",
     "Paridad (%)",
     "Spread (%)",
     "Volumen",
+    BOND_VOLUME_QUARTILE_COLUMN,
     "Precio",
     "Vencimiento",
     "Ley",
@@ -70,22 +82,22 @@ SCORE_BREAKDOWN_COLUMNS = [
     BOND_SCORE_RATE_RISK,
     BOND_SCORE_PARITY,
     BOND_SCORE_JURISDICTION,
+    BOND_SCORE_RATING,
     "Cobertura",
 ]
 
 FULL_COLUMNS = [
-    "Atractivo",
     "Puntaje",
     "Ticker",
     "Emisor",
     "Ley",
-    "Calificación",
     "Liquidación",
     "Fuente",
     "Verif.",
     "Precio",
     "Var. (%)",
     "TIR (%)",
+    "Calificación",
     "Spread vs UST (pb)",
     "Current Yield (%)",
     "Cupón (%)",
@@ -95,8 +107,12 @@ FULL_COLUMNS = [
     "Vencimiento",
     "Spread (%)",
     "Volumen",
+    BOND_VOLUME_QUARTILE_COLUMN,
     "Lámina Mínima",
+    "Garantía",
+    "ISIN",
 ]
+
 
 def style_bond_signal(val):
     """Colorea la etiqueta de atractivo con la misma paleta que el semáforo de acciones."""
@@ -168,10 +184,28 @@ def render_bonds_table(df: pd.DataFrame, full: bool = False, breakdown: bool = F
     if breakdown:
         columns += SCORE_BREAKDOWN_COLUMNS
     available = [col for col in columns if col in df_display.columns]
-    df_display = df_display[available]
+
+    # Una columna sin un solo valor no informa nada y ensucia la lectura. Es el
+    # caso normal, no el excepcional: paridad, valor técnico, interés corrido y
+    # vida promedio necesitan saber qué parte de cada pago es renta, y el
+    # cronograma público no lo separa, así que quedan vacías salvo que la ON
+    # esté en el catálogo local.
+    #
+    # Hay un motivo extra para no dejarlas: Streamlit dibuja un NaN numérico
+    # como el texto "None" (comportamiento de la librería, no del cuadro: pasa
+    # igual sin `column_config`), así que una columna vacía no se ve vacía, se
+    # ve rota.
+    empty = [
+        col
+        for col in available
+        if col not in _NEVER_HIDE and df_display[col].isna().all()
+    ]
+    df_display = df_display[[col for col in available if col not in empty]]
 
     variation_cols = [col for col in ("Var. (%)", "Spread vs UST (pb)") if col in df_display.columns]
-    styled = df_display.style.map(style_bond_signal, subset=["Atractivo"])
+    styled = df_display.style
+    if "Atractivo" in df_display.columns:
+        styled = styled.map(style_bond_signal, subset=["Atractivo"])
     if variation_cols:
         styled = styled.map(style_variation, subset=variation_cols)
     if "Paridad (%)" in df_display.columns:
@@ -200,7 +234,15 @@ def render_bonds_table(df: pd.DataFrame, full: bool = False, breakdown: bool = F
         "Calificación": st.column_config.TextColumn(
             "Calificación",
             width="small",
-            help="Calificación crediticia local del emisor (FIX SCR, Moody's Local, etc.). 's/c' = sin cargar en el catálogo.",
+            help=(
+                "Calificación crediticia del EMISOR, no de la especie, con la calificadora "
+                "entre paréntesis: una nota en escala nacional ('AA(arg)') y una global "
+                "('AA') no significan lo mismo ni se comparan entre sí. Se lee al lado de "
+                "la TIR a propósito: un rendimiento alto sin saber a quién le estás "
+                "prestando no dice nada. 's/c' = sin cargar. Ninguna fuente pública la "
+                "publica de forma automática, así que se carga a mano y solo se muestra una vez "
+                "verificada contra el informe de la calificadora."
+            ),
         ),
         "Liquidación": st.column_config.TextColumn(
             "Liquidación",
@@ -265,6 +307,25 @@ def render_bonds_table(df: pd.DataFrame, full: bool = False, breakdown: bool = F
             help="Diferencia entre punta vendedora y compradora sobre el punto medio. Es el costo de entrar y salir: la medida práctica de liquidez.",
         ),
         "Volumen": st.column_config.NumberColumn("Volumen", format="%.0f"),
+        BOND_VOLUME_QUARTILE_COLUMN: st.column_config.TextColumn(
+            "Vol. (cuartil)",
+            width="small",
+            help=(
+                "Cuartil de volumen operado entre las ONs que estás viendo, y "
+                "dentro de cada moneda: el volumen de la especie en pesos está en "
+                "pesos y el de la MEP en dólares, así que un ranking conjunto no "
+                "compararía lo mismo. Es relativo a la vista: cambia al cambiar "
+                "los filtros, porque contra el mercado entero todas las filas del "
+                "corte por defecto caían en el cuartil más alto y la columna no "
+                "distinguía nada. Las que no operaron no entran al cálculo."
+            ),
+        ),
+        "Garantía": st.column_config.TextColumn(
+            "Garantía",
+            width="small",
+            help="Tipo de garantía de la emisión, según la ficha técnica de BYMA.",
+        ),
+        "ISIN": st.column_config.TextColumn("ISIN", width="small"),
         "Cobertura": st.column_config.NumberColumn(
             "Cobertura",
             format="%.0f%%",
@@ -275,6 +336,7 @@ def render_bonds_table(df: pd.DataFrame, full: bool = False, breakdown: bool = F
         BOND_SCORE_RATE_RISK: st.column_config.NumberColumn(format="%.0f"),
         BOND_SCORE_PARITY: st.column_config.NumberColumn(format="%.0f"),
         BOND_SCORE_JURISDICTION: st.column_config.NumberColumn(format="%.0f"),
+        BOND_SCORE_RATING: st.column_config.NumberColumn(format="%.0f"),
         "Lámina Mínima": st.column_config.NumberColumn(
             "Lámina Mín.",
             format="%.0f",
@@ -289,3 +351,11 @@ def render_bonds_table(df: pd.DataFrame, full: bool = False, breakdown: bool = F
         column_config={k: v for k, v in column_config.items() if k in df_display.columns},
         height=620,
     )
+
+    if empty:
+        st.caption(
+            f"ℹ️ No hay datos para {len(empty)} columna(s), así que no se muestran: "
+            f"**{', '.join(empty)}**. Estas medidas necesitan saber qué parte de cada pago es "
+            "interés y qué parte devuelve capital, y la fuente pública solo informa el total de "
+            "cada pago. Se completan cuando se cargan las condiciones de emisión del bono."
+        )

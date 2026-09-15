@@ -36,9 +36,12 @@ import streamlit as st
 import yfinance as yf
 
 from bonds.byma_source import fetch_byma_bond_prices
-from bonds.catalog import load_catalog
+from bonds.byma_terms import BondReference, fetch_byma_terms
+from bonds.catalog import load_catalog, quote_currency_of
 from bonds.flows_source import BondFlows, fetch_community_flows
 from bonds.panel import build_bonds_panel
+from bonds.ratings import load_ratings
+from constants import BYMA_TERMS_FETCH_LIMIT
 
 logger = logging.getLogger(__name__)
 
@@ -84,6 +87,40 @@ def _feed_warnings(prices: pd.DataFrame) -> list[str]:
     if not hasattr(prices, "attrs"):
         return []
     return [prices.attrs[key] for key in ("volume_missing",) if prices.attrs.get(key)]
+
+
+@st.cache_data(ttl=86_400, show_spinner=False)
+def fetch_bond_references(tickers: tuple[str, ...]) -> tuple[dict[str, BondReference], str | None]:
+    """
+    Fichas técnicas de BYMA, cacheadas por un día.
+
+    El emisor, la ley y la lámina mínima de un bono se fijan cuando se emite y
+    no cambian, así que no tiene sentido volver a pedirlas con la frecuencia de
+    los precios. El argumento es una tupla, y no una lista, porque
+    `st.cache_data` necesita que la clave sea hasheable.
+    """
+    return fetch_byma_terms(list(tickers))
+
+
+def _most_traded(prices: pd.DataFrame, limit: int) -> tuple[str, ...]:
+    """
+    Las especies más operadas de cada moneda.
+
+    Acota cuántas fichas técnicas se piden: son una llamada por especie y el
+    panel trae más de 2700. Se rankea por moneda porque el volumen de la
+    especie en pesos está en pesos y el de la MEP en dólares, así que un
+    ranking conjunto compara unidades distintas.
+    """
+    if prices.empty or "Volumen" not in prices.columns:
+        return ()
+    if "Moneda Precio" in prices.columns:
+        position = prices.groupby("Moneda Precio", dropna=False)["Volumen"].rank(
+            method="first", ascending=False
+        )
+        selected = prices[position <= limit]
+    else:
+        selected = prices.nlargest(limit, "Volumen", keep="first")
+    return tuple(selected["Ticker"].astype(str))
 
 
 @st.cache_data(ttl=3600, show_spinner=False)
@@ -157,6 +194,30 @@ def load_bonds_data(
 
     warnings.extend(_feed_warnings(prices))
 
+    # La ficha técnica se pide solo para las más operadas: es una llamada por
+    # especie, y el panel trae más de 2700.
+    prices_with_currency = prices.assign(
+        **{"Moneda Precio": prices["Ticker"].map(quote_currency_of)}
+    )
+    # Las especies cuya moneda no se puede determinar por el ticker no entran:
+    # son casi la mitad del panel y el motor no puede calcularles rendimiento
+    # en ningún caso, porque descontar el flujo exige que la moneda de la
+    # especie coincida con la de emisión. Pedirles la ficha eran 150 llamadas
+    # por carga a cambio de nada.
+    prices_with_currency = prices_with_currency[
+        prices_with_currency["Moneda Precio"].notna()
+    ]
+    references, references_error = fetch_bond_references(
+        _most_traded(prices_with_currency, BYMA_TERMS_FETCH_LIMIT)
+    )
+    if references_error:
+        warnings.append(references_error)
+
+    # Las calificaciones son un archivo del repositorio: no hay fuente
+    # pública que las publique en formato consultable por máquina.
+    ratings, rating_warnings = load_ratings()
+    warnings.extend(rating_warnings)
+
     panel = build_bonds_panel(
         prices=prices,
         catalog=catalog,
@@ -164,6 +225,8 @@ def load_bonds_data(
         price_is_dirty=price_is_dirty,
         treasury_curve=fetch_us_treasury_curve(),
         flows_by_base=flows_by_base,
+        references=references,
+        ratings=ratings,
     )
 
     return panel, warnings

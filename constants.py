@@ -150,12 +150,13 @@ TIMEFRAME_CHOICE_OPTIONS: Final[tuple[str, ...]] = (
 
 # --- Selector de Mercado ---
 MARKET_USA_STOCKS: Final[str] = "Acciones USA (S&P 500)"
-MARKET_CRYPTO: Final[str] = "Criptomonedas"
 MARKET_ARGENTINA: Final[str] = "Acciones Argentinas (Merval)"
 
+# Cripto NO está acá: no es una acción, es otra clase de activo, así que va
+# como sección propia del tablero junto a Acciones y Bonos. Este desplegable
+# es para elegir *qué mercado accionario* se mira.
 MARKET_OPTIONS: Final[tuple[str, ...]] = (
     MARKET_USA_STOCKS,
-    MARKET_CRYPTO,
     MARKET_ARGENTINA,
 )
 
@@ -273,9 +274,32 @@ BOND_PRICE_CONVENTION_OPTIONS: Final[tuple[str, ...]] = (
 # sección consulta sus fuentes recién cuando se la elige.
 # ----------------------------------------------------------------------
 SECTION_STOCKS: Final[str] = "📈 Acciones (Confluencia & Smart Money)"
-SECTION_BONDS: Final[str] = "💵 Bonos Corporativos Argentinos (ONs)"
+SECTION_BONDS: Final[str] = "💵 Bonos Corporativos"
+SECTION_CRYPTO: Final[str] = "🪙 Criptomonedas"
 
-SECTION_OPTIONS: Final[tuple[str, ...]] = (SECTION_STOCKS, SECTION_BONDS)
+SECTION_OPTIONS: Final[tuple[str, ...]] = (SECTION_STOCKS, SECTION_BONDS, SECTION_CRYPTO)
+
+# ----------------------------------------------------------------------
+# País del panel de bonos corporativos (desplegable de la barra lateral).
+#
+# El país no es una etiqueta cosmética: define la fuente de precios, las
+# convenciones de cálculo y el catálogo de emisiones. Hoy solo Argentina
+# está implementada (BYMA + ONs en dólares); el resto figura acá para que
+# el desplegable exponga el rumbo y para que el día que se sume un país
+# nuevo el punto de extensión ya esté donde corresponde: una rama por país
+# en `components/bonds_panel.py`, no un `if` repartido por el módulo.
+#
+# `bonds/bond_math.py` es agnóstico de país a propósito (descontar un flujo
+# de fondos es la misma aritmética en cualquier mercado); lo que cambia por
+# país es de dónde salen los precios y las condiciones de emisión.
+# ----------------------------------------------------------------------
+BOND_COUNTRY_ARGENTINA: Final[str] = "🇦🇷 Argentina (ONs)"
+BOND_COUNTRY_USA: Final[str] = "🇺🇸 Estados Unidos"
+
+BOND_COUNTRY_OPTIONS: Final[tuple[str, ...]] = (
+    BOND_COUNTRY_ARGENTINA,
+    BOND_COUNTRY_USA,
+)
 
 # ----------------------------------------------------------------------
 # Especies de liquidación de una ON.
@@ -335,6 +359,17 @@ BOND_SETTLEMENT_FILTER_OPTIONS: Final[tuple[str, ...]] = (
 # tener que explicar por qué a unas les faltan columnas.
 # ----------------------------------------------------------------------
 BOND_SOURCE_CATALOG: Final[str] = "Catálogo local"
+# Flujo reconstruido de la ficha técnica de BYMA. Solo se usa en bonos
+# bullet a tasa fija, donde lo único que hay que suponer es la frecuencia
+# de pago —el único dato del flujo que BYMA no publica—. La etiqueta dice
+# "estimada" porque esa suposición mueve la TIR unos puntos básicos.
+BOND_SOURCE_BYMA: Final[str] = "BYMA (frec. estimada)"
+
+# Etiqueta de la ley cuando se dedujo del prefijo del ISIN en lugar de venir
+# declarada. El sufijo existe para que nadie lea como dato duro algo que es
+# una inferencia: el ISIN dice dónde se registró la emisión, no bajo qué ley
+# se litiga.
+BOND_LAW_INFERRED_SUFFIX: Final[str] = " (ISIN)"
 BOND_SOURCE_NONE: Final[str] = "—"
 
 # ----------------------------------------------------------------------
@@ -390,13 +425,47 @@ BOND_SCORE_RATE_RISK: Final[str] = "Riesgo de tasa"
 BOND_SCORE_LIQUIDITY: Final[str] = "Liquidez"
 BOND_SCORE_PARITY: Final[str] = "Paridad"
 BOND_SCORE_JURISDICTION: Final[str] = "Jurisdicción"
+# OJO: no puede llamarse "Calificación". Ese es el nombre de la columna que
+# muestra la nota del emisor, y el panel vuelca los subpuntajes al cuadro por
+# nombre de columna: si coinciden, el subpuntaje pisa la nota y la nota
+# desaparece de la tabla.
+BOND_SCORE_RATING: Final[str] = "Calidad crediticia"
 
+# Los tres primeros pesan igual y son el criterio de inversión del tablero:
+# antes de preguntarse cuánto rinde un bono hay que poder comprarlo y venderlo
+# (liquidez) y saber a quién se le presta (calificación). Rendimiento bajó de
+# 35 a 20 por eso mismo: una TIR alta que no se puede ejecutar, o que paga un
+# emisor al borde del default, no es una oportunidad.
+#
+# Riesgo de tasa pesa la mitad que los tres primeros, y no lo mismo, porque
+# la duration se estaba contando dos veces. El cuadro ya tiene un filtro de
+# duration: quien no quiere riesgo de tasa lo recorta ahí. Que además lo
+# castigue el puntaje convertía al ranking en una lista de bonos cortos.
+#
+# El caso que lo mostró: una ON de Pampa con AAA(arg), el mejor spread de
+# puntas del panel y medio millón operado quedaba por debajo de una AA- que
+# casi no operaba, solo porque su duration de 7 años la dejaba en 0,7 sobre
+# 100 en esta dimensión. Una duration larga no es un defecto, es una
+# característica: un bono a siete años no es peor que uno a seis meses, es
+# otra cosa.
+#
+# Los 10 puntos liberados se reparten entre las dos secundarias, que estaban
+# parejas. OJO con jurisdicción: hoy la ley no viene declarada por el mercado
+# sino deducida del prefijo del ISIN, así que ese 15% descansa sobre un
+# indicio y no sobre un dato.
+#
+# La calificación se pondera aunque hoy no haya ninguna cargada. No hace falta
+# hacer nada especial para eso: una dimensión que no se puede medir en buena
+# parte del panel se descarta para todos y su peso se reparte entre las demás,
+# de modo que mientras el archivo de calificaciones esté vacío el puntaje sale
+# de los otros cinco criterios y aparece solo cuando haya datos.
 BOND_SCORE_WEIGHTS: Final[dict[str, float]] = {
-    BOND_SCORE_YIELD: 35.0,
-    BOND_SCORE_LIQUIDITY: 25.0,
-    BOND_SCORE_RATE_RISK: 20.0,
-    BOND_SCORE_PARITY: 10.0,
-    BOND_SCORE_JURISDICTION: 10.0,
+    BOND_SCORE_YIELD: 20.0,
+    BOND_SCORE_LIQUIDITY: 20.0,
+    BOND_SCORE_RATING: 20.0,
+    BOND_SCORE_RATE_RISK: 10.0,
+    BOND_SCORE_PARITY: 15.0,
+    BOND_SCORE_JURISDICTION: 15.0,
 }
 
 # Pendiente del castigo por prima excesiva. Pasado el umbral de riesgo, cada
@@ -423,6 +492,47 @@ BOND_SCORE_LAW_ARG: Final[float] = 40.0
 # lo que falta que sobre el bono.
 BOND_SCORE_MIN_COVERAGE: Final[float] = 0.5
 
+# Puntaje de crédito de un emisor SIN calificación.
+#
+# Es la única dimensión donde no se aplica la regla general de "lo que no se
+# puede medir se excluye y su peso se reparte". Esa regla existe para no
+# castigar a un bono por un dato que falta en nuestra fuente, y es correcta
+# cuando el dato es nuestro problema. Acá no lo es: con el listado de la
+# calificadora cargado, la mayoría del panel tiene nota, así que no tenerla
+# dice algo del emisor —no la buscó, o se la retiraron— y no de nuestra
+# cobertura.
+#
+# Excluirla tenía además un efecto concreto y visible: un emisor sin
+# calificación no perdía nada por no tenerla, y con el resto de sus números
+# buenos se quedaba con el primer puesto del cuadro por encima de emisores
+# AAA. Eso es lo contrario de lo que un tablero de renta fija debería premiar.
+#
+# El valor NO es cero: cero es lo que puntúa un emisor en default, y de uno
+# sin calificar no sabemos eso. Queda por debajo de cualquier nota que hoy
+# tenga el panel (la más floja es A+(arg), que puntúa 41) y por encima de
+# las notas malas de verdad: un crédito que se sabe flojo tiene que quedar
+# peor que uno desconocido. Es una postura de inversión explícita, no una
+# medición: subilo o bajalo según cuánto te importe que un emisor esté
+# calificado.
+BOND_SCORE_UNRATED: Final[float] = 30.0
+
+# Cuánto vale un escalón de calificación, como factor.
+#
+# La escalera NO se reparte lineal: el riesgo de crédito crece de forma
+# aproximadamente exponencial al bajar de nota. Históricamente, cada escalón
+# hacia abajo multiplica la probabilidad de default en vez de sumarle una
+# cantidad fija, así que un escalón por debajo de AAA no significa lo mismo
+# que un escalón por debajo de BBB.
+#
+# Con 0,8, AAA vale 100 y cada escalón conserva el 80% del anterior:
+#
+#     AAA 100 · AA+ 80 · AA 64 · AA- 51 · A+ 41 · A 33 · BBB 17 · BB 9
+#
+# Repartir lineal dejaba a todas las corporativas argentinas —que van de
+# A+(arg) a AAA(arg)— apretadas entre 80 y 100, y la dimensión no distinguía
+# un AAA de un AA-.
+BOND_RATING_NOTCH_DECAY: Final[float] = 0.8
+
 # Tamaño mínimo del panel comparable para publicar puntajes. El puntaje es
 # un percentil: con dos o tres bonos, "estar en el percentil 100" significa
 # ganarle a dos, y con uno solo significa nada. Por debajo de este número no
@@ -442,3 +552,62 @@ BOND_SCORE_MIN_DIMENSION_COVERAGE: Final[float] = 0.5
 BOND_SCORE_VERY_ATTRACTIVE_MIN: Final[float] = 70.0
 BOND_SCORE_ATTRACTIVE_MIN: Final[float] = 55.0
 BOND_SCORE_NEUTRAL_MIN: Final[float] = 40.0
+
+
+# ----------------------------------------------------------------------
+# Cuántas especies se enriquecen con la ficha técnica de BYMA.
+#
+# La ficha técnica se pide de a una especie por llamada, y el panel trae más
+# de 2700: pedirlas todas serían miles de pedidos a una API pública por cada
+# carga. Se piden solo las más operadas de cada moneda, que son las únicas
+# que el panel muestra por defecto y las únicas cuyo precio es ejecutable.
+# ----------------------------------------------------------------------
+BYMA_TERMS_FETCH_LIMIT: Final[int] = 150
+
+# ----------------------------------------------------------------------
+# Cuartil de volumen operado (columna "Volumen (cuartil)").
+#
+# Traduce el volumen a una lectura rápida de liquidez. El número crudo no
+# se puede comparar de un vistazo: 86.000 es mucho o poco según contra qué.
+#
+# Dos decisiones que cambian el resultado:
+#
+#   1. **Los cuartiles se calculan DENTRO de cada moneda.** El volumen de la
+#      especie en pesos está expresado en pesos y el de la especie MEP en
+#      dólares. Mezclarlas pondría a casi todas las especies en pesos en el
+#      cuartil alto por tener el número más grande, no por operar más. Es el
+#      mismo motivo por el que `_top_by_volume_within_currency` rankea por
+#      moneda.
+#
+#   2. **Volumen cero no es el cuartil más bajo: es "sin operar".** Las
+#      especies que no negociaron son mayoría en el panel, y dejarlas entrar
+#      al cuartil las repartiría empatadas por la mitad de la escala,
+#      arrastrando hacia abajo a las que sí operaron poco. Se etiquetan
+#      aparte y no participan del cálculo.
+#
+#   3. **Se calculan sobre las filas que quedan después de filtrar**, no
+#      sobre el mercado entero. Es lo contrario de lo que parece razonable,
+#      y la razón es que el corte de liquidez por defecto es él mismo un
+#      "top N por volumen": contra todo el mercado, las filas en pantalla
+#      eran por construcción las más operadas y salían todas en el cuartil
+#      más alto, con lo cual la columna no distinguía nada. El costo de esta
+#      decisión es que "muy alto" significa muy alto en la vista actual y
+#      cambia al cambiar los filtros; a cambio, la columna siempre reparte.
+# ----------------------------------------------------------------------
+BOND_VOLUME_VERY_HIGH: Final[str] = "🔵 Muy alto"
+BOND_VOLUME_HIGH: Final[str] = "🟢 Alto"
+BOND_VOLUME_MEDIUM: Final[str] = "🟡 Medio"
+BOND_VOLUME_LOW: Final[str] = "🟠 Bajo"
+BOND_VOLUME_NONE: Final[str] = "⚪ Sin operar"
+
+# De mayor a menor, para que la interfaz no reconstruya el orden a mano.
+BOND_VOLUME_QUARTILES: Final[tuple[str, ...]] = (
+    BOND_VOLUME_VERY_HIGH,
+    BOND_VOLUME_HIGH,
+    BOND_VOLUME_MEDIUM,
+    BOND_VOLUME_LOW,
+    BOND_VOLUME_NONE,
+)
+
+# Nombre de la columna, junto a "Volumen".
+BOND_VOLUME_QUARTILE_COLUMN: Final[str] = "Volumen (cuartil)"

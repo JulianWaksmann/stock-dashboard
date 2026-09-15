@@ -19,8 +19,10 @@ import numpy as np
 import pandas as pd
 
 from bonds.bond_math import analyze_bond, analyze_cashflows, year_fraction
+from bonds.byma_terms import ASSUMED_COUPON_FREQUENCY, BondReference
 from bonds.catalog import BondTerms, base_ticker_of, find_terms, quote_currency_of, settlement_of
 from bonds.flows_source import BondFlows
+from bonds.ratings import IssuerRating, find_rating, rating_rank
 from bonds.scoring import compute_opportunity_scores, evaluate_bond_attractiveness, label_from_score
 from constants import (
     BOND_ATTRACTIVE_SIGNALS,
@@ -33,6 +35,7 @@ from constants import (
     BOND_FILTER_SIGNAL_ATTRACTIVE,
     BOND_FILTER_SIGNAL_RISK,
     BOND_FILTER_SIGNAL_VERY_ATTRACTIVE,
+    BOND_LAW_INFERRED_SUFFIX,
     BOND_MIN_YEARS_FOR_GRADING,
     BOND_PRICE_CLEAN,
     BOND_PRICE_DIRTY,
@@ -43,9 +46,16 @@ from constants import (
     BOND_SIGNAL_RISK,
     BOND_SIGNAL_VERY_ATTRACTIVE,
     BOND_SIGNAL_VERY_SHORT,
+    BOND_SOURCE_BYMA,
     BOND_SOURCE_CATALOG,
     BOND_SOURCE_NONE,
     BOND_TOP_VOLUME_SIZES,
+    BOND_VOLUME_HIGH,
+    BOND_VOLUME_LOW,
+    BOND_VOLUME_MEDIUM,
+    BOND_VOLUME_NONE,
+    BOND_VOLUME_QUARTILE_COLUMN,
+    BOND_VOLUME_VERY_HIGH,
 )
 
 logger = logging.getLogger(__name__)
@@ -91,6 +101,129 @@ def _num(value) -> float:
         return np.nan
 
 
+def _can_rebuild_from_reference(reference: BondReference | None, quote_currency: str | None) -> bool:
+    """
+    True si el flujo de un bono se puede reconstruir desde su ficha técnica.
+
+    Exige las cuatro cosas sin las cuales el flujo no queda determinado: tasa
+    fija (una variable no se puede descontar, su cupón futuro no existe
+    todavía), amortización bullet, fechas de emisión y vencimiento, y que la
+    moneda de la especie coincida con la del bono.
+    """
+    if reference is None or quote_currency is None:
+        return False
+    if reference.coupon_rate is None or not reference.is_bullet:
+        return False
+    if reference.issue_date is None or reference.maturity is None:
+        return False
+    if reference.maturity <= reference.issue_date:
+        return False
+    return _reference_currency(reference) == quote_currency
+
+
+def _rating_rank_of(ratings, terms, issuer) -> float:
+    """Peldaño de la calificación de esta fila, o NaN si no se conoce."""
+    nota = terms.rating if terms and terms.rating else None
+    if nota is None:
+        record = find_rating(ratings or {}, issuer)
+        nota = record.rating if record else None
+    peldano = rating_rank(nota)
+    return float(peldano) if peldano is not None else np.nan
+
+
+def _rating_scale_of(ratings, terms, issuer) -> str:
+    """
+    Escala de la calificación: "nacional" o "global".
+
+    Una nota del catálogo no declara escala; se asume nacional, que es lo que
+    publican las calificadoras locales para las ONs argentinas.
+    """
+    if terms and terms.rating:
+        return "nacional"
+    record = find_rating(ratings or {}, issuer)
+    return (record.scale or "nacional") if record else "—"
+
+
+def _issuer_rating_label(ratings: dict[str, IssuerRating] | None, issuer: object) -> str | None:
+    """
+    Calificación del emisor, ya formateada con la calificadora entre paréntesis.
+
+    Va con la agencia pegada porque una nota sola no se puede leer: "AA(arg)"
+    de una calificadora local y "AA" de una global no significan lo mismo ni
+    son comparables entre sí.
+    """
+    if not ratings:
+        return None
+    record = find_rating(ratings, issuer)
+    return record.label if record else None
+
+
+def _inferred_law_label(reference: BondReference | None) -> str | None:
+    """Ley deducida del ISIN, marcada como inferencia y no como dato declarado."""
+    if reference is None or not reference.inferred_law:
+        return None
+    return f"{reference.inferred_law}{BOND_LAW_INFERRED_SUFFIX}"
+
+
+def _reference_currency(reference: BondReference) -> str | None:
+    """
+    Moneda de emisión según la ficha técnica, que la escribe en castellano.
+
+    BYMA devuelve "Dólares" o "Pesos" acá, y los códigos ISO en el panel de
+    precios. Se traduce en un solo lugar para que la comparación con la moneda
+    de la especie sea entre iguales.
+    """
+    text = (reference.currency or "").strip().upper()
+    if text.startswith("DOLAR") or text.startswith("DÓLAR") or text == "USD":
+        return "USD"
+    if text.startswith("PESO") or text == "ARS":
+        return "ARS"
+    return None
+
+
+def _metrics_from_reference(
+    reference: BondReference,
+    price: float,
+    settlement: date,
+    price_is_dirty: bool,
+) -> dict:
+    """Corre el análisis completo sobre el flujo reconstruido de un bullet."""
+    try:
+        return analyze_bond(
+            issue_date=reference.issue_date,
+            maturity=reference.maturity,
+            coupon_rate=reference.coupon_rate,
+            frequency=ASSUMED_COUPON_FREQUENCY,
+            settlement=settlement,
+            price=price,
+            amortizations=(),
+            price_is_dirty=price_is_dirty,
+        )
+    except (ValueError, ZeroDivisionError, OverflowError):
+        logger.warning("No se pudo reconstruir el flujo de %s", reference.ticker, exc_info=True)
+        return {}
+
+
+def _first_known(*values, default=None):
+    """
+    Primer valor no vacío de la lista, en orden de confiabilidad de la fuente.
+
+    El orden con que se llama no es casual: primero el catálogo cargado a mano,
+    después la ficha técnica del mercado, y al final el dataset comunitario.
+    Cada fuente es más autoritativa que la siguiente, y la única forma de que
+    eso quede claro es que el orden de los argumentos lo diga.
+    """
+    for value in values:
+        if value is None:
+            continue
+        if isinstance(value, float) and np.isnan(value):
+            continue
+        if isinstance(value, str) and not value.strip():
+            continue
+        return value
+    return default
+
+
 def _bid_ask_spread_pct(bid: float, ask: float) -> float:
     """
     Spread punta compradora / punta vendedora, en % del punto medio.
@@ -134,6 +267,8 @@ def build_bonds_panel(
     price_is_dirty: bool = True,
     treasury_curve: dict[float, float] | None = None,
     flows_by_base: dict[str, BondFlows] | None = None,
+    references: dict[str, BondReference] | None = None,
+    ratings: dict[str, IssuerRating] | None = None,
 ) -> pd.DataFrame:
     """
     Cruza precios, cronogramas de pago y métricas en el cuadro final.
@@ -160,29 +295,63 @@ def build_bonds_panel(
 
     treasury_curve = treasury_curve or {}
     flows_by_base = flows_by_base or {}
+    references = references or {}
     rows: list[dict] = []
 
     for _, quote in prices.iterrows():
         ticker = quote["Ticker"]
         terms = find_terms(catalog, ticker)
         flows = flows_by_base.get(base_ticker_of(ticker))
+        reference = references.get(base_ticker_of(ticker))
         settlement_kind = settlement_of(ticker)
-        quote_currency = quote_currency_of(ticker)
+        # La moneda del precio sale del feed cuando la informa, y del sufijo del
+        # ticker cuando no: el dato le gana a la convención.
+        quote_currency = _first_known(
+            quote.get("Moneda Precio") if "Moneda Precio" in quote.index else None,
+            quote_currency_of(ticker),
+        )
         price = float(quote.get("Precio", np.nan))
         bid = float(quote.get("Punta Compra", np.nan))
         ask = float(quote.get("Punta Venta", np.nan))
 
+        # Se resuelve antes del diccionario porque la calificación se busca
+        # por emisor: las dos fuentes de precios lo escriben distinto, así que
+        # hay un solo lugar donde se decide cuál es el nombre de esta fila.
+        row_issuer = _first_known(
+            terms.issuer if terms else None,
+            reference.issuer if reference else None,
+            flows.issuer if flows else None,
+            default="— (sin datos)",
+        )
+
         row = {
             "Atractivo": BOND_SIGNAL_NO_DATA,
             "Ticker": ticker,
-            "Emisor": terms.issuer if terms else (flows.issuer if flows else "— (sin cronograma)"),
+            "Emisor": row_issuer,
             "Sector": terms.sector if terms else "Sin clasificar",
-            "Moneda": terms.currency if terms else (flows.currency if flows else "—"),
+            "Moneda": _first_known(
+                terms.currency if terms else None,
+                reference.currency if reference else None,
+                flows.currency if flows else None,
+                default="—",
+            ),
             "Liquidación": settlement_kind,
             "Moneda Precio": quote_currency or BOND_SETTLEMENT_UNKNOWN,
-            "Ley": terms.law if terms else "—",
+            # El catálogo declara la ley; BYMA no (sus campos vienen vacíos),
+            # así que en su lugar se infiere del prefijo del ISIN y se marca
+            # como inferida para que no se lea como dato declarado.
+            "Ley": _first_known(
+                terms.law if terms else None,
+                _inferred_law_label(reference),
+                default="—",
+            ),
             "Cupón (%)": terms.coupon_rate if terms else np.nan,
-            "Vencimiento": terms.maturity if terms else (flows.maturity if flows else pd.NaT),
+            "Vencimiento": _first_known(
+                terms.maturity if terms else None,
+                reference.maturity if reference else None,
+                flows.maturity if flows else None,
+                default=pd.NaT,
+            ),
             "Precio": price,
             "Var. (%)": float(quote.get("Var. (%)", np.nan)),
             "Punta Compra": bid,
@@ -190,8 +359,28 @@ def build_bonds_panel(
             "Spread (%)": _bid_ask_spread_pct(bid, ask),
             "Volumen": float(quote.get("Volumen", np.nan)),
             "Operaciones": float(quote.get("Operaciones", np.nan)),
-            "Lámina Mínima": terms.min_denomination if terms else np.nan,
-            "Calificación": terms.rating if terms else "s/c",
+            "Lámina Mínima": _first_known(
+                terms.min_denomination if terms else None,
+                reference.min_denomination if reference else None,
+                default=np.nan,
+            ),
+            "ISIN": reference.isin if reference else None,
+            "En Default": bool(reference.in_default) if reference else False,
+            "Garantía": reference.guarantee if reference else None,
+            # La calificación es del emisor, no de la especie, así que se
+            # busca por emisor y una entrada cubre todas sus series. El
+            # catálogo gana si la declara: es una carga explícita por bono.
+            "Calificación": _first_known(
+                terms.rating if terms else None,
+                _issuer_rating_label(ratings, row_issuer),
+                default="s/c",
+            ),
+            # Columnas internas: el peldaño de la nota y en qué escala está.
+            # No se muestran, las usa el puntaje. La escala importa porque una
+            # nota nacional y una global no son comparables entre sí, así que
+            # el ranking se hace dentro de cada una.
+            "CALIF_RANK": _rating_rank_of(ratings, terms, row_issuer),
+            "CALIF_ESCALA": _rating_scale_of(ratings, terms, row_issuer),
             "Verificado": bool(terms.verified) if terms else False,
             "En Catálogo": terms is not None,
             "Fuente": BOND_SOURCE_CATALOG if terms else (flows.source if flows else BOND_SOURCE_NONE),
@@ -220,6 +409,18 @@ def build_bonds_panel(
         metrics: dict = {}
         if priceable and terms is not None and quote_currency == terms.currency:
             metrics = _metrics_for_bond(terms, price, settlement, price_is_dirty)
+        elif priceable and _can_rebuild_from_reference(reference, quote_currency):
+            # Bullet a tasa fija: con emisión, vencimiento, tasa y la certeza
+            # de que el capital vuelve entero al final, el flujo queda
+            # determinado salvo la frecuencia de pago, que BYMA no publica. Al
+            # conocerse el desglose renta/capital, acá sí salen paridad, valor
+            # técnico e interés corrido, que el cronograma comunitario no
+            # permite calcular.
+            metrics = _metrics_from_reference(reference, price, settlement, price_is_dirty)
+            if metrics:
+                row["Fuente"] = BOND_SOURCE_BYMA
+                row["Convención Aplicada"] = BOND_PRICE_DIRTY if price_is_dirty else BOND_PRICE_CLEAN
+
         elif priceable and flows is not None and quote_currency == flows.currency:
             # El cronograma comunitario publica pagos totales, así que solo se
             # piden las métricas que no necesitan el desglose renta/capital.
@@ -279,11 +480,25 @@ def build_bonds_panel(
     #     negociaron, así que su TIR mide el mercado de otro día.
     traded = ~(df["Volumen"].notna() & (df["Volumen"] <= 0))
     long_enough = df["Años al Vto."] >= BOND_MIN_YEARS_FOR_GRADING
-    comparable = df.loc[traded & long_enough, "TIR (%)"].dropna()
-    median_ytm = comparable.median() if not comparable.empty else np.nan
+    # Una sola máscara para las dos cosas: la mediana de TIR y la población
+    # contra la que se rankea cada dimensión tienen que ser el mismo conjunto.
+    #
+    # Pasarla no es opcional. El panel de BYMA trae el mercado entero (~2700
+    # especies) y solo unas pocas decenas tienen cronograma de pagos conocido,
+    # así que TIR y duration existen en una fracción mínima de las filas. Si el
+    # ranking se hace contra el panel completo, esas dos dimensiones caen por
+    # debajo de BOND_SCORE_MIN_DIMENSION_COVERAGE y se descartan para todos:
+    # queda solo liquidez, cuyo peso no llega a BOND_SCORE_MIN_COVERAGE, y
+    # entonces NINGUNA ON recibe puntaje. El cuadro entero sale "⚪ SIN DATOS".
+    # El cuartil de volumen se calcula acá, sobre el panel entero de cada
+    # moneda, y no después de filtrar: "muy alto" tiene que significar muy alto
+    # en el mercado, no muy alto entre las filas que quedaron en pantalla.
+    is_comparable = traded & long_enough & df["TIR (%)"].notna()
+    df[BOND_VOLUME_QUARTILE_COLUMN] = volume_quartiles(df, population=is_comparable)
+    median_ytm = df.loc[is_comparable, "TIR (%)"].median() if is_comparable.any() else np.nan
     # El puntaje pondera cada dimensión contra el resto del panel, así que
     # necesita todas las filas calculadas: por eso va en esta segunda pasada.
-    scores = compute_opportunity_scores(df, median_ytm)
+    scores = compute_opportunity_scores(df, median_ytm, comparable=is_comparable)
     for column in scores.columns:
         df[column] = scores[column]
 
@@ -334,6 +549,68 @@ def _collapse_to_one_row_per_bond(df: pd.DataFrame) -> pd.DataFrame:
     return ranked.drop_duplicates("_raiz", keep="first").drop(columns="_raiz")
 
 
+def volume_quartiles(df: pd.DataFrame, population: pd.Series | None = None) -> pd.Series:
+    """
+    Traduce el volumen operado a un cuartil legible, dentro de cada moneda.
+
+    El número crudo no se compara de un vistazo: 138.674 es mucho o poco según
+    contra qué. El cuartil responde esa pregunta.
+
+    Tres decisiones, y las tres están acá y no en la capa de dibujo porque
+    cambian el resultado y merecen tests:
+
+      * **Se rankea por moneda.** El volumen de la especie en pesos está en
+        pesos y el de la MEP en dólares. Un ranking conjunto pondría a casi
+        toda la plaza en pesos en el cuartil más alto por tener el número más
+        grande, no por operar más.
+      * **Volumen cero queda afuera.** No es el cuartil más bajo, es "no
+        operó", y es la mayoría del panel: dejarlo entrar empatado correría a
+        las que sí operaron poco hacia cuartiles que no les corresponden.
+      * **La referencia es `population`**, que tiene que ser la MISMA contra la
+        que se puntúa la liquidez. Si no, la misma fila puede decir dos cosas
+        opuestas: pasó de verdad: con el cuartil medido contra las filas en
+        pantalla y el puntaje contra el panel analizable, un bono aparecía con
+        cuartil "Bajo" y subpuntaje de liquidez 84. Las dos cuentas estaban
+        bien y la pantalla se contradecía.
+
+    Se usan los cortes de cuartil de la población en lugar de un rank sobre
+    todo el DataFrame, para poder ubicar también a las filas que no forman
+    parte de ella sin cambiarle la referencia a nadie.
+    """
+    quartiles = pd.Series(BOND_VOLUME_NONE, index=df.index, dtype=object)
+    if df.empty or "Volumen" not in df.columns:
+        return quartiles
+
+    volume = pd.to_numeric(df["Volumen"], errors="coerce")
+    traded = volume > 0
+    if not traded.any():
+        return quartiles
+
+    if population is None:
+        population = pd.Series(True, index=df.index)
+    reference = population.reindex(df.index).fillna(False).astype(bool) & traded
+    if not reference.any():
+        reference = traded
+
+    if "Moneda Precio" in df.columns:
+        groups = df["Moneda Precio"].fillna("—").astype(str)
+    else:
+        groups = pd.Series("", index=df.index)
+
+    etiquetas = (BOND_VOLUME_LOW, BOND_VOLUME_MEDIUM, BOND_VOLUME_HIGH, BOND_VOLUME_VERY_HIGH)
+    for grupo in groups.unique():
+        en_grupo = groups == grupo
+        muestra = volume[en_grupo & reference].dropna()
+        if muestra.empty:
+            continue
+        cortes = muestra.quantile([0.25, 0.50, 0.75]).tolist()
+        objetivo = en_grupo & traded
+        posicion = sum((volume[objetivo] > corte).astype(int) for corte in cortes)
+        quartiles.loc[objetivo] = [etiquetas[p] for p in posicion]
+
+    return quartiles
+
+
 def _top_by_volume_within_currency(df: pd.DataFrame, top_n: int) -> pd.DataFrame:
     """
     Las N especies más operadas, rankeadas **dentro de cada moneda**.
@@ -369,6 +646,7 @@ def apply_bond_filters(
     law_filter: str,
     max_duration: float | None = None,
     only_with_yield: bool = False,
+    include_near_maturity: bool = False,
 ) -> pd.DataFrame:
     """
     Aplica los filtros del panel. Vive acá, y no en la capa de dibujo, porque
@@ -384,7 +662,8 @@ def apply_bond_filters(
       3. **Liquidez.** El "top N" rankea contra todo el universo de esa moneda
          y no contra lo que dejen los filtros de abajo: "las 50 más operadas"
          no debe depender de si además se filtró por ley.
-      4. El resto (atractivo, ley, duration, TIR calculada), que solo recortan.
+      4. El resto (atractivo, ley, duration, TIR calculada y vencimiento
+         cercano), que solo recortan.
     """
     filtered = df.copy()
 
@@ -425,6 +704,22 @@ def apply_bond_filters(
 
     if only_with_yield:
         filtered = filtered[filtered["TIR (%)"].notna()]
+
+    # Las ONs a semanas del vencimiento se ocultan por defecto. No es una
+    # preferencia de presentación: su TIR anualizada es un artefacto
+    # aritmético —MIC3D, a ocho semanas del vencimiento, rendía 22% anual
+    # porque anualizar el retorno de ocho semanas convierte un centavo de
+    # precio en decenas de puntos—, y por eso mismo ya están excluidas del
+    # panel comparable y no reciben puntaje. Mostrarlas sin puntaje al lado de
+    # bonos puntuados invita a leer esa TIR como si fuera una oportunidad.
+    #
+    # Se usa el mismo umbral que decide si una ON se califica, para que "tres
+    # meses" tenga una sola definición en todo el motor.
+    if not include_near_maturity and "Años al Vto." in filtered.columns:
+        filtered = filtered[
+            filtered["Años al Vto."].isna()
+            | (filtered["Años al Vto."] >= BOND_MIN_YEARS_FOR_GRADING)
+        ]
 
     # Se devuelve en el mismo orden que arma build_bonds_panel (mayor TIR
     # primero), que los pasos de ranking y deduplicación alteran.

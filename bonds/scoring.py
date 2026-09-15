@@ -21,10 +21,12 @@ import numpy as np
 import pandas as pd
 
 from bonds.catalog import LAW_ARGENTINA, LAW_NEW_YORK
+from bonds.ratings import RATING_LADDER_TOP
 from constants import (
     BOND_LIQUID_SPREAD_MAX_PCT,
     BOND_MIN_YEARS_FOR_GRADING,
     BOND_PARITY_DISCOUNT_MAX,
+    BOND_RATING_NOTCH_DECAY,
     BOND_RISK_YIELD_PREMIUM_PP,
     BOND_SCORE_ATTRACTIVE_MIN,
     BOND_SCORE_EXCESS_PENALTY_SLOPE,
@@ -38,7 +40,9 @@ from constants import (
     BOND_SCORE_NEUTRAL_MIN,
     BOND_SCORE_PARITY,
     BOND_SCORE_RATE_RISK,
+    BOND_SCORE_RATING,
     BOND_SCORE_SPREAD_SHARE,
+    BOND_SCORE_UNRATED,
     BOND_SCORE_VERY_ATTRACTIVE_MIN,
     BOND_SCORE_WEIGHTS,
     BOND_SCORE_YIELD,
@@ -227,12 +231,57 @@ def _liquidity_subscore(spread_pct: pd.Series, volume: pd.Series) -> pd.Series:
     return combined.fillna(tightness).fillna(depth)
 
 
+def _rating_subscore(ranks: pd.Series | None, scales: pd.Series | None = None) -> pd.Series:
+    """
+    Puntaje de calidad crediticia, en escala absoluta: AAA vale 100.
+
+    Es la única dimensión que NO se mide por percentil contra el panel, y es
+    deliberado. Las demás no tienen un "bueno" fijo —una TIR del 11% o una
+    duration de 3 años son mucho o poco según qué más haya en oferta ese día—,
+    pero una calificación ya viene en una escala: la escalera de notas ES la
+    medida, y AAA es AAA aunque ese día todo el panel sea AAA.
+
+    Medirla por percentil tenía además un efecto perverso comprobado sobre los
+    datos reales: como en escala nacional argentina la mayoría de los emisores
+    calificados son AAA(arg), el percentil los empataba a todos en torno a 69.
+    Una dimensión que no se puede medir se excluye y su peso se reparte, así
+    que un emisor SIN calificación no perdía nada mientras que el mejor
+    calificado del panel se llevaba 69: convenía no tener nota. En escala
+    absoluta el mejor crédito se lleva 100 y el incentivo se endereza.
+
+    Un emisor sin calificación tampoco se abstiene acá, a diferencia del resto
+    de las dimensiones: puntúa BOND_SCORE_UNRATED, un valor mediocre. El
+    motivo está explicado junto a esa constante.
+
+    Lo que esta escala no puede hacer es comparar entre escalas. Una nota
+    nacional se mide contra el resto del país y una global contra el mundo, así
+    que "AAA(arg)" y "AAA" global valen los dos 100 sin ser el mismo crédito —
+    pueden ser hasta el mismo emisor. Hoy el panel es todo escala nacional; el
+    día que convivan, la columna muestra la agencia al lado de la nota para que
+    se vea cuál es cuál, pero el puntaje no las va a distinguir.
+    """
+    if ranks is None or ranks.empty:
+        return pd.Series(dtype=float)
+    numeric = pd.to_numeric(ranks, errors="coerce")
+
+    # Cada escalón por debajo de la nota máxima conserva una fracción del
+    # anterior, en vez de restar una cantidad fija. Ver BOND_RATING_NOTCH_DECAY.
+    escalones = (RATING_LADDER_TOP - numeric).clip(lower=0)
+    puntaje = 100.0 * (BOND_RATING_NOTCH_DECAY ** escalones)
+
+    # No calificado NO se abstiene: puntúa bajo. Ver BOND_SCORE_UNRATED.
+    return puntaje.fillna(BOND_SCORE_UNRATED)
+
+
 def _jurisdiction_subscore(law: pd.Series) -> pd.Series:
     """Puntaje de jurisdicción. Una ley desconocida no puntúa: se abstiene."""
+    # Se compara por prefijo para aceptar la ley inferida del ISIN, que llega
+    # marcada como "NY (ISIN)": es la misma jurisdicción, con su origen a la
+    # vista.
     normalized = law.fillna("").astype(str).str.strip().str.upper()
     scores = pd.Series(np.nan, index=law.index, dtype=float)
-    scores[normalized == LAW_NEW_YORK] = BOND_SCORE_LAW_NY
-    scores[normalized == LAW_ARGENTINA] = BOND_SCORE_LAW_ARG
+    scores[normalized.str.startswith(LAW_NEW_YORK)] = BOND_SCORE_LAW_NY
+    scores[normalized.str.startswith(LAW_ARGENTINA)] = BOND_SCORE_LAW_ARG
     return scores
 
 
@@ -278,6 +327,9 @@ def compute_opportunity_scores(
             BOND_SCORE_RATE_RISK: _percentile(ranked["Duration Mod."], higher_is_better=False),
             BOND_SCORE_PARITY: _percentile(ranked["Paridad (%)"], higher_is_better=False),
             BOND_SCORE_JURISDICTION: _jurisdiction_subscore(ranked["Ley"]),
+            BOND_SCORE_RATING: _rating_subscore(
+                ranked.get("CALIF_RANK"), ranked.get("CALIF_ESCALA")
+            ),
         },
         index=df.index,
     )

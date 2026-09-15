@@ -13,12 +13,15 @@ import pytest
 
 from bonds.scoring import _percentile, compute_opportunity_scores, label_from_score
 from constants import (
+    BOND_RATING_NOTCH_DECAY,
     BOND_RISK_YIELD_PREMIUM_PP,
     BOND_SCORE_ATTRACTIVE_MIN,
     BOND_SCORE_JURISDICTION,
     BOND_SCORE_LIQUIDITY,
     BOND_SCORE_NEUTRAL_MIN,
     BOND_SCORE_RATE_RISK,
+    BOND_SCORE_RATING,
+    BOND_SCORE_UNRATED,
     BOND_SCORE_VERY_ATTRACTIVE_MIN,
     BOND_SCORE_WEIGHTS,
     BOND_SCORE_YIELD,
@@ -54,6 +57,8 @@ def bono(ticker: str, **overrides) -> dict:
         "Duration Mod.": 3.0,
         "Paridad (%)": 100.0,
         "Ley": "NY",
+        "CALIF_RANK": 18.0,
+        "CALIF_ESCALA": "nacional",
     }
     base.update(overrides)
     return base
@@ -67,9 +72,26 @@ class TestPesos:
     def test_los_pesos_declarados_suman_cien(self):
         assert sum(BOND_SCORE_WEIGHTS.values()) == pytest.approx(100.0)
 
-    def test_el_rendimiento_pesa_mas_que_cualquier_otra_dimension(self):
-        rendimiento = BOND_SCORE_WEIGHTS[BOND_SCORE_YIELD]
-        assert all(rendimiento >= peso for peso in BOND_SCORE_WEIGHTS.values())
+    def test_liquidez_calificacion_y_rendimiento_pesan_igual_y_mandan(self):
+        # Es el criterio de inversión del tablero: antes de preguntarse cuánto
+        # rinde un bono hay que poder operarlo y saber a quién se le presta.
+        principales = {
+            BOND_SCORE_LIQUIDITY,
+            BOND_SCORE_RATING,
+            BOND_SCORE_YIELD,
+        }
+        pesos_principales = {BOND_SCORE_WEIGHTS[d] for d in principales}
+        assert pesos_principales == {20.0}
+        secundarias = {
+            d: p for d, p in BOND_SCORE_WEIGHTS.items() if d not in principales
+        }
+        assert all(peso <= 20.0 for peso in secundarias.values())
+
+    def test_la_calificacion_pondera_aunque_todavia_no_haya_datos(self):
+        # Se pondera desde ahora: cuando el archivo de calificaciones esté
+        # vacío la dimensión se descarta sola y su peso se reparte, sin que
+        # haya que tocar nada.
+        assert BOND_SCORE_RATING in BOND_SCORE_WEIGHTS
 
 
 class TestComparacionRelativa:
@@ -259,3 +281,100 @@ class TestPanelComparable:
         comparable.iloc[0] = False
         resultado = compute_opportunity_scores(df, MEDIANA, comparable=comparable).set_index(df["Ticker"])
         assert np.isnan(resultado.loc["EXCLUIDO", BOND_SCORE_YIELD])
+
+
+class TestDimensionCalificacion:
+    def test_mejor_nota_puntua_mas(self):
+        df = panel(
+            bono("BUENO", CALIF_RANK=20.0),
+            bono("MALO", CALIF_RANK=6.0),
+        )
+        resultado = puntajes(df)
+        assert resultado.loc["BUENO", BOND_SCORE_RATING] > resultado.loc["MALO", BOND_SCORE_RATING]
+        assert resultado.loc["BUENO", "Puntaje"] > resultado.loc["MALO", "Puntaje"]
+
+    def test_sin_calificacion_puntua_bajo_pero_no_cero(self):
+        # Es la excepción deliberada a "lo que no se puede medir se excluye".
+        # Cero sería decir que el emisor está en default, y de uno sin calificar
+        # no sabemos eso; excluirlo hacía que no tener nota saliera gratis.
+        df = panel(bono("SIN_NOTA", CALIF_RANK=np.nan, CALIF_ESCALA="—"))
+        resultado = puntajes(df)
+        assert resultado.loc["SIN_NOTA", BOND_SCORE_RATING] == pytest.approx(BOND_SCORE_UNRATED)
+        assert 0 < BOND_SCORE_UNRATED < 100
+
+    def test_una_nota_mala_conocida_sigue_siendo_peor_que_no_tener_nota(self):
+        # No calificado significa "no sabemos", no "está fundido": un emisor
+        # con nota de default tiene que quedar por debajo.
+        df = panel(
+            bono("EN_DEFAULT", CALIF_RANK=0.0),
+            bono("SIN_NOTA", CALIF_RANK=np.nan, CALIF_ESCALA="—"),
+        )
+        resultado = puntajes(df)
+        assert resultado.loc["SIN_NOTA", "Puntaje"] > resultado.loc["EN_DEFAULT", "Puntaje"]
+
+    def test_la_mejor_nota_vale_cien_aunque_todo_el_panel_la_tenga(self):
+        # Es el punto de usar escala absoluta y no percentil. Con percentil, y
+        # como en escala nacional argentina casi todos los emisores calificados
+        # son AAA, todos quedaban empatados cerca de 69: el mejor crédito del
+        # panel puntuaba menos que un emisor sin calificación, al que la
+        # dimensión simplemente se le excluye. Convenía no tener nota.
+        filas = [bono(f"T{i}", CALIF_RANK=20.0) for i in range(8)]
+        resultado = puntajes(pd.DataFrame(filas))
+        # `Serie == pytest.approx(x)` no compara elemento a elemento: hay que
+        # pasarle una lista.
+        assert resultado[BOND_SCORE_RATING].tolist() == pytest.approx([100.0] * 8)
+
+    def test_tener_la_mejor_nota_le_gana_a_no_tener_ninguna(self):
+        df = panel(
+            bono("CALIFICADO", CALIF_RANK=20.0),
+            bono("SIN_NOTA", CALIF_RANK=np.nan, CALIF_ESCALA="—"),
+        )
+        resultado = puntajes(df)
+        assert resultado.loc["CALIFICADO", "Puntaje"] > resultado.loc["SIN_NOTA", "Puntaje"]
+
+    def test_cada_escalon_vale_una_fraccion_del_anterior(self):
+        # La escalera no se reparte lineal: el riesgo de crédito crece de forma
+        # aproximadamente exponencial al bajar de nota. Repartir lineal dejaba a
+        # todas las corporativas argentinas —que van de A+(arg) a AAA(arg)—
+        # apretadas entre 80 y 100, y no distinguía un AAA de un AA-.
+        df = panel(
+            bono("AAA", CALIF_RANK=20.0),
+            bono("AA_MAS", CALIF_RANK=19.0),
+            bono("AA_MENOS", CALIF_RANK=17.0),
+        )
+        resultado = puntajes(df)
+        assert resultado.loc["AAA", BOND_SCORE_RATING] == pytest.approx(100.0)
+        assert resultado.loc["AA_MAS", BOND_SCORE_RATING] == pytest.approx(
+            100.0 * BOND_RATING_NOTCH_DECAY
+        )
+        assert resultado.loc["AA_MENOS", BOND_SCORE_RATING] == pytest.approx(
+            100.0 * BOND_RATING_NOTCH_DECAY**3
+        )
+
+    def test_el_castigo_por_escalon_es_mayor_arriba_de_la_escalera(self):
+        # Es el punto de la curva: caer de AAA a AA+ cuesta más que caer de BBB
+        # a BBB-, porque arriba la probabilidad de default es ínfima y
+        # cualquier escalón la multiplica.
+        df = panel(
+            bono("AAA", CALIF_RANK=20.0), bono("AA_MAS", CALIF_RANK=19.0),
+            bono("BBB", CALIF_RANK=12.0), bono("BBB_MENOS", CALIF_RANK=11.0),
+        )
+        r = puntajes(df)[BOND_SCORE_RATING]
+        assert (r["AAA"] - r["AA_MAS"]) > (r["BBB"] - r["BBB_MENOS"])
+
+    def test_un_panel_sin_ninguna_calificacion_sigue_puntuando(self):
+        # Si nadie tiene nota, todos comparten el mismo puntaje de crédito y la
+        # dimensión deja de diferenciar, pero el cuadro sigue funcionando.
+        filas = [bono(f"T{i}", CALIF_RANK=np.nan, CALIF_ESCALA="—") for i in range(8)]
+        filas[0]["TIR (%)"] = 11.0
+        resultado = puntajes(pd.DataFrame(filas))
+        assert resultado["Puntaje"].notna().all()
+        assert (resultado[BOND_SCORE_RATING] == BOND_SCORE_UNRATED).all()
+
+    def test_tener_nota_le_gana_a_no_tenerla_con_todo_lo_demas_igual(self):
+        df = panel(
+            bono("CALIFICADO", CALIF_RANK=18.0),
+            bono("SIN_NOTA", CALIF_RANK=np.nan, CALIF_ESCALA="—"),
+        )
+        resultado = puntajes(df)
+        assert resultado.loc["CALIFICADO", "Puntaje"] > resultado.loc["SIN_NOTA", "Puntaje"]

@@ -181,6 +181,8 @@ def main() -> int:
     parser.add_argument("--desglose", action="store_true", help="Agrega el aporte de cada dimensión al puntaje")
     parser.add_argument("--todas", action="store_true", help="Muestra todas las columnas calculadas")
     parser.add_argument("--incluir-sin-tir", action="store_true", help="Incluye las ONs sin cronograma conocido")
+    parser.add_argument("--incluir-por-vencer", action="store_true",
+                        help="Incluye las ONs a menos de 3 meses del vencimiento (ocultas por defecto: su TIR anualizada es un artefacto)")
     parser.add_argument("--csv", default=None, help="Guarda el resultado en un CSV")
     argumentos = parser.parse_args()
 
@@ -204,6 +206,7 @@ def main() -> int:
         signal_filter=BOND_FILTER_SIGNAL_ALL,
         law_filter=BOND_FILTER_LAW_ALL,
         only_with_yield=not argumentos.incluir_sin_tir,
+        include_near_maturity=argumentos.incluir_por_vencer,
     )
     if tope is not None:
         filtrado = filtrado.head(tope)

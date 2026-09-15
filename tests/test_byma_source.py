@@ -19,6 +19,7 @@ from bonds.byma_source import parse_byma_bonds
 # Especie que operó: puntas, volumen y precio del día.
 OPERADA = {
     "symbol": "YMCJD",
+    "settlementType": "2",
     "settlementPrice": 105.6,
     "previousSettlementPrice": 106.2,
     "bidPrice": 105.0,
@@ -141,3 +142,50 @@ class TestVariacionDiaria:
     def test_informa_variacion_cuando_sí_operó(self):
         fila = parse_byma_bonds([OPERADA]).iloc[0]
         assert fila["Var. (%)"] == pytest.approx((105.6 / 106.2 - 1) * 100)
+
+
+class TestPlazoDeLiquidacion:
+    """
+    La respuesta trae la misma especie repetida por plazo: sobre 800 registros
+    reales hay 419 símbolos distintos. Sin filtrar, cuál sobrevive depende del
+    orden de la respuesta, y las dos filas tienen precios distintos.
+    """
+
+    def test_conserva_solo_el_plazo_estandar(self):
+        registros = [
+            {**OPERADA, "settlementType": "1", "settlementPrice": 99.9},
+            {**OPERADA, "settlementType": "2", "settlementPrice": 105.6},
+        ]
+        resultado = parse_byma_bonds(registros)
+        assert len(resultado) == 1
+        assert resultado.iloc[0]["Precio"] == pytest.approx(105.6)
+
+    def test_el_orden_de_la_respuesta_no_cambia_el_resultado(self):
+        a = [{**OPERADA, "settlementType": "1"}, {**OPERADA, "settlementType": "2"}]
+        b = list(reversed(a))
+        assert parse_byma_bonds(a).iloc[0]["Precio"] == parse_byma_bonds(b).iloc[0]["Precio"]
+
+    def test_un_registro_sin_plazo_declarado_no_se_descarta(self):
+        sin_plazo = {k: v for k, v in OPERADA.items() if k != "settlementType"}
+        assert len(parse_byma_bonds([sin_plazo])) == 1
+
+
+class TestMonedaDelPrecio:
+    """
+    BYMA informa la moneda de cotización en `denominationCcy`, y ese dato le
+    gana a deducirla de la última letra del ticker.
+    """
+
+    @pytest.mark.parametrize(
+        "denominacion,esperada",
+        [("USD", "USD"), ("EXT", "USD"), ("ARS", "ARS")],
+    )
+    def test_traduce_la_denominacion_a_la_moneda(self, denominacion, esperada):
+        # "EXT" es la especie cable: liquida en dólares, en una cuenta del
+        # exterior.
+        fila = parse_byma_bonds([{**OPERADA, "denominationCcy": denominacion}]).iloc[0]
+        assert fila["Moneda Precio"] == esperada
+
+    def test_una_denominacion_desconocida_no_se_traduce(self):
+        fila = parse_byma_bonds([{**OPERADA, "denominationCcy": "XYZ"}]).iloc[0]
+        assert fila["Moneda Precio"] is None

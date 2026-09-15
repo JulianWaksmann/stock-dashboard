@@ -6,9 +6,12 @@ de repartirla en `app.py`: la pestaña de acciones y la de bonos no comparten
 estado ni filtros, y tenerlas mezcladas en un único `main()` haría que agregar
 un filtro de un lado obligue a releer el otro.
 
-Los filtros viven **dentro** de la pestaña y no en la barra lateral a propósito:
-Streamlit dibuja la barra lateral una sola vez para toda la app, así que filtros
-de bonos en el sidebar aparecerían también mientras se miran acciones.
+Reparto entre barra lateral y cuerpo de la pestaña: la barra lateral es única
+para toda la app y la dibuja la sección activa, así que ahí va lo que elige
+**qué panel se carga** (el país, que determina fuente de precios, catálogo y
+convenciones). Los filtros del cuadro se quedan en el cuerpo porque recortan un
+panel ya descargado y son muchos: en el sidebar competirían por el espacio con
+lo único que hay que decidir antes de bajar datos.
 """
 
 from datetime import date
@@ -22,13 +25,16 @@ from bonds.data_loader import load_bonds_data
 from bonds.flows_source import COMMUNITY_FLOWS_URL
 from bonds.panel import apply_bond_filters
 from components.bonds_table import render_bonds_table
+from components.coming_soon import render_coming_soon
 from constants import (
+    BOND_COUNTRY_ARGENTINA,
+    BOND_COUNTRY_OPTIONS,
+    BOND_FILTER_LIQUIDITY_TRADED,
+    BOND_FILTER_SETTLEMENT_USD,
+    BOND_FILTER_SIGNAL_ALL,
     BOND_LAW_FILTER_OPTIONS,
-    BOND_LIQUIDITY_FILTER_OPTIONS,
     BOND_MIN_YEARS_FOR_GRADING,
     BOND_PARITY_DISCOUNT_MAX,
-    BOND_PRICE_CONVENTION_OPTIONS,
-    BOND_PRICE_DIRTY,
     BOND_RISK_YIELD_PREMIUM_PP,
     BOND_SCORE_ATTRACTIVE_MIN,
     BOND_SCORE_JURISDICTION,
@@ -37,11 +43,10 @@ from constants import (
     BOND_SCORE_NEUTRAL_MIN,
     BOND_SCORE_PARITY,
     BOND_SCORE_RATE_RISK,
+    BOND_SCORE_RATING,
     BOND_SCORE_VERY_ATTRACTIVE_MIN,
     BOND_SCORE_WEIGHTS,
     BOND_SCORE_YIELD,
-    BOND_SETTLEMENT_FILTER_OPTIONS,
-    BOND_SIGNAL_FILTER_OPTIONS,
     BOND_SOURCE_NONE,
 )
 
@@ -52,6 +57,7 @@ _EXPLICACION_DIMENSION = {
     BOND_SCORE_RATE_RISK: "Duration modificada: cuánto cae el precio si suben las tasas.",
     BOND_SCORE_PARITY: "Si cotiza bajo la par, parte del retorno llega como ganancia de capital.",
     BOND_SCORE_JURISDICTION: "Ley aplicable: dónde se litiga un default.",
+    BOND_SCORE_RATING: "Calidad crediticia del emisor según las calificadoras.",
 }
 
 # Tope del filtro de duration. 15 años cubre con margen el tramo más largo del
@@ -59,32 +65,35 @@ _EXPLICACION_DIMENSION = {
 _MAX_DURATION_FILTER_YEARS = 15.0
 
 
-def _render_controls() -> tuple[date, bool]:
-    """Controles de cálculo: fecha de liquidación y convención de precio."""
-    col1, col2, col3 = st.columns([1, 2, 1])
+def _render_sidebar() -> str:
+    """
+    Barra lateral de la sección de bonos: el desplegable de país.
 
-    with col1:
-        settlement = st.date_input(
-            "📅 Fecha de liquidación",
-            value=date.today(),
-            help="Fecha a la que se descuenta el flujo de fondos. En BYMA la renta fija liquida habitualmente en 24 hs (T+1).",
-        )
+    La barra lateral es única para toda la app y la dibuja la sección que esté
+    activa, así que lo que se ponga acá solo aparece mientras se miran bonos.
+    Por eso el país va acá y los filtros del cuadro siguen dentro de la
+    pestaña: el país elige **qué panel se carga** (fuente de precios, catálogo,
+    convenciones), mientras que los filtros recortan un panel ya descargado.
+    """
+    st.sidebar.header("🌐 Mercado de bonos")
 
-    with col2:
-        convention = st.radio(
-            "💲 Convención del precio de pantalla",
-            BOND_PRICE_CONVENTION_OPTIONS,
-            horizontal=True,
-            help="BYMA publica precios sucios (con interés corrido incluido). Elegir mal esta opción sesga la TIR y la paridad. Solo tiene efecto sobre las ONs con condiciones de emisión cargadas: pasar de limpio a sucio exige el interés corrido, y para eso hay que saber qué parte de cada pago es renta.",
-        )
+    country = st.sidebar.selectbox(
+        "País:",
+        BOND_COUNTRY_OPTIONS,
+        help="Cada país tiene su propia fuente de precios y sus propias convenciones de cálculo. Hoy solo Argentina está implementada.",
+    )
 
-    with col3:
-        st.markdown("<div style='padding-top: 28px;'></div>", unsafe_allow_html=True)
-        if st.button("🔄 Refrescar ONs", use_container_width=True, help="Limpia la caché y vuelve a consultar precios"):
-            st.cache_data.clear()
-            st.rerun()
+    st.sidebar.markdown("---")
+    if st.sidebar.button(
+        "🔄 Refrescar ONs",
+        use_container_width=True,
+        type="primary",
+        help="Limpia la caché y vuelve a consultar precios",
+    ):
+        st.cache_data.clear()
+        st.rerun()
 
-    return settlement, convention == BOND_PRICE_DIRTY
+    return country
 
 
 def _render_kpis(df: pd.DataFrame):
@@ -142,57 +151,86 @@ def _render_kpis(df: pd.DataFrame):
 
 def _render_filters(df: pd.DataFrame) -> pd.DataFrame:
     """
-    Dibuja los filtros rápidos y devuelve el DataFrame ya filtrado.
+    Dibuja los filtros y devuelve el cuadro ya filtrado.
+
+    Son tres, a propósito. Los que había antes o repetían algo que ya se ve en
+    el cuadro —el filtro por atractivo, teniendo la barra de puntaje al lado—,
+    o configuraban el armado del panel en vez de recortarlo, que es una
+    decisión del tablero y no del lector: qué especie mostrar por bono, qué
+    hacer con las que no operaron, y si incluir las que están por vencer.
+    Esas ahora son fijas.
 
     Esta función solo recoge lo que el usuario eligió; el filtrado en sí lo
     hace `apply_bond_filters`, que es código puro y testeado: el orden en que
     se aplican los filtros cambia el resultado y no puede vivir enterrado en
     la capa de dibujo.
     """
-    col_liq, col0, col1, col2, col3, col4 = st.columns([2, 2, 2, 2, 2, 2])
+    col_score, col_dur, col_ley = st.columns([2, 2, 2])
 
-    with col_liq:
-        liquidity_filter = st.selectbox(
-            "💧 Liquidez:",
-            BOND_LIQUIDITY_FILTER_OPTIONS,
-            help="El feed devuelve el panel entero, incluidas especies que no operaron hoy: su precio es el de la última rueda en que se negociaron, así que su TIR mide el mercado de otro día. El ranking se arma dentro de la moneda elegida.",
+    with col_score:
+        score_range = st.slider(
+            "🎯 Puntaje de oportunidad:",
+            min_value=0,
+            max_value=100,
+            value=(0, 100),
+            step=5,
+            help=(
+                "Puntaje de 0 a 100, relativo al resto del panel del día: un bono "
+                "promedio ronda 50. Con el rango completo también se muestran las ONs "
+                "que no tienen puntaje; apenas lo movés, quedan solo las puntuadas."
+            ),
         )
-    with col0:
-        settlement_filter = st.selectbox(
-            "💱 Especie de liquidación:",
-            BOND_SETTLEMENT_FILTER_OPTIONS,
-            help="Cada ON cotiza en tres especies según la última letra del ticker: O liquida en pesos, D en dólar MEP (dólares en tu cuenta local) y C en dólar cable (dólares en el exterior). Son el mismo bono. La opción por defecto trae las dos en dólares y muestra una sola fila por bono, la de la especie más operada.",
-        )
-    with col1:
-        signal_filter = st.selectbox("🚦 Filtrar por atractivo:", BOND_SIGNAL_FILTER_OPTIONS)
-    with col2:
-        law_filter = st.selectbox("⚖️ Filtrar por ley aplicable:", BOND_LAW_FILTER_OPTIONS)
-    with col3:
+
+    with col_dur:
         max_duration = st.slider(
-            "⏳ Duration modificada máxima (años):",
+            "⏳ Riesgo de tasa máximo (años):",
             min_value=0.0,
             max_value=_MAX_DURATION_FILTER_YEARS,
             value=_MAX_DURATION_FILTER_YEARS,
             step=0.5,
-            help="Limita el riesgo de tasa: cuanto menor la duration, menos cae el precio si suben las tasas.",
-        )
-    with col4:
-        only_with_yield = st.checkbox(
-            "Solo ONs con TIR calculada",
-            value=True,
-            help="Oculta las especies que cotizan pero no tienen cronograma de pagos conocido.",
+            help=(
+                "Duration modificada: cuánto caería el precio del bono si la tasa "
+                "exigida subiera un punto porcentual. Cuanto más baja, más estable "
+                "es el precio."
+            ),
         )
 
-    return apply_bond_filters(
+    with col_ley:
+        law_filter = st.selectbox(
+            "⚖️ Ley aplicable:",
+            BOND_LAW_FILTER_OPTIONS,
+            help=(
+                "En qué tribunales se resuelve un incumplimiento. La ley extranjera "
+                "históricamente se paga con menor rendimiento exigido: el mercado "
+                "cobra por esa protección."
+            ),
+        )
+
+    filtrado = apply_bond_filters(
         df,
-        settlement_filter=settlement_filter,
-        liquidity_filter=liquidity_filter,
-        signal_filter=signal_filter,
+        # Fijos: hacen al armado del panel, no al recorte que elige el lector.
+        settlement_filter=BOND_FILTER_SETTLEMENT_USD,
+        # Se muestran todas las que operaron hoy, y no un "top N por volumen".
+        # El top N era él mismo un recorte por volumen, así que dejaba en
+        # pantalla solo las más operadas: la columna de cuartil decía "muy
+        # alto" en todas las filas y no distinguía nada. Pidiendo solo que
+        # hayan operado, el precio sigue siendo del día y el cuadro pasa de
+        # ~26 bonos a ~96.
+        liquidity_filter=BOND_FILTER_LIQUIDITY_TRADED,
+        signal_filter=BOND_FILTER_SIGNAL_ALL,
+        only_with_yield=True,
+        include_near_maturity=False,
+        # Elegidos por el usuario.
         law_filter=law_filter,
         # El tope del slider significa "sin límite", no "duration 15".
         max_duration=None if max_duration >= _MAX_DURATION_FILTER_YEARS else max_duration,
-        only_with_yield=only_with_yield,
     )
+
+    if score_range != (0, 100) and "Puntaje" in filtrado.columns:
+        puntaje = pd.to_numeric(filtrado["Puntaje"], errors="coerce")
+        filtrado = filtrado[puntaje.between(score_range[0], score_range[1])]
+
+    return filtrado
 
 
 def _render_glossary():
@@ -306,8 +344,9 @@ por debajo 🟠 POCO ATRACTIVO. Dos casos ganan sobre el puntaje: la alerta de r
 donde anualizar el retorno de unas semanas convierte un centavo de precio en decenas de puntos de
 TIR.
 
-Los pesos están en `constants.py` (`BOND_SCORE_WEIGHTS`). Son un criterio de inversión explícito,
-no una verdad: si para vos la liquidez pesa más que el rendimiento, cambialos ahí.
+Los pesos son un criterio de inversión explícito, no una verdad del mercado: dicen que antes de
+preguntarse cuánto rinde un bono hay que poder operarlo y saber a quién se le presta. Si tu criterio
+es otro, se pueden ajustar.
 
 ---
 
@@ -329,33 +368,34 @@ def _render_sources():
     with st.expander("🔌 De dónde salen los datos"):
         st.markdown(
             f"""
-| Dato | Fuente | Cómo se obtiene |
+| Dato | De dónde sale | Qué tan confiable es |
 | --- | --- | --- |
-| Precios, puntas, volumen | [BYMA Open Data]({BYMA_BASE_URL}) | El mercado donde las ONs cotizan. API pública sin API key, pero sin documentar: es POST y valida cookie de navegador. Trae además vencimiento y moneda de cada especie. |
-| Cronogramas de pago | [rendimientos-ar]({COMMUNITY_FLOWS_URL}) | Se descarga en cada carga. Es un dataset **comunitario** mantenido a mano por terceros (licencia ISC), no una fuente oficial. Publica el total de cada pago, sin separar renta de capital. |
-| Condiciones de emisión | `data/ons_catalog.csv` (este repo) | Opcional y vacío por defecto. Solo hace falta para las métricas que necesitan el desglose renta/capital, o para una ON que la fuente comunitaria no cubra. |
-| Curva del Tesoro de EE.UU. | Yahoo Finance (`^IRX`, `^FVX`, `^TNX`, `^TYX`) | Vía `yfinance`, igual que el panel de acciones. |
+| Precios, puntas y volumen | [BYMA]({BYMA_BASE_URL}) | El mercado donde estos bonos efectivamente cotizan, así que es el dato de origen y no una copia. Se actualiza durante la rueda. |
+| Calendario de pagos | [Proyecto abierto rendimientos-ar]({COMMUNITY_FLOWS_URL}) | Mantenido por terceros de forma voluntaria, no es una fuente oficial. Informa el total de cada pago sin separar cuánto es interés y cuánto capital. |
+| Condiciones de emisión | Carga manual, contra el prospecto | Lo más confiable cuando está verificado, porque sale del contrato del bono. Cubre pocas emisiones. |
+| Calificación crediticia | Carga manual, contra el informe de la calificadora | Solo se muestra una vez verificada. |
+| Rendimiento del Tesoro de EE.UU. | Yahoo Finance | Referencia de mercado, para medir cuánto paga cada bono por encima de un activo sin riesgo de crédito. |
 
 **Por qué el cronograma no sale de una fuente oficial:** las condiciones de emisión de una ON
 (cupón, amortizaciones, ley) viven en su prospecto. Ni BYMA ni la CNV las publican en un formato
 consultable por máquina, así que todas las alternativas son o bien datasets mantenidos a mano como
 este, o bien scraping del Informe Diario del IAMC.
 
-**Para verificar o completar el catálogo:**
+**Dónde verificar o completar estos datos:**
 
-* **Prospecto de emisión** — es la fuente autoritativa. Se consigue en la web del emisor o en la
-  [CNV](https://www.argentina.gob.ar/cnv).
-* **[IAMC](https://www.iamc.com.ar)** — el Informe Diario publica precio, TIR, paridad, duration
-  y valor técnico de todas las especies listadas. Es la mejor forma de validar de una sola vez
-  los datos cargados *y* el resultado del cálculo.
-* **[BYMA](https://www.byma.com.ar)** — boletín diario oficial y datos de la especie.
+* **Prospecto de emisión** — es el contrato del bono y manda sobre cualquier otra fuente. Se
+  consigue en la web del emisor o en la [CNV](https://www.argentina.gob.ar/cnv).
+* **[IAMC](https://www.iamc.com.ar)** — su Informe Diario publica precio, rendimiento, paridad y
+  riesgo de tasa de todos los bonos listados. Es la forma más rápida de contrastar de una sola vez
+  tanto los datos cargados como los números que devuelve este cuadro.
+* **[BYMA](https://www.byma.com.ar)** — boletín diario oficial y ficha de cada bono.
 
-**Por qué BYMA y no un feed alternativo:** se comparó contra data912 con
-`scripts/verificar_fuentes.py`. BYMA lista 2727 especies contra 616, y sobre las 614 en común la
-mitad de los precios del feed alternativo llegaba con atraso: 0,17% de diferencia mediana y hasta
-2,75% en el mismo título. Sobre un bono de duration 3 eso son entre 6 y 90 puntos básicos de TIR,
-que es justamente lo que el panel compara. No se dejó como respaldo porque un respaldo que
-devuelve otro número no es un respaldo.
+**Por qué los precios salen de BYMA y no de otra fuente:** se comparó contra un proveedor
+alternativo y se lo descartó midiendo. BYMA informa 2727 bonos contra 616, y sobre los que ambos
+tenían, la mitad de los precios del otro proveedor llegaba con atraso. Parece poco —una diferencia
+típica del 0,17%, y hasta 2,75% en un mismo título— pero sobre el rendimiento de un bono eso son
+entre 6 y 90 puntos básicos, que es justamente la diferencia que el cuadro compara. Tampoco quedó
+como respaldo: un respaldo que devuelve otro número no sirve de respaldo.
 
 **Si necesitás precios ejecutables**, la fuente es el broker donde operás (IOL, Bull Market,
 Cocos, etc. exponen API con cuenta).
@@ -364,7 +404,23 @@ Cocos, etc. exponen API con cuenta).
 
 
 def render_bonds_panel():
-    """Dibuja la pestaña completa de Bonos Corporativos (ONs)."""
+    """Dibuja la sección completa de Bonos Corporativos."""
+    country = _render_sidebar()
+
+    if country != BOND_COUNTRY_ARGENTINA:
+        st.markdown(
+            f'<div class="main-title">💵 Bonos Corporativos — {country}</div>',
+            unsafe_allow_html=True,
+        )
+        render_coming_soon(
+            f"Bonos corporativos — {country}",
+            "Vas a poder comparar deuda corporativa de este mercado con el mismo "
+            "criterio que el panel argentino: cuánto rinde cada bono frente a sus "
+            "pares, cuánto riesgo de tasa tiene y si ese rendimiento es realmente "
+            "ejecutable.",
+        )
+        return
+
     st.markdown(
         '<div class="main-title">💵 Bonos Corporativos Argentinos (Obligaciones Negociables)</div>',
         unsafe_allow_html=True,
@@ -375,7 +431,13 @@ def render_bonds_panel():
         unsafe_allow_html=True,
     )
 
-    settlement, price_is_dirty = _render_controls()
+    # La fecha de liquidación es siempre hoy y el precio se toma como lo
+    # publica BYMA (con el interés corrido incluido). Las dos eran controles y
+    # se sacaron: con precios de hoy, descontar a otra fecha da una TIR que no
+    # corresponde a ninguna operación real, y la otra convención de precio no
+    # se puede aplicar sobre la mayoría de las filas.
+    settlement = date.today()
+    price_is_dirty = True
     st.markdown("---")
 
     with st.spinner("⏳ Descargando precios de ONs y calculando TIR, duration y paridad..."):
@@ -396,34 +458,31 @@ def render_bonds_panel():
     without_schedule = sorted(df_bonds.loc[df_bonds["Fuente"] == BOND_SOURCE_NONE, "Ticker"])
     if without_schedule:
         st.info(
-            f"📗 **{len(without_schedule)} de {len(df_bonds)} especies cotizan sin cronograma de pagos conocido.** "
-            "Se les muestra precio, puntas y volumen, pero no se les puede calcular TIR ni duration. "
-            "El cronograma de las ONs más operadas se descarga solo; para incorporar una que la fuente "
-            "no cubra, agregá una fila en `data/ons_catalog.csv`: alcanza con cargar una especie "
-            "(por ejemplo la O) y el panel la aplica también a las especies D y C del mismo bono."
+            f"📗 **De {len(df_bonds)} obligaciones negociables que cotizan, {len(without_schedule)} no "
+            "publican su calendario de pagos.** De esas se muestra precio y volumen, pero sin saber "
+            "cuándo y cuánto paga un bono no hay forma de calcular su rendimiento ni su riesgo de tasa. "
+            "El calendario de las más operadas se obtiene automáticamente; el resto depende de que sus "
+            "condiciones de emisión se carguen a mano."
         )
         with st.expander(f"Ver las {len(without_schedule)} especies sin cronograma"):
             st.write(", ".join(without_schedule))
 
-    # El selector de convención de precio no puede aplicarse sobre las ONs que
-    # solo tienen cronograma publicado. Decirlo es mejor que dejar un control
-    # que no hace nada en la mayoría de las filas.
-    if not price_is_dirty and "Convención Aplicada" in df_bonds.columns:
-        ignoradas = int((df_bonds["Convención Aplicada"] == BOND_PRICE_DIRTY).sum())
-        if ignoradas:
-            st.caption(
-                f"ℹ️ La convención de precio limpio no se pudo aplicar en {ignoradas} de "
-                f"{len(df_bonds)} especies: su cronograma publica el total de cada pago, sin "
-                "separar renta de capital, y sin ese desglose no hay interés corrido que sumarle "
-                "al precio. Esas filas se calcularon con precio sucio, la convención de BYMA."
-            )
-
     unverified = int((~df_bonds["Verificado"] & df_bonds["En Catálogo"]).sum())
     if unverified:
         st.warning(
-            f"⚠️ **{unverified} ON(s) del catálogo local tienen condiciones de emisión sin verificar.** "
-            "Verificalas contra el prospecto y marcá `verificado=si` en `data/ons_catalog.csv`: "
-            "un cupón mal cargado devuelve una TIR mansamente incorrecta."
+            f"⚠️ **{unverified} obligación(es) negociable(s) tienen condiciones de emisión sin verificar "
+            "contra el prospecto.** Su rendimiento y su riesgo de tasa son estimaciones: si la tasa de "
+            "cupón o el calendario cargados no son exactos, los números salen mal sin que nada lo avise."
+        )
+
+    # Un emisor en default es lo primero que hay que saber, y no puede quedar
+    # escondido detrás del interruptor de columnas completas.
+    if "En Default" in df_bonds.columns and df_bonds["En Default"].any():
+        en_default = sorted(df_bonds.loc[df_bonds["En Default"], "Ticker"])
+        st.error(
+            f"🚨 **{len(en_default)} especie(s) marcadas en default por BYMA:** "
+            f"{', '.join(en_default)}. Su TIR sigue calculándose sobre el flujo contractual, "
+            "que es justamente el que el emisor dejó de pagar."
         )
 
     _render_kpis(df_bonds)
