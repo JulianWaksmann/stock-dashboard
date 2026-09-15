@@ -58,7 +58,21 @@ REQUEST_TIMEOUT_SECONDS: Final[int] = 20
 # cubrir el panel operado son cientos de pedidos; sin paralelismo la primera
 # carga tardaría minutos. El tope es conservador a propósito: es una API
 # pública y gratuita, y no tiene sentido castigarla.
-MAX_WORKERS: Final[int] = 12
+# Concurrencia deliberadamente baja. Medido sobre una muestra fija de 80
+# especies, con un solo intento por ficha:
+#
+#     hilos   segundos   éxitos   tasa
+#        12        1.5       37    46%
+#         6        2.1       44    55%
+#         3        2.8       72    90%
+#         1        8.5       75    94%
+#
+# BYMA rechaza más de la mitad de los pedidos cuando se la golpea con doce
+# hilos. Esas fallas después se reintentan tres veces con espera creciente,
+# así que la concurrencia alta no aceleraba nada: convertía una ficha que
+# habría entrado a la primera en tres pedidos y dos esperas. Bajar a tres
+# hilos es más rápido de punta a punta Y trae casi el doble de cobertura.
+MAX_WORKERS: Final[int] = 3
 
 # Reintentos por ficha. BYMA falla de forma intermitente: en una medición
 # sobre 60 especies no respondieron 20, y repetir la consulta las recuperó.
@@ -281,9 +295,11 @@ def _fetch_one(session: requests.Session, ticker: str) -> BondReference | None:
     """
     Ficha técnica de una especie, con reintentos.
 
-    BYMA falla de forma intermitente bajo carga: en una medición sobre 60
-    especies no respondieron 20, y las mismas consultas repetidas sí
-    respondieron. Cada ficha que se pierde es un bono sin emisor, sin ley y
+    Se reintenta el error de red, NO la respuesta vacía. BYMA falla de forma
+    intermitente bajo carga —en una medición sobre 60 especies no
+    respondieron 20, y repetidas sí respondieron—, pero cuando contesta
+    bien y no trae ficha, no la tiene: sobre las especies que devuelven
+    vacío, ninguna apareció al reintentar. Cada ficha que se pierde es un bono sin emisor, sin ley y
     —si es bullet a tasa fija— sin TIR, así que el reintento recupera cobertura
     real y no es un parche cosmético.
     """
@@ -298,6 +314,14 @@ def _fetch_one(session: requests.Session, ticker: str) -> BondReference | None:
             reference = parse_technical_sheet(ticker, response.json())
             if reference is not None:
                 return reference
+            # BYMA contestó bien y no tiene ficha de esta especie. Es una
+            # respuesta, no una falla: reintentarla no la va a hacer aparecer.
+            # Medido sobre las especies que devuelven vacío, ninguna entró al
+            # reintentar. Distinguir este caso del error de red es lo que evita
+            # que ~140 especies sin ficha se lleven tres pedidos y dos esperas
+            # cada una, que era de dónde salía la mayor parte de la demora.
+            logger.debug("BYMA no tiene ficha técnica de %s", ticker)
+            return None
         except (requests.RequestException, ValueError) as exc:
             logger.debug("Ficha técnica de %s falló en el intento %d: %s", ticker, intento + 1, exc)
         if intento + 1 < FETCH_ATTEMPTS:

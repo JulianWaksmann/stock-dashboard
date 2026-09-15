@@ -199,6 +199,14 @@ def load_bonds_data(
     prices_with_currency = prices.assign(
         **{"Moneda Precio": prices["Ticker"].map(quote_currency_of)}
     )
+    # Las especies cuya moneda no se puede determinar por el ticker no entran:
+    # son casi la mitad del panel y el motor no puede calcularles rendimiento
+    # en ningún caso, porque descontar el flujo exige que la moneda de la
+    # especie coincida con la de emisión. Pedirles la ficha eran 150 llamadas
+    # por carga a cambio de nada.
+    prices_with_currency = prices_with_currency[
+        prices_with_currency["Moneda Precio"].notna()
+    ]
     references, references_error = fetch_bond_references(
         _most_traded(prices_with_currency, BYMA_TERMS_FETCH_LIMIT)
     )
