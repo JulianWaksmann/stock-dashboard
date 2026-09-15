@@ -125,13 +125,26 @@ class _RatingsTableParser(HTMLParser):
 
 
 def parse_table_rows(html: str) -> list[list[str]]:
-    """Filas de datos de la tabla, sin interpretar. Solo para paginar."""
+    """Filas de datos completas: las que tienen todas las columnas."""
+    return [
+        row for row in count_table_rows(html)
+        if len(row) >= _MIN_COLUMNS and row[_COL_ENTITY].upper() != "ENTIDAD"
+    ]
+
+
+def count_table_rows(html: str) -> list[list[str]]:
+    """
+    TODAS las filas de la tabla, incluidas las irregulares.
+
+    Es lo que decide si hay página siguiente, y tiene que ser distinto de
+    `parse_table_rows`: el listado trae filas con menos celdas de las
+    esperadas, y contarlas ya filtradas hacía que una página con varias de
+    esas pareciera incompleta y cortara la paginación antes de tiempo. Así se
+    perdían emisores que sí estaban, como CGC y Compañía Mega.
+    """
     parser = _RatingsTableParser()
     parser.feed(html)
-    return [
-        row for row in parser.rows
-        if len(row) >= _MIN_COLUMNS and (row[_COL_ENTITY].upper() != "ENTIDAD")
-    ]
+    return [row for row in parser.rows if row and row[_COL_ENTITY].upper() != "ENTIDAD"]
 
 
 def parse_ratings_page(html: str, area: str = "") -> list[FixScrRating]:
@@ -193,7 +206,7 @@ def fetch_issuer_ratings(
             # leer: la mayoría de las filas son calificaciones de corto plazo
             # o sin nota de largo, y se descartan. Paginar mirando las notas
             # cortaba en la primera página y perdía el 95% del listado.
-            filas = parse_table_rows(response.text)
+            filas = count_table_rows(response.text)
             if not filas:
                 break
             page_ratings = parse_ratings_page(response.text, area=area_name)

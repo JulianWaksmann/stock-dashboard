@@ -21,10 +21,15 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+# Streamlit avisa que no hay runtime en cada función cacheada que se
+# llama desde afuera de la app. Acá es esperado y no le dice nada a nadie.
+logging.getLogger('streamlit').setLevel(logging.ERROR)
 
 try:
     from bonds.fixscr_source import (  # noqa: E402
@@ -41,6 +46,30 @@ except ModuleNotFoundError as exc:  # pragma: no cover
 # Marca de dónde vino cada nota. Sirve para distinguir lo cargado a mano de lo
 # traído del listado, y para no pisar lo primero con lo segundo.
 ORIGEN_LISTADO = "fixscr-listado"
+
+
+def emisores_del_panel() -> list[str]:
+    """
+    Emisores que hoy aparecen en el cuadro de ONs.
+
+    Se consulta el panel en vivo porque el archivo no se mantiene solo: cuando
+    cambia qué bonos se muestran —se amplía un filtro, empieza a operar una ON
+    nueva— aparecen emisores que el archivo no tiene, y el script no tendría
+    forma de agregarlos. Pasó con CGC y Compañía Mega: FIX los califica, y no
+    se cargaban porque no existía la entrada donde ponerlos.
+    """
+    from datetime import date
+
+    from bonds.data_loader import load_bonds_data
+
+    panel, _ = load_bonds_data(settlement=date.today(), price_is_dirty=True)
+    if panel.empty:
+        return []
+    con_tir = panel[panel["TIR (%)"].notna()]
+    return sorted({
+        str(e).strip() for e in con_tir["Emisor"]
+        if isinstance(e, str) and e.strip() and not e.startswith("—")
+    })
 
 
 def candidatos(emisor: str, disponibles: dict) -> list[str]:
@@ -75,11 +104,34 @@ def main() -> int:
     parser.add_argument("--escribir", action="store_true",
                         help="Aplica los cambios; sin esto solo muestra qué haría")
     parser.add_argument("--archivo", default=None, help="Ruta del archivo de calificaciones")
+    parser.add_argument("--sin-panel", action="store_true",
+                        help="No consulta el panel para incorporar emisores nuevos")
     argumentos = parser.parse_args()
 
     destino = Path(argumentos.archivo) if argumentos.archivo else DEFAULT_RATINGS_PATH
     documento = json.loads(destino.read_text(encoding="utf-8"))
     entradas = documento.get("emisores", [])
+
+    if not argumentos.sin_panel:
+        print("⏳ Consultando el panel para ver si hay emisores nuevos…")
+        try:
+            del_panel = emisores_del_panel()
+        except Exception as exc:  # noqa: BLE001 - el script sigue sin esto
+            print(f"   ⚠️  No se pudo consultar el panel: {exc}")
+            del_panel = []
+        conocidos = {normalize_issuer(n) for e in entradas for n in claves_de(e)}
+        agregados = 0
+        for emisor in del_panel:
+            if normalize_issuer(emisor) in conocidos:
+                continue
+            entradas.append({
+                "emisor": emisor, "alias": [], "calificacion": "", "agencia": "",
+                "escala": "", "fecha": "", "fuente": "", "verificado": False,
+            })
+            conocidos.add(normalize_issuer(emisor))
+            agregados += 1
+        if agregados:
+            print(f"   {agregados} emisor(es) nuevo(s) incorporado(s) al archivo")
 
     print("⏳ Consultando el listado de FIX SCR…")
     vigentes, avisos = fetch_issuer_ratings()
@@ -154,7 +206,10 @@ def main() -> int:
             for emisor in sin_nada:
                 print(f"       {emisor}")
 
-    cambios = len(nuevas) + len(actualizadas)
+    cambios = len(nuevas) + len(actualizadas) + (
+        len(entradas) - len(documento.get("emisores", []))
+    )
+    documento["emisores"] = entradas
     if not argumentos.escribir:
         print(f"\n(prueba: no se escribió nada. Con --escribir se aplican {cambios} cambios)")
         return 0

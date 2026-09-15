@@ -258,18 +258,6 @@
       "verificado": false
     },
     {
-      "emisor": "GENNEIA S.A.",
-      "alias": [
-        "Genneia"
-      ],
-      "calificacion": "",
-      "agencia": "",
-      "escala": "",
-      "fecha": "",
-      "fuente": "",
-      "verificado": false
-    },
-    {
       "emisor": "IRSA INVERSIONES Y REPRESENTACIONES S.A.",
       "alias": [
         "IRSA Inversiones y Representaciones S.A.",
@@ -550,6 +538,41 @@
       "agencia": "FIX SCR",
       "escala": "nacional",
       "fecha": "2026-08-11",
+      "fuente": "https://www.fixscr.com/calificaciones",
+      "verificado": true,
+      "origen": "fixscr-listado"
+    },
+    {
+      "emisor": "CLISA COMPAÑIA LATINOAMERICANA DE INFRAESTRUCTURA & SERVICIOS S.A.",
+      "alias": [],
+      "calificacion": "",
+      "agencia": "",
+      "escala": "",
+      "fecha": "",
+      "fuente": "",
+      "verificado": false
+    },
+    {
+      "emisor": "COMPAÑIA GENERAL DE COMBUSTIBLES S.A.",
+      "alias": [
+        "Compañía General de Combustibles S.A. - (CGC)",
+        "CGC"
+      ],
+      "calificacion": "AA-(arg)",
+      "agencia": "FIX SCR",
+      "escala": "nacional",
+      "fecha": "2026-08-28",
+      "fuente": "https://www.fixscr.com/calificaciones",
+      "verificado": true,
+      "origen": "fixscr-listado"
+    },
+    {
+      "emisor": "COMPAÑIA MEGA S.A.",
+      "alias": [],
+      "calificacion": "AAA(arg)",
+      "agencia": "FIX SCR",
+      "escala": "nacional",
+      "fecha": "2026-07-31",
       "fuente": "https://www.fixscr.com/calificaciones",
       "verificado": true,
       "origen": "fixscr-listado"
