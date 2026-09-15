@@ -13,7 +13,7 @@ import pytest
 
 from bonds.scoring import _percentile, compute_opportunity_scores, label_from_score
 from constants import (
-    BOND_RATING_NATIONAL_FLOOR,
+    BOND_RATING_NOTCH_DECAY,
     BOND_RISK_YIELD_PREMIUM_PP,
     BOND_SCORE_ATTRACTIVE_MIN,
     BOND_SCORE_JURISDICTION,
@@ -332,35 +332,35 @@ class TestDimensionCalificacion:
         resultado = puntajes(df)
         assert resultado.loc["CALIFICADO", "Puntaje"] > resultado.loc["SIN_NOTA", "Puntaje"]
 
-    def test_la_escala_nacional_se_mide_sobre_el_tramo_que_usa(self):
-        # Una escala nacional no recorre la escalera entera: se define contra
-        # el resto del país. Medida sobre la escalera global, toda la deuda
-        # corporativa argentina caía entre 80 y 100 y la dimensión no
-        # distinguía un AAA de un AA-.
+    def test_cada_escalon_vale_una_fraccion_del_anterior(self):
+        # La escalera no se reparte lineal: el riesgo de crédito crece de forma
+        # aproximadamente exponencial al bajar de nota. Repartir lineal dejaba a
+        # todas las corporativas argentinas —que van de A+(arg) a AAA(arg)—
+        # apretadas entre 80 y 100, y no distinguía un AAA de un AA-.
         df = panel(
             bono("AAA", CALIF_RANK=20.0),
+            bono("AA_MAS", CALIF_RANK=19.0),
             bono("AA_MENOS", CALIF_RANK=17.0),
-            bono("BBB_MENOS", CALIF_RANK=float(BOND_RATING_NATIONAL_FLOOR)),
-            bono("ESPECULATIVO", CALIF_RANK=5.0),
         )
         resultado = puntajes(df)
         assert resultado.loc["AAA", BOND_SCORE_RATING] == pytest.approx(100.0)
-        assert resultado.loc["AA_MENOS", BOND_SCORE_RATING] == pytest.approx(66.7, abs=0.1)
-        assert resultado.loc["BBB_MENOS", BOND_SCORE_RATING] == pytest.approx(0.0)
-        # Por debajo del piso no se va a negativo: queda en cero.
-        assert resultado.loc["ESPECULATIVO", BOND_SCORE_RATING] == pytest.approx(0.0)
-
-    def test_la_escala_global_recorre_la_escalera_entera(self):
-        # Una nota global sí usa todo el rango: un B global es un B del mundo.
-        df = panel(
-            bono("AAA_GLOBAL", CALIF_RANK=20.0, CALIF_ESCALA="global"),
-            bono("MEDIA_GLOBAL", CALIF_RANK=10.0, CALIF_ESCALA="global"),
-            bono("DEFAULT_GLOBAL", CALIF_RANK=0.0, CALIF_ESCALA="global"),
+        assert resultado.loc["AA_MAS", BOND_SCORE_RATING] == pytest.approx(
+            100.0 * BOND_RATING_NOTCH_DECAY
         )
-        resultado = puntajes(df)
-        assert resultado.loc["AAA_GLOBAL", BOND_SCORE_RATING] == pytest.approx(100.0)
-        assert resultado.loc["MEDIA_GLOBAL", BOND_SCORE_RATING] == pytest.approx(50.0)
-        assert resultado.loc["DEFAULT_GLOBAL", BOND_SCORE_RATING] == pytest.approx(0.0)
+        assert resultado.loc["AA_MENOS", BOND_SCORE_RATING] == pytest.approx(
+            100.0 * BOND_RATING_NOTCH_DECAY**3
+        )
+
+    def test_el_castigo_por_escalon_es_mayor_arriba_de_la_escalera(self):
+        # Es el punto de la curva: caer de AAA a AA+ cuesta más que caer de BBB
+        # a BBB-, porque arriba la probabilidad de default es ínfima y
+        # cualquier escalón la multiplica.
+        df = panel(
+            bono("AAA", CALIF_RANK=20.0), bono("AA_MAS", CALIF_RANK=19.0),
+            bono("BBB", CALIF_RANK=12.0), bono("BBB_MENOS", CALIF_RANK=11.0),
+        )
+        r = puntajes(df)[BOND_SCORE_RATING]
+        assert (r["AAA"] - r["AA_MAS"]) > (r["BBB"] - r["BBB_MENOS"])
 
     def test_un_panel_sin_ninguna_calificacion_sigue_puntuando(self):
         # Si nadie tiene nota, todos comparten el mismo puntaje de crédito y la

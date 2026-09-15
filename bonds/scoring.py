@@ -26,7 +26,7 @@ from constants import (
     BOND_LIQUID_SPREAD_MAX_PCT,
     BOND_MIN_YEARS_FOR_GRADING,
     BOND_PARITY_DISCOUNT_MAX,
-    BOND_RATING_NATIONAL_FLOOR,
+    BOND_RATING_NOTCH_DECAY,
     BOND_RISK_YIELD_PREMIUM_PP,
     BOND_SCORE_ATTRACTIVE_MIN,
     BOND_SCORE_EXCESS_PENALTY_SLOPE,
@@ -264,18 +264,10 @@ def _rating_subscore(ranks: pd.Series | None, scales: pd.Series | None = None) -
         return pd.Series(dtype=float)
     numeric = pd.to_numeric(ranks, errors="coerce")
 
-    # Cada escala se mapea sobre el tramo que efectivamente usa. La global
-    # recorre la escalera entera; la nacional arranca en el grado de inversión
-    # doméstico, porque por debajo de ahí ya es especulativa en su propio país.
-    es_nacional = (
-        pd.Series(True, index=numeric.index)
-        if scales is None
-        else scales.fillna("nacional").astype(str).str.strip().str.lower().ne("global")
-    )
-    piso = pd.Series(0.0, index=numeric.index)
-    piso[es_nacional] = float(BOND_RATING_NATIONAL_FLOOR)
-    recorrido = (RATING_LADDER_TOP - piso).replace(0.0, pd.NA)
-    puntaje = ((numeric - piso) / recorrido * 100.0).clip(lower=0.0, upper=100.0)
+    # Cada escalón por debajo de la nota máxima conserva una fracción del
+    # anterior, en vez de restar una cantidad fija. Ver BOND_RATING_NOTCH_DECAY.
+    escalones = (RATING_LADDER_TOP - numeric).clip(lower=0)
+    puntaje = 100.0 * (BOND_RATING_NOTCH_DECAY ** escalones)
 
     # No calificado NO se abstiene: puntúa bajo. Ver BOND_SCORE_UNRATED.
     return puntaje.fillna(BOND_SCORE_UNRATED)

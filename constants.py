@@ -490,28 +490,31 @@ BOND_SCORE_MIN_COVERAGE: Final[float] = 0.5
 # buenos se quedaba con el primer puesto del cuadro por encima de emisores
 # AAA. Eso es lo contrario de lo que un tablero de renta fija debería premiar.
 #
-# El valor NO es cero: cero es la nota de un emisor en default, y de uno sin
-# calificar no sabemos eso. Es un valor mediocre deliberado —equivale a la
-# mitad de la escalera, zona BBB— que dice "crédito no acreditado". Es una
-# postura de inversión explícita, no una medición: subilo o bajalo según
-# cuánto te importe que un emisor esté calificado.
-BOND_SCORE_UNRATED: Final[float] = 40.0
+# El valor NO es cero: cero es lo que puntúa un emisor en default, y de uno
+# sin calificar no sabemos eso. Queda por debajo de cualquier nota que hoy
+# tenga el panel (la más floja es A+(arg), que puntúa 41) y por encima de
+# las notas malas de verdad: un crédito que se sabe flojo tiene que quedar
+# peor que uno desconocido. Es una postura de inversión explícita, no una
+# medición: subilo o bajalo según cuánto te importe que un emisor esté
+# calificado.
+BOND_SCORE_UNRATED: Final[float] = 30.0
 
-# Piso de la escala NACIONAL, en peldaños de la escalera de notas.
+# Cuánto vale un escalón de calificación, como factor.
 #
-# Una escala nacional no usa la escalera completa: se define contra el resto
-# del país, así que "AAA(arg)" es el mejor crédito de Argentina y no un AAA
-# global. Medida contra la escalera entera (D…AAA), toda la deuda corporativa
-# argentina que cotiza cae entre 80 y 100 y la dimensión deja de distinguir:
-# un AA-(arg) puntuaba 85, a quince puntos de un AAA, cuando en este mercado
-# esa diferencia es la que separa al mejor crédito del país de uno bastante
-# más flojo.
+# La escalera NO se reparte lineal: el riesgo de crédito crece de forma
+# aproximadamente exponencial al bajar de nota. Históricamente, cada escalón
+# hacia abajo multiplica la probabilidad de default en vez de sumarle una
+# cantidad fija, así que un escalón por debajo de AAA no significa lo mismo
+# que un escalón por debajo de BBB.
 #
-# Se mapea entonces el tramo que la escala nacional efectivamente usa: de
-# BBB-(arg) —el límite del grado de inversión doméstico— para arriba. Por
-# debajo de ahí el crédito es especulativo incluso en su propio país y puntúa
-# cero. El valor es el peldaño de BBB- en la escalera.
-BOND_RATING_NATIONAL_FLOOR: Final[int] = 11
+# Con 0,8, AAA vale 100 y cada escalón conserva el 80% del anterior:
+#
+#     AAA 100 · AA+ 80 · AA 64 · AA- 51 · A+ 41 · A 33 · BBB 17 · BB 9
+#
+# Repartir lineal dejaba a todas las corporativas argentinas —que van de
+# A+(arg) a AAA(arg)— apretadas entre 80 y 100, y la dimensión no distinguía
+# un AAA de un AA-.
+BOND_RATING_NOTCH_DECAY: Final[float] = 0.8
 
 # Tamaño mínimo del panel comparable para publicar puntajes. El puntaje es
 # un percentil: con dos o tres bonos, "estar en el percentil 100" significa
