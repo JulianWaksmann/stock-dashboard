@@ -43,6 +43,7 @@ from constants import (
     BOND_SCORE_NEUTRAL_MIN,
     BOND_SCORE_PARITY,
     BOND_SCORE_RATE_RISK,
+    BOND_SCORE_RATING,
     BOND_SCORE_VERY_ATTRACTIVE_MIN,
     BOND_SCORE_WEIGHTS,
     BOND_SCORE_YIELD,
@@ -58,6 +59,7 @@ _EXPLICACION_DIMENSION = {
     BOND_SCORE_RATE_RISK: "Duration modificada: cuánto cae el precio si suben las tasas.",
     BOND_SCORE_PARITY: "Si cotiza bajo la par, parte del retorno llega como ganancia de capital.",
     BOND_SCORE_JURISDICTION: "Ley aplicable: dónde se litiga un default.",
+    BOND_SCORE_RATING: "Calidad crediticia del emisor según las calificadoras.",
 }
 
 # Tope del filtro de duration. 15 años cubre con margen el tramo más largo del

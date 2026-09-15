@@ -425,10 +425,23 @@ BOND_SCORE_RATE_RISK: Final[str] = "Riesgo de tasa"
 BOND_SCORE_LIQUIDITY: Final[str] = "Liquidez"
 BOND_SCORE_PARITY: Final[str] = "Paridad"
 BOND_SCORE_JURISDICTION: Final[str] = "Jurisdicción"
+BOND_SCORE_RATING: Final[str] = "Calificación"
 
+# Los tres primeros pesan igual y son el criterio de inversión del tablero:
+# antes de preguntarse cuánto rinde un bono hay que poder comprarlo y venderlo
+# (liquidez) y saber a quién se le presta (calificación). Rendimiento bajó de
+# 35 a 20 por eso mismo: una TIR alta que no se puede ejecutar, o que paga un
+# emisor al borde del default, no es una oportunidad.
+#
+# La calificación se pondera aunque hoy no haya ninguna cargada. No hace falta
+# hacer nada especial para eso: una dimensión que no se puede medir en buena
+# parte del panel se descarta para todos y su peso se reparte entre las demás,
+# de modo que mientras el archivo de calificaciones esté vacío el puntaje sale
+# de los otros cinco criterios y aparece solo cuando haya datos.
 BOND_SCORE_WEIGHTS: Final[dict[str, float]] = {
-    BOND_SCORE_YIELD: 35.0,
-    BOND_SCORE_LIQUIDITY: 25.0,
+    BOND_SCORE_YIELD: 20.0,
+    BOND_SCORE_LIQUIDITY: 20.0,
+    BOND_SCORE_RATING: 20.0,
     BOND_SCORE_RATE_RISK: 20.0,
     BOND_SCORE_PARITY: 10.0,
     BOND_SCORE_JURISDICTION: 10.0,

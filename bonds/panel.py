@@ -22,7 +22,7 @@ from bonds.bond_math import analyze_bond, analyze_cashflows, year_fraction
 from bonds.byma_terms import ASSUMED_COUPON_FREQUENCY, BondReference
 from bonds.catalog import BondTerms, base_ticker_of, find_terms, quote_currency_of, settlement_of
 from bonds.flows_source import BondFlows
-from bonds.ratings import IssuerRating, find_rating
+from bonds.ratings import IssuerRating, find_rating, rating_rank
 from bonds.scoring import compute_opportunity_scores, evaluate_bond_attractiveness, label_from_score
 from constants import (
     BOND_ATTRACTIVE_SIGNALS,
@@ -119,6 +119,29 @@ def _can_rebuild_from_reference(reference: BondReference | None, quote_currency:
     if reference.maturity <= reference.issue_date:
         return False
     return _reference_currency(reference) == quote_currency
+
+
+def _rating_rank_of(ratings, terms, issuer) -> float:
+    """Peldaño de la calificación de esta fila, o NaN si no se conoce."""
+    nota = terms.rating if terms and terms.rating else None
+    if nota is None:
+        record = find_rating(ratings or {}, issuer)
+        nota = record.rating if record else None
+    peldano = rating_rank(nota)
+    return float(peldano) if peldano is not None else np.nan
+
+
+def _rating_scale_of(ratings, terms, issuer) -> str:
+    """
+    Escala de la calificación: "nacional" o "global".
+
+    Una nota del catálogo no declara escala; se asume nacional, que es lo que
+    publican las calificadoras locales para las ONs argentinas.
+    """
+    if terms and terms.rating:
+        return "nacional"
+    record = find_rating(ratings or {}, issuer)
+    return (record.scale or "nacional") if record else "—"
 
 
 def _issuer_rating_label(ratings: dict[str, IssuerRating] | None, issuer: object) -> str | None:
@@ -352,6 +375,12 @@ def build_bonds_panel(
                 _issuer_rating_label(ratings, row_issuer),
                 default="s/c",
             ),
+            # Columnas internas: el peldaño de la nota y en qué escala está.
+            # No se muestran, las usa el puntaje. La escala importa porque una
+            # nota nacional y una global no son comparables entre sí, así que
+            # el ranking se hace dentro de cada una.
+            "CALIF_RANK": _rating_rank_of(ratings, terms, row_issuer),
+            "CALIF_ESCALA": _rating_scale_of(ratings, terms, row_issuer),
             "Verificado": bool(terms.verified) if terms else False,
             "En Catálogo": terms is not None,
             "Fuente": BOND_SOURCE_CATALOG if terms else (flows.source if flows else BOND_SOURCE_NONE),

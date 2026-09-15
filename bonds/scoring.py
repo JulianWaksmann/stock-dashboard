@@ -38,6 +38,7 @@ from constants import (
     BOND_SCORE_NEUTRAL_MIN,
     BOND_SCORE_PARITY,
     BOND_SCORE_RATE_RISK,
+    BOND_SCORE_RATING,
     BOND_SCORE_SPREAD_SHARE,
     BOND_SCORE_VERY_ATTRACTIVE_MIN,
     BOND_SCORE_WEIGHTS,
@@ -227,6 +228,30 @@ def _liquidity_subscore(spread_pct: pd.Series, volume: pd.Series) -> pd.Series:
     return combined.fillna(tightness).fillna(depth)
 
 
+def _rating_subscore(ranks: pd.Series | None, scales: pd.Series | None) -> pd.Series:
+    """
+    Puntaje de calidad crediticia, por percentil DENTRO de cada escala.
+
+    Una nota en escala nacional y una en escala global no significan lo mismo:
+    la nacional mide contra el resto del país y la global contra el mundo, así
+    que un "AAA" local convive con un "B" global sobre el mismo emisor.
+    Rankearlas juntas pondría a todos los calificados localmente por encima de
+    todos los calificados afuera, que es un artefacto de notación y no una
+    diferencia de crédito.
+
+    Un emisor sin calificación no puntúa cero: se abstiene, igual que en
+    jurisdicción. Cero sería afirmar que es mal crédito, y lo único que se
+    sabe es que no tenemos el dato.
+    """
+    if ranks is None or ranks.empty:
+        return pd.Series(dtype=float)
+    numeric = pd.to_numeric(ranks, errors="coerce")
+    if scales is None:
+        return _percentile(numeric, higher_is_better=True)
+    grupos = scales.fillna("—").astype(str)
+    return numeric.groupby(grupos).rank(pct=True, ascending=True, na_option="keep") * 100.0
+
+
 def _jurisdiction_subscore(law: pd.Series) -> pd.Series:
     """Puntaje de jurisdicción. Una ley desconocida no puntúa: se abstiene."""
     # Se compara por prefijo para aceptar la ley inferida del ISIN, que llega
@@ -281,6 +306,9 @@ def compute_opportunity_scores(
             BOND_SCORE_RATE_RISK: _percentile(ranked["Duration Mod."], higher_is_better=False),
             BOND_SCORE_PARITY: _percentile(ranked["Paridad (%)"], higher_is_better=False),
             BOND_SCORE_JURISDICTION: _jurisdiction_subscore(ranked["Ley"]),
+            BOND_SCORE_RATING: _rating_subscore(
+                ranked.get("CALIF_RANK"), ranked.get("CALIF_ESCALA")
+            ),
         },
         index=df.index,
     )

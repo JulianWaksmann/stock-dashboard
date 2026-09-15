@@ -164,3 +164,65 @@ def find_rating(ratings: dict[str, IssuerRating], issuer: object) -> IssuerRatin
     if not ratings:
         return None
     return ratings.get(normalize_issuer(issuer))
+
+
+# Escalera de calificaciones, de peor a mejor. El índice en esta lista es el
+# orden de la nota; el texto exacto de cada agencia se normaliza contra ella.
+#
+# Conviven las dos notaciones porque en el panel conviven las dos familias de
+# calificadoras: la de letras (S&P, Fitch, FIX SCR, Evaluadora) y la de
+# Moody's. Son escalas equivalentes peldaño a peldaño, así que se mapean a los
+# mismos valores y quedan comparables entre sí.
+_RATING_LADDER: Final[tuple[tuple[str, ...], ...]] = (
+    ("D", "RD", "SD", "C"),
+    ("CC", "CA"),
+    ("CCC-", "CAA3"),
+    ("CCC", "CAA2"),
+    ("CCC+", "CAA1"),
+    ("B-", "B3"),
+    ("B", "B2"),
+    ("B+", "B1"),
+    ("BB-", "BA3"),
+    ("BB", "BA2"),
+    ("BB+", "BA1"),
+    ("BBB-", "BAA3"),
+    ("BBB", "BAA2"),
+    ("BBB+", "BAA1"),
+    ("A-", "A3"),
+    ("A", "A2"),
+    ("A+", "A1"),
+    ("AA-", "AA3"),
+    ("AA", "AA2"),
+    ("AA+", "AA1"),
+    ("AAA", "AAA"),
+)
+
+_RATING_RANKS: Final[dict[str, int]] = {
+    nota: posicion
+    for posicion, peldano in enumerate(_RATING_LADDER)
+    for nota in peldano
+}
+
+# Sufijos de escala nacional que no cambian el peldaño: "AAA(arg)", "AAA.ar"
+# y "AAA" son la misma nota dentro de su propia escala. Cuál es esa escala lo
+# dice el campo `escala`, no el sufijo, y por eso se descarta acá.
+_SCALE_SUFFIX: Final[re.Pattern[str]] = re.compile(r"\((?:ARG|AR|BOL|PY|UY)\)|\.(?:ARG|AR)$")
+
+
+def rating_rank(rating: object) -> int | None:
+    """
+    Peldaño de una calificación: 0 es default, 20 es la nota máxima.
+
+    Devuelve None si la nota no se reconoce, en vez de adivinar un peldaño.
+    Una calificación mal ubicada en la escalera no se nota en pantalla y
+    mueve el puntaje, así que el modo de falla correcto es abstenerse.
+
+    Las perspectivas y los avisos ("estable", "en revisión", "CreditWatch") se
+    ignoran: modifican la expectativa, no la nota vigente.
+    """
+    texto = unicodedata.normalize("NFKD", str(rating or "")).encode("ascii", "ignore").decode()
+    texto = texto.upper().strip()
+    texto = _SCALE_SUFFIX.sub("", texto).strip()
+    # Se corta en el primer separador: "AA+ (estable)" o "BBB / perspectiva".
+    texto = re.split(r"[\s/,;(]", texto, maxsplit=1)[0].strip()
+    return _RATING_RANKS.get(texto)

@@ -22,6 +22,7 @@ from constants import (
     BOND_SCORE_LIQUIDITY,
     BOND_SCORE_PARITY,
     BOND_SCORE_RATE_RISK,
+    BOND_SCORE_RATING,
     BOND_SCORE_YIELD,
     BOND_SIGNAL_ATTRACTIVE,
     BOND_SIGNAL_LOW,
@@ -81,6 +82,7 @@ SCORE_BREAKDOWN_COLUMNS = [
     BOND_SCORE_RATE_RISK,
     BOND_SCORE_PARITY,
     BOND_SCORE_JURISDICTION,
+    BOND_SCORE_RATING,
     "Cobertura",
 ]
 
@@ -334,6 +336,7 @@ def render_bonds_table(df: pd.DataFrame, full: bool = False, breakdown: bool = F
         BOND_SCORE_RATE_RISK: st.column_config.NumberColumn(format="%.0f"),
         BOND_SCORE_PARITY: st.column_config.NumberColumn(format="%.0f"),
         BOND_SCORE_JURISDICTION: st.column_config.NumberColumn(format="%.0f"),
+        BOND_SCORE_RATING: st.column_config.NumberColumn(format="%.0f"),
         "Lámina Mínima": st.column_config.NumberColumn(
             "Lámina Mín.",
             format="%.0f",

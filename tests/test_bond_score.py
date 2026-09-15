@@ -19,6 +19,7 @@ from constants import (
     BOND_SCORE_LIQUIDITY,
     BOND_SCORE_NEUTRAL_MIN,
     BOND_SCORE_RATE_RISK,
+    BOND_SCORE_RATING,
     BOND_SCORE_VERY_ATTRACTIVE_MIN,
     BOND_SCORE_WEIGHTS,
     BOND_SCORE_YIELD,
@@ -54,6 +55,8 @@ def bono(ticker: str, **overrides) -> dict:
         "Duration Mod.": 3.0,
         "Paridad (%)": 100.0,
         "Ley": "NY",
+        "CALIF_RANK": 18.0,
+        "CALIF_ESCALA": "nacional",
     }
     base.update(overrides)
     return base
@@ -67,9 +70,26 @@ class TestPesos:
     def test_los_pesos_declarados_suman_cien(self):
         assert sum(BOND_SCORE_WEIGHTS.values()) == pytest.approx(100.0)
 
-    def test_el_rendimiento_pesa_mas_que_cualquier_otra_dimension(self):
-        rendimiento = BOND_SCORE_WEIGHTS[BOND_SCORE_YIELD]
-        assert all(rendimiento >= peso for peso in BOND_SCORE_WEIGHTS.values())
+    def test_liquidez_calificacion_y_rendimiento_pesan_igual_y_mandan(self):
+        # Es el criterio de inversión del tablero: antes de preguntarse cuánto
+        # rinde un bono hay que poder operarlo y saber a quién se le presta.
+        principales = {
+            BOND_SCORE_LIQUIDITY,
+            BOND_SCORE_RATING,
+            BOND_SCORE_YIELD,
+        }
+        pesos_principales = {BOND_SCORE_WEIGHTS[d] for d in principales}
+        assert pesos_principales == {20.0}
+        secundarias = {
+            d: p for d, p in BOND_SCORE_WEIGHTS.items() if d not in principales
+        }
+        assert all(peso <= 20.0 for peso in secundarias.values())
+
+    def test_la_calificacion_pondera_aunque_todavia_no_haya_datos(self):
+        # Se pondera desde ahora: cuando el archivo de calificaciones esté
+        # vacío la dimensión se descarta sola y su peso se reparte, sin que
+        # haya que tocar nada.
+        assert BOND_SCORE_RATING in BOND_SCORE_WEIGHTS
 
 
 class TestComparacionRelativa:
@@ -259,3 +279,46 @@ class TestPanelComparable:
         comparable.iloc[0] = False
         resultado = compute_opportunity_scores(df, MEDIANA, comparable=comparable).set_index(df["Ticker"])
         assert np.isnan(resultado.loc["EXCLUIDO", BOND_SCORE_YIELD])
+
+
+class TestDimensionCalificacion:
+    def test_mejor_nota_puntua_mas(self):
+        df = panel(
+            bono("BUENO", CALIF_RANK=20.0),
+            bono("MALO", CALIF_RANK=6.0),
+        )
+        resultado = puntajes(df)
+        assert resultado.loc["BUENO", BOND_SCORE_RATING] > resultado.loc["MALO", BOND_SCORE_RATING]
+        assert resultado.loc["BUENO", "Puntaje"] > resultado.loc["MALO", "Puntaje"]
+
+    def test_sin_calificacion_se_abstiene_en_vez_de_puntuar_cero(self):
+        df = panel(
+            bono("CON_NOTA", CALIF_RANK=12.0),
+            bono("SIN_NOTA", CALIF_RANK=np.nan, CALIF_ESCALA="—"),
+        )
+        resultado = puntajes(df)
+        assert np.isnan(resultado.loc["SIN_NOTA", BOND_SCORE_RATING])
+        # Abstenerse no puede ser peor que tener una nota mediocre.
+        assert resultado.loc["SIN_NOTA", "Puntaje"] >= resultado.loc["CON_NOTA", "Puntaje"]
+
+    def test_las_escalas_no_se_mezclan(self):
+        # Una nota nacional y una global no son comparables: un "AAA" local
+        # convive con un "B" global sobre el mismo emisor. Rankearlas juntas
+        # pondría a todos los calificados localmente arriba de todos los
+        # calificados afuera, que es notación y no crédito.
+        filas = [bono(f"NAC{i}", CALIF_RANK=float(18 + i % 3), CALIF_ESCALA="nacional") for i in range(4)]
+        filas += [bono(f"GLO{i}", CALIF_RANK=float(5 + i % 3), CALIF_ESCALA="global") for i in range(4)]
+        resultado = puntajes(pd.DataFrame(filas))
+        # El mejor de la escala global llega al tope de SU escala, aunque su
+        # nota absoluta sea muy inferior a cualquiera de la escala nacional.
+        mejor_global = resultado.loc[[f"GLO{i}" for i in range(4)], BOND_SCORE_RATING].max()
+        assert mejor_global == pytest.approx(100.0)
+
+    def test_un_panel_sin_ninguna_calificacion_sigue_puntuando(self):
+        # Es el estado de hoy: el archivo de calificaciones está vacío. La
+        # dimensión se descarta para todos y su peso se reparte entre las otras.
+        filas = [bono(f"T{i}", CALIF_RANK=np.nan, CALIF_ESCALA="—") for i in range(8)]
+        filas[0]["TIR (%)"] = 11.0
+        resultado = puntajes(pd.DataFrame(filas))
+        assert resultado["Puntaje"].notna().all()
+        assert resultado[BOND_SCORE_RATING].isna().all()
