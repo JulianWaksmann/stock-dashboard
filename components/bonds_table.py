@@ -48,6 +48,10 @@ UNVERIFIED_BADGE = "⚠️ Sin verificar"
 # puede operar. Todo lo demás (puntas, cantidades, convexidad, valor técnico,
 # interés corrido) es detalle de segundo orden y vive detrás del interruptor
 # de vista completa: una tabla de veinte columnas no se lee, se escanea.
+# Columnas que identifican la fila. No se ocultan aunque vengan vacías: sin
+# ellas no se sabe de qué bono habla cada renglón.
+_NEVER_HIDE = frozenset({"Atractivo", "Ticker", "Emisor"})
+
 ESSENTIAL_COLUMNS = [
     "Atractivo",
     "Puntaje",
@@ -168,7 +172,23 @@ def render_bonds_table(df: pd.DataFrame, full: bool = False, breakdown: bool = F
     if breakdown:
         columns += SCORE_BREAKDOWN_COLUMNS
     available = [col for col in columns if col in df_display.columns]
-    df_display = df_display[available]
+
+    # Una columna sin un solo valor no informa nada y ensucia la lectura. Es el
+    # caso normal, no el excepcional: paridad, valor técnico, interés corrido y
+    # vida promedio necesitan saber qué parte de cada pago es renta, y el
+    # cronograma público no lo separa, así que quedan vacías salvo que la ON
+    # esté en el catálogo local.
+    #
+    # Hay un motivo extra para no dejarlas: Streamlit dibuja un NaN numérico
+    # como el texto "None" (comportamiento de la librería, no del cuadro: pasa
+    # igual sin `column_config`), así que una columna vacía no se ve vacía, se
+    # ve rota.
+    empty = [
+        col
+        for col in available
+        if col not in _NEVER_HIDE and df_display[col].isna().all()
+    ]
+    df_display = df_display[[col for col in available if col not in empty]]
 
     variation_cols = [col for col in ("Var. (%)", "Spread vs UST (pb)") if col in df_display.columns]
     styled = df_display.style.map(style_bond_signal, subset=["Atractivo"])
@@ -289,3 +309,11 @@ def render_bonds_table(df: pd.DataFrame, full: bool = False, breakdown: bool = F
         column_config={k: v for k, v in column_config.items() if k in df_display.columns},
         height=620,
     )
+
+    if empty:
+        st.caption(
+            f"ℹ️ Sin datos para {len(empty)} columna(s), así que no se muestran: "
+            f"**{', '.join(empty)}**. Estas métricas necesitan saber qué parte de cada pago "
+            "es renta y cuál es capital; el cronograma público solo publica el total. Se "
+            "completan cargando las condiciones de emisión en `data/ons_catalog.csv`."
+        )
