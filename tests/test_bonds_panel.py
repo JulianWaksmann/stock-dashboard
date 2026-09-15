@@ -538,28 +538,40 @@ class TestCuartilDeVolumen:
         panel = self._panel(quote("AAAAD", Volumen=0.0), quote("BBBBD", Volumen=0.0))
         assert (panel[BOND_VOLUME_QUARTILE_COLUMN] == BOND_VOLUME_NONE).all()
 
-    def test_el_cuartil_se_recalcula_sobre_las_filas_filtradas(self):
-        # Es deliberado y es lo contrario de lo que parece razonable. El corte
-        # de liquidez por defecto es él mismo un "top N por volumen": medido
-        # contra todo el mercado, TODAS las filas en pantalla quedaban en el
-        # cuartil más alto y la columna no distinguía nada. La columna sirve
-        # para comparar entre sí las filas que se están mirando.
+    def test_el_cuartil_no_cambia_al_filtrar(self):
+        # Se mide contra el panel analizable, no contra lo que quede en
+        # pantalla, para que coincida con la población contra la que se puntúa
+        # la liquidez. Si se recalculara al filtrar, la misma fila podría
+        # mostrar cuartil "Bajo" y subpuntaje de liquidez alto a la vez.
         quotes = [quote(f"T{i:03d}D", Volumen=float(i) * 100) for i in range(1, 13)]
         panel = self._panel(*quotes)
-        # Las cuatro menos operadas del panel: contra el mercado serían todas
-        # "Bajo", pero entre ellas tiene que haber una más líquida y una menos.
+        antes = panel.set_index("Ticker")[BOND_VOLUME_QUARTILE_COLUMN]
         recorte = apply_bond_filters(
-            panel[panel["Ticker"].isin(["T001D", "T002D", "T003D", "T004D"])],
+            panel[panel["Ticker"].isin(["T001D", "T002D", "T003D"])],
             settlement_filter=BOND_FILTER_SETTLEMENT_ALL,
             liquidity_filter=BOND_FILTER_LIQUIDITY_ALL,
             signal_filter=BOND_FILTER_SIGNAL_ALL,
             law_filter=BOND_FILTER_LAW_ALL,
         )
-        etiquetas = set(recorte[BOND_VOLUME_QUARTILE_COLUMN])
-        assert len(etiquetas) == 4, f"la columna no reparte: {etiquetas}"
-        por_ticker = recorte.set_index("Ticker")[BOND_VOLUME_QUARTILE_COLUMN]
-        assert por_ticker["T004D"] == BOND_VOLUME_VERY_HIGH
-        assert por_ticker["T001D"] == BOND_VOLUME_LOW
+        despues = recorte.set_index("Ticker")[BOND_VOLUME_QUARTILE_COLUMN]
+        for ticker in despues.index:
+            assert despues[ticker] == antes[ticker], (
+                f"{ticker} cambió de cuartil al filtrar: el cuartil dejaría de "
+                "coincidir con el subpuntaje de liquidez"
+            )
+
+    def test_mas_volumen_nunca_da_un_cuartil_mas_bajo(self):
+        quotes = [quote(f"T{i:03d}D", Volumen=float(i) * 100) for i in range(1, 13)]
+        panel = self._panel(*quotes).set_index("Ticker")
+        orden = {
+            BOND_VOLUME_NONE: 0,
+            BOND_VOLUME_LOW: 1,
+            BOND_VOLUME_MEDIUM: 2,
+            BOND_VOLUME_HIGH: 3,
+            BOND_VOLUME_VERY_HIGH: 4,
+        }
+        niveles = [orden[panel.loc[f"T{i:03d}D", BOND_VOLUME_QUARTILE_COLUMN]] for i in range(1, 13)]
+        assert niveles == sorted(niveles)
 
 
 class TestNombresDeColumnaQueNoPuedenChocar:

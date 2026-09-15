@@ -493,9 +493,8 @@ def build_bonds_panel(
     # El cuartil de volumen se calcula acá, sobre el panel entero de cada
     # moneda, y no después de filtrar: "muy alto" tiene que significar muy alto
     # en el mercado, no muy alto entre las filas que quedaron en pantalla.
-    df[BOND_VOLUME_QUARTILE_COLUMN] = volume_quartiles(df)
-
     is_comparable = traded & long_enough & df["TIR (%)"].notna()
+    df[BOND_VOLUME_QUARTILE_COLUMN] = volume_quartiles(df, population=is_comparable)
     median_ytm = df.loc[is_comparable, "TIR (%)"].median() if is_comparable.any() else np.nan
     # El puntaje pondera cada dimensión contra el resto del panel, así que
     # necesita todas las filas calculadas: por eso va en esta segunda pasada.
@@ -550,29 +549,33 @@ def _collapse_to_one_row_per_bond(df: pd.DataFrame) -> pd.DataFrame:
     return ranked.drop_duplicates("_raiz", keep="first").drop(columns="_raiz")
 
 
-def volume_quartiles(df: pd.DataFrame) -> pd.Series:
+def volume_quartiles(df: pd.DataFrame, population: pd.Series | None = None) -> pd.Series:
     """
     Traduce el volumen operado a un cuartil legible, dentro de cada moneda.
 
-    El número crudo no se compara de un vistazo: 86.000 es mucho o poco según
-    contra qué. El cuartil responde "¿de las que operaron, esta está entre las
-    más líquidas o entre las menos?".
+    El número crudo no se compara de un vistazo: 138.674 es mucho o poco según
+    contra qué. El cuartil responde esa pregunta.
 
-    Dos decisiones que cambian el resultado, y por eso están acá y no en la
-    capa de dibujo:
+    Tres decisiones, y las tres están acá y no en la capa de dibujo porque
+    cambian el resultado y merecen tests:
 
       * **Se rankea por moneda.** El volumen de la especie en pesos está en
         pesos y el de la MEP en dólares. Un ranking conjunto pondría a casi
         toda la plaza en pesos en el cuartil más alto por tener el número más
         grande, no por operar más.
-      * **Volumen cero queda afuera del cálculo.** No es el cuartil más bajo,
-        es "no operó", y es la mayoría del panel: dejarlo entrar empatado
-        correría a las que sí operaron poco hacia cuartiles que no les
-        corresponden.
+      * **Volumen cero queda afuera.** No es el cuartil más bajo, es "no
+        operó", y es la mayoría del panel: dejarlo entrar empatado correría a
+        las que sí operaron poco hacia cuartiles que no les corresponden.
+      * **La referencia es `population`**, que tiene que ser la MISMA contra la
+        que se puntúa la liquidez. Si no, la misma fila puede decir dos cosas
+        opuestas: pasó de verdad: con el cuartil medido contra las filas en
+        pantalla y el puntaje contra el panel analizable, un bono aparecía con
+        cuartil "Bajo" y subpuntaje de liquidez 84. Las dos cuentas estaban
+        bien y la pantalla se contradecía.
 
-    Se usa el rank porcentual y no `pd.qcut` porque el volumen tiene muchos
-    empates y qcut falla —o devuelve menos de cuatro grupos— cuando los bordes
-    de los cuartiles caen sobre el mismo valor.
+    Se usan los cortes de cuartil de la población en lugar de un rank sobre
+    todo el DataFrame, para poder ubicar también a las filas que no forman
+    parte de ella sin cambiarle la referencia a nadie.
     """
     quartiles = pd.Series(BOND_VOLUME_NONE, index=df.index, dtype=object)
     if df.empty or "Volumen" not in df.columns:
@@ -583,19 +586,28 @@ def volume_quartiles(df: pd.DataFrame) -> pd.Series:
     if not traded.any():
         return quartiles
 
+    if population is None:
+        population = pd.Series(True, index=df.index)
+    reference = population.reindex(df.index).fillna(False).astype(bool) & traded
+    if not reference.any():
+        reference = traded
+
     if "Moneda Precio" in df.columns:
-        groups = df["Moneda Precio"]
+        groups = df["Moneda Precio"].fillna("—").astype(str)
     else:
         groups = pd.Series("", index=df.index)
 
-    # El rank se calcula solo sobre las que operaron: `where` deja NaN en el
-    # resto y pandas lo excluye del ranking en vez de ubicarlo en el piso.
-    position = volume.where(traded).groupby(groups, dropna=False).rank(pct=True)
+    etiquetas = (BOND_VOLUME_LOW, BOND_VOLUME_MEDIUM, BOND_VOLUME_HIGH, BOND_VOLUME_VERY_HIGH)
+    for grupo in groups.unique():
+        en_grupo = groups == grupo
+        muestra = volume[en_grupo & reference].dropna()
+        if muestra.empty:
+            continue
+        cortes = muestra.quantile([0.25, 0.50, 0.75]).tolist()
+        objetivo = en_grupo & traded
+        posicion = sum((volume[objetivo] > corte).astype(int) for corte in cortes)
+        quartiles.loc[objetivo] = [etiquetas[p] for p in posicion]
 
-    quartiles[traded & (position <= 0.25)] = BOND_VOLUME_LOW
-    quartiles[traded & (position > 0.25) & (position <= 0.50)] = BOND_VOLUME_MEDIUM
-    quartiles[traded & (position > 0.50) & (position <= 0.75)] = BOND_VOLUME_HIGH
-    quartiles[traded & (position > 0.75)] = BOND_VOLUME_VERY_HIGH
     return quartiles
 
 
@@ -713,18 +725,6 @@ def apply_bond_filters(
     # primero), que los pasos de ranking y deduplicación alteran.
     # Se ordena por puntaje y, a igualdad, por TIR. Se toman solo las columnas
     # presentes para que la función siga sirviendo sobre un panel recortado.
-    # El cuartil de volumen se recalcula sobre lo que quedó, y no se hereda del
-    # panel completo. La columna describe filas que el usuario está comparando
-    # entre sí, así que tiene que repartirse entre las filas que ve.
-    #
-    # Calculado contra todo el mercado no servía para nada, y no por un error de
-    # cuentas: el corte de liquidez por defecto es él mismo un "top N por
-    # volumen", de modo que todas las filas en pantalla eran, por construcción,
-    # las más operadas del mercado y salían las treinta en el cuartil más alto.
-    # Es el precio de esta decisión: "muy alto" significa muy alto **en la vista
-    # actual**, y cambia si se cambian los filtros.
-    filtered[BOND_VOLUME_QUARTILE_COLUMN] = volume_quartiles(filtered)
-
     sort_columns = [c for c in ("Puntaje", "TIR (%)") if c in filtered.columns]
     if sort_columns:
         filtered = filtered.sort_values(sort_columns, ascending=False, na_position="last")

@@ -29,7 +29,7 @@ from components.coming_soon import render_coming_soon
 from constants import (
     BOND_COUNTRY_ARGENTINA,
     BOND_COUNTRY_OPTIONS,
-    BOND_FILTER_LIQUIDITY_TOP_50,
+    BOND_FILTER_LIQUIDITY_TRADED,
     BOND_FILTER_SETTLEMENT_USD,
     BOND_FILTER_SIGNAL_ALL,
     BOND_LAW_FILTER_OPTIONS,
@@ -210,7 +210,13 @@ def _render_filters(df: pd.DataFrame) -> pd.DataFrame:
         df,
         # Fijos: hacen al armado del panel, no al recorte que elige el lector.
         settlement_filter=BOND_FILTER_SETTLEMENT_USD,
-        liquidity_filter=BOND_FILTER_LIQUIDITY_TOP_50,
+        # Se muestran todas las que operaron hoy, y no un "top N por volumen".
+        # El top N era él mismo un recorte por volumen, así que dejaba en
+        # pantalla solo las más operadas: la columna de cuartil decía "muy
+        # alto" en todas las filas y no distinguía nada. Pidiendo solo que
+        # hayan operado, el precio sigue siendo del día y el cuadro pasa de
+        # ~26 bonos a ~96.
+        liquidity_filter=BOND_FILTER_LIQUIDITY_TRADED,
         signal_filter=BOND_FILTER_SIGNAL_ALL,
         only_with_yield=True,
         include_near_maturity=False,
