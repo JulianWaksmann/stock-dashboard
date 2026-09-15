@@ -2,11 +2,16 @@
 components/bonds_table.py - Cuadro comparativo de Obligaciones Negociables.
 
 Es el equivalente de `screener_table.py` para renta fija. Mantiene la misma
-gramática visual (semáforo coloreado a la izquierda, porcentajes en verde/rojo)
-para que las dos pestañas se lean igual, pero el orden de las columnas responde
-a cómo se evalúa un bono y no una acción: primero rendimiento (TIR), después
-riesgo (duration, paridad), después liquidez, y recién al final los datos
-descriptivos del emisor.
+gramática visual (porcentajes en verde/rojo) para que las dos pestañas se lean
+igual, pero el orden de las columnas responde a cómo se evalúa un bono y no una
+acción: primero rendimiento (TIR), después riesgo (duration, paridad), después
+liquidez, y recién al final los datos descriptivos del emisor.
+
+La columna "Atractivo" no se muestra: es la traducción del Puntaje a una
+etiqueta, y teniendo el puntaje al lado decía lo mismo dos veces ocupando el
+ancho de la izquierda. El dato sigue en el DataFrame, porque el filtro por
+atractivo y el panel de alertas lo usan, y `style_bond_signal` sigue disponible
+para cuando la columna esté presente (vista de desglose o un llamador futuro).
 """
 
 import pandas as pd
@@ -45,7 +50,7 @@ UNVERIFIED_BADGE = "⚠️ Sin verificar"
 
 # Columnas que identifican la fila. No se ocultan aunque vengan vacías: sin
 # ellas no se sabe de qué bono habla cada renglón.
-_NEVER_HIDE = frozenset({"Atractivo", "Ticker", "Emisor"})
+_NEVER_HIDE = frozenset({"Ticker", "Emisor"})
 
 # Lo esencial para decidir, en orden de lectura: qué tan buena es la
 # oportunidad, de qué bono se trata, cuánto rinde, cuánto riesgo tiene y si se
@@ -53,7 +58,6 @@ _NEVER_HIDE = frozenset({"Atractivo", "Ticker", "Emisor"})
 # interés corrido) es detalle de segundo orden y vive detrás del interruptor
 # de vista completa: una tabla de veinte columnas no se lee, se escanea.
 ESSENTIAL_COLUMNS = [
-    "Atractivo",
     "Puntaje",
     "Ticker",
     "Emisor",
@@ -78,7 +82,6 @@ SCORE_BREAKDOWN_COLUMNS = [
 ]
 
 FULL_COLUMNS = [
-    "Atractivo",
     "Puntaje",
     "Ticker",
     "Emisor",
@@ -194,7 +197,9 @@ def render_bonds_table(df: pd.DataFrame, full: bool = False, breakdown: bool = F
     df_display = df_display[[col for col in available if col not in empty]]
 
     variation_cols = [col for col in ("Var. (%)", "Spread vs UST (pb)") if col in df_display.columns]
-    styled = df_display.style.map(style_bond_signal, subset=["Atractivo"])
+    styled = df_display.style
+    if "Atractivo" in df_display.columns:
+        styled = styled.map(style_bond_signal, subset=["Atractivo"])
     if variation_cols:
         styled = styled.map(style_variation, subset=variation_cols)
     if "Paridad (%)" in df_display.columns:
