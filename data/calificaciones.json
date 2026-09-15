@@ -44,7 +44,9 @@
     },
     {
       "emisor": "ALUAR ALUMINIO ARGENTINO S.A.",
-      "alias": [],
+      "alias": [
+        "Aluar"
+      ],
       "calificacion": "AAA(arg)",
       "agencia": "FIX SCR",
       "escala": "nacional",
@@ -67,22 +69,15 @@
       "origen": "fixscr-listado"
     },
     {
-      "emisor": "Banco BBVA",
-      "alias": [],
-      "calificacion": "",
-      "agencia": "",
-      "escala": "",
-      "fecha": "",
-      "fuente": "",
-      "verificado": false
-    },
-    {
       "emisor": "BANCO BBVA ARGENTINA S.A.",
-      "alias": [],
+      "alias": [
+        "Banco BBVA Argentina S.A.",
+        "Banco BBVA"
+      ],
       "calificacion": "AAA(arg)",
       "agencia": "FIX SCR",
       "escala": "nacional",
-      "fecha": "2026-06-04",
+      "fecha": "2026-07-15",
       "fuente": "https://www.fixscr.com/calificaciones",
       "verificado": true,
       "origen": "fixscr-listado"
@@ -93,7 +88,7 @@
       "calificacion": "AA(arg)",
       "agencia": "FIX SCR",
       "escala": "nacional",
-      "fecha": "2026-06-03",
+      "fecha": "2026-08-21",
       "fuente": "https://www.fixscr.com/calificaciones",
       "verificado": true,
       "origen": "fixscr-listado"
@@ -206,16 +201,6 @@
       "origen": "fixscr-listado"
     },
     {
-      "emisor": "CGC",
-      "alias": [],
-      "calificacion": "",
-      "agencia": "",
-      "escala": "",
-      "fecha": "",
-      "fuente": "",
-      "verificado": false
-    },
-    {
       "emisor": "CNH Industrial Capital Argentina S.A.",
       "alias": [],
       "calificacion": "AAA(arg)",
@@ -228,13 +213,16 @@
     },
     {
       "emisor": "CRESUD S.A.",
-      "alias": [],
-      "calificacion": "",
-      "agencia": "",
-      "escala": "",
-      "fecha": "",
-      "fuente": "",
-      "verificado": false
+      "alias": [
+        "Cresud S.A.C.I.F. y A."
+      ],
+      "calificacion": "AAA(arg)",
+      "agencia": "FIX SCR",
+      "escala": "nacional",
+      "fecha": "2026-08-24",
+      "fuente": "https://www.fixscr.com/calificaciones",
+      "verificado": true,
+      "origen": "fixscr-listado"
     },
     {
       "emisor": "EMPRESA DISTRIB. Y COMERCIALZADORA NORTE S.A. (EDENOR S.A.)",
@@ -248,13 +236,16 @@
     },
     {
       "emisor": "EMPRESA DISTRIBUIDORA DE ELECTRICIDAD DE SALTA - EDESA S.A.",
-      "alias": [],
-      "calificacion": "",
-      "agencia": "",
-      "escala": "",
-      "fecha": "",
-      "fuente": "",
-      "verificado": false
+      "alias": [
+        "Empresa Distribuidora Electricidad de Salta S.A. (EDESA)"
+      ],
+      "calificacion": "AA-(arg)",
+      "agencia": "FIX SCR",
+      "escala": "nacional",
+      "fecha": "2026-08-07",
+      "fuente": "https://www.fixscr.com/calificaciones",
+      "verificado": true,
+      "origen": "fixscr-listado"
     },
     {
       "emisor": "FyO",
@@ -279,18 +270,11 @@
       "verificado": false
     },
     {
-      "emisor": "IRSA",
-      "alias": [],
-      "calificacion": "",
-      "agencia": "",
-      "escala": "",
-      "fecha": "",
-      "fuente": "",
-      "verificado": false
-    },
-    {
       "emisor": "IRSA INVERSIONES Y REPRESENTACIONES S.A.",
-      "alias": [],
+      "alias": [
+        "IRSA Inversiones y Representaciones S.A.",
+        "IRSA"
+      ],
       "calificacion": "AAA(arg)",
       "agencia": "FIX SCR",
       "escala": "nacional",
@@ -300,18 +284,11 @@
       "origen": "fixscr-listado"
     },
     {
-      "emisor": "John Deere",
-      "alias": [],
-      "calificacion": "",
-      "agencia": "",
-      "escala": "",
-      "fecha": "",
-      "fuente": "",
-      "verificado": false
-    },
-    {
       "emisor": "John Deere Credit Cía. Financiera S.A.",
-      "alias": [],
+      "alias": [
+        "John Deere Credit Compañía Financiera S.A.",
+        "John Deere"
+      ],
       "calificacion": "AAA(arg)",
       "agencia": "FIX SCR",
       "escala": "nacional",
@@ -322,23 +299,29 @@
     },
     {
       "emisor": "LEDESMA S.A.",
-      "alias": [],
-      "calificacion": "",
-      "agencia": "",
-      "escala": "",
-      "fecha": "",
-      "fuente": "",
-      "verificado": false
+      "alias": [
+        "Ledesma S.A.A.I."
+      ],
+      "calificacion": "AA-(arg)",
+      "agencia": "FIX SCR",
+      "escala": "nacional",
+      "fecha": "2026-06-03",
+      "fuente": "https://www.fixscr.com/calificaciones",
+      "verificado": true,
+      "origen": "fixscr-listado"
     },
     {
       "emisor": "LOMA NEGRA COMPAÑIA INDUSTRIAL ARGENTINA SOCIEDAD ANONIMA",
-      "alias": [],
-      "calificacion": "",
-      "agencia": "",
-      "escala": "",
-      "fecha": "",
-      "fuente": "",
-      "verificado": false
+      "alias": [
+        "Loma Negra C.I.A.S.A."
+      ],
+      "calificacion": "AAA(arg)",
+      "agencia": "FIX SCR",
+      "escala": "nacional",
+      "fecha": "2026-08-03",
+      "fuente": "https://www.fixscr.com/calificaciones",
+      "verificado": true,
+      "origen": "fixscr-listado"
     },
     {
       "emisor": "Luz de Tres Picos S.A.",
@@ -427,23 +410,29 @@
     },
     {
       "emisor": "PAN AMERICAN ENERGY, S.L. SUCURSAL ARGENTINA",
-      "alias": [],
-      "calificacion": "",
-      "agencia": "",
-      "escala": "",
-      "fecha": "",
-      "fuente": "",
-      "verificado": false
+      "alias": [
+        "Pan American Energy S.L. - Sucursal Argentina (PAME)"
+      ],
+      "calificacion": "AAA(arg)",
+      "agencia": "FIX SCR",
+      "escala": "nacional",
+      "fecha": "2026-07-23",
+      "fuente": "https://www.fixscr.com/calificaciones",
+      "verificado": true,
+      "origen": "fixscr-listado"
     },
     {
       "emisor": "Pecom Servicios de Energía S.A.U.",
-      "alias": [],
-      "calificacion": "",
-      "agencia": "",
-      "escala": "",
-      "fecha": "",
-      "fuente": "",
-      "verificado": false
+      "alias": [
+        "PECOM Servicios Energía SAU"
+      ],
+      "calificacion": "AA(arg)",
+      "agencia": "FIX SCR",
+      "escala": "nacional",
+      "fecha": "2026-07-29",
+      "fuente": "https://www.fixscr.com/calificaciones",
+      "verificado": true,
+      "origen": "fixscr-listado"
     },
     {
       "emisor": "Plaza Logística S.R.L.",

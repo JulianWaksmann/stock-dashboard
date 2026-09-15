@@ -43,6 +43,27 @@ except ModuleNotFoundError as exc:  # pragma: no cover
 ORIGEN_LISTADO = "fixscr-listado"
 
 
+def candidatos(emisor: str, disponibles: dict) -> list[str]:
+    """
+    Nombres del listado que podrían ser el mismo emisor.
+
+    Existe porque la normalización no alcanza y no puede alcanzar: FIX escribe
+    "Loma Negra C.I.A.S.A." donde BYMA dice "LOMA NEGRA COMPAÑIA INDUSTRIAL
+    ARGENTINA SOCIEDAD ANONIMA". Ninguna regla convierte una en otra sin
+    arriesgarse a unir emisores distintos, así que el script sugiere y la
+    decisión de agregar el alias la toma una persona.
+
+    El criterio es compartir la primera palabra significativa, que es la marca.
+    """
+    palabras = [p for p in normalize_issuer(emisor).split() if len(p) > 2]
+    if not palabras:
+        return []
+    marca = palabras[0]
+    return sorted(
+        {r.issuer for clave, r in disponibles.items() if clave.split()[:1] == [marca]}
+    )
+
+
 def claves_de(entrada: dict) -> list[str]:
     """Todas las formas en que las fuentes de precios nombran a este emisor."""
     nombres = [entrada.get("emisor", ""), *(entrada.get("alias") or [])]
@@ -116,11 +137,22 @@ def main() -> int:
             if manual != listado:
                 print(f"     {emisor[:40]:42s} a mano {manual} · el listado dice {listado}")
     if sin_cubrir:
-        print(f"\n❔ Sin calificación en este listado ... {len(sin_cubrir)}")
-        print("     FIX SCR no los califica. Quedan para cargar a mano desde el")
-        print("     informe de su calificadora:")
-        for emisor in sin_cubrir:
-            print(f"       {emisor}")
+        con_candidato = [(e, candidatos(e, por_clave)) for e in sin_cubrir]
+        sugeridos = [(e, c) for e, c in con_candidato if c]
+        sin_nada = [e for e, c in con_candidato if not c]
+
+        if sugeridos:
+            print(f"\n🔎 Probablemente sean estos, con otro nombre ... {len(sugeridos)}")
+            print("     Agregá el nombre del listado al campo 'alias' de la entrada y")
+            print("     volvé a correr:")
+            for emisor, cands in sugeridos:
+                print(f"       {emisor[:44]:46s} -> {' | '.join(cands[:2])}")
+        if sin_nada:
+            print(f"\n❔ Sin calificación en este listado ... {len(sin_nada)}")
+            print("     FIX SCR no los califica. Quedan para cargar a mano desde el")
+            print("     informe de su calificadora:")
+            for emisor in sin_nada:
+                print(f"       {emisor}")
 
     cambios = len(nuevas) + len(actualizadas)
     if not argumentos.escribir:

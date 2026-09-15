@@ -475,6 +475,28 @@ BOND_SCORE_LAW_ARG: Final[float] = 40.0
 # lo que falta que sobre el bono.
 BOND_SCORE_MIN_COVERAGE: Final[float] = 0.5
 
+# Puntaje de crédito de un emisor SIN calificación.
+#
+# Es la única dimensión donde no se aplica la regla general de "lo que no se
+# puede medir se excluye y su peso se reparte". Esa regla existe para no
+# castigar a un bono por un dato que falta en nuestra fuente, y es correcta
+# cuando el dato es nuestro problema. Acá no lo es: con el listado de la
+# calificadora cargado, la mayoría del panel tiene nota, así que no tenerla
+# dice algo del emisor —no la buscó, o se la retiraron— y no de nuestra
+# cobertura.
+#
+# Excluirla tenía además un efecto concreto y visible: un emisor sin
+# calificación no perdía nada por no tenerla, y con el resto de sus números
+# buenos se quedaba con el primer puesto del cuadro por encima de emisores
+# AAA. Eso es lo contrario de lo que un tablero de renta fija debería premiar.
+#
+# El valor NO es cero: cero es la nota de un emisor en default, y de uno sin
+# calificar no sabemos eso. Es un valor mediocre deliberado —equivale a la
+# mitad de la escalera, zona BBB— que dice "crédito no acreditado". Es una
+# postura de inversión explícita, no una medición: subilo o bajalo según
+# cuánto te importe que un emisor esté calificado.
+BOND_SCORE_UNRATED: Final[float] = 40.0
+
 # Tamaño mínimo del panel comparable para publicar puntajes. El puntaje es
 # un percentil: con dos o tres bonos, "estar en el percentil 100" significa
 # ganarle a dos, y con uno solo significa nada. Por debajo de este número no

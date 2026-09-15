@@ -53,8 +53,18 @@ PAUSE_BETWEEN_PAGES: Final[float] = 0.5
 MAX_PAGES: Final[int] = 30
 
 _COUNTRY_ARGENTINA: Final[int] = 230
-_RATING_TYPE_ISSUER: Final[int] = 1
 _AREAS: Final[dict[int, str]] = {1: "Finanzas Corporativas", 2: "Entidades Financieras"}
+
+# NO se filtra por tipo de calificación. Filtrar por "Emisor" parecía lo
+# correcto —queremos la nota de quien paga, no la de un papel suelto— y dejaba
+# afuera a la mayoría: FIX califica a muchos emisores solo a nivel de EMISIÓN,
+# es decir la ON concreta y no la entidad. Pan American Energy, Cresud y Loma
+# Negra quedaban sin nota por eso, teniéndola.
+#
+# Como la nota de una emisión de deuda sin garantía real refleja la calidad
+# del emisor, tomarla como su calificación es correcto. Lo que sí importa es
+# quedarse con la más reciente cuando hay varias, que es lo que hace el
+# llamador.
 
 # Posición de cada dato en la fila del listado.
 _COL_ENTITY: Final[int] = 0
@@ -114,6 +124,16 @@ class _RatingsTableParser(HTMLParser):
             self._cell.append(data)
 
 
+def parse_table_rows(html: str) -> list[list[str]]:
+    """Filas de datos de la tabla, sin interpretar. Solo para paginar."""
+    parser = _RatingsTableParser()
+    parser.feed(html)
+    return [
+        row for row in parser.rows
+        if len(row) >= _MIN_COLUMNS and (row[_COL_ENTITY].upper() != "ENTIDAD")
+    ]
+
+
 def parse_ratings_page(html: str, area: str = "") -> list[FixScrRating]:
     """
     Calificaciones de emisor presentes en una página del listado.
@@ -124,13 +144,8 @@ def parse_ratings_page(html: str, area: str = "") -> list[FixScrRating]:
     corto plazo en otra columna: aceptarlas de cualquier forma sería inventar
     calificaciones.
     """
-    parser = _RatingsTableParser()
-    parser.feed(html)
-
     ratings: list[FixScrRating] = []
-    for row in parser.rows:
-        if len(row) < _MIN_COLUMNS:
-            continue
+    for row in parse_table_rows(html):
         issuer = row[_COL_ENTITY].strip()
         as_of = row[_COL_DATE].strip()
         rating = row[_COL_LONG_TERM].strip()
@@ -164,7 +179,6 @@ def fetch_issuer_ratings(
                 "page": page,
                 "CalificacionesWebSearch[paises_id]": _COUNTRY_ARGENTINA,
                 "CalificacionesWebSearch[section_id]": area_id,
-                "CalificacionesWebSearch[type]": _RATING_TYPE_ISSUER,
             }
             try:
                 response = http.get(
@@ -175,16 +189,21 @@ def fetch_issuer_ratings(
                 warnings.append(f"No se pudo consultar {area_name} (página {page}): {exc}")
                 break
 
-            page_ratings = parse_ratings_page(response.text, area=area_name)
-            if not page_ratings:
+            # Cuántas FILAS trajo la página, no cuántas notas se pudieron
+            # leer: la mayoría de las filas son calificaciones de corto plazo
+            # o sin nota de largo, y se descartan. Paginar mirando las notas
+            # cortaba en la primera página y perdía el 95% del listado.
+            filas = parse_table_rows(response.text)
+            if not filas:
                 break
+            page_ratings = parse_ratings_page(response.text, area=area_name)
 
             for record in page_ratings:
                 previous = ratings.get(record.issuer)
                 if previous is None or record.as_of > previous.as_of:
                     ratings[record.issuer] = record
 
-            if len(page_ratings) < PAGE_SIZE:
+            if len(filas) < PAGE_SIZE:
                 break
             time.sleep(PAUSE_BETWEEN_PAGES)
 

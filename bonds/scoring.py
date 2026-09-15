@@ -41,6 +41,7 @@ from constants import (
     BOND_SCORE_RATE_RISK,
     BOND_SCORE_RATING,
     BOND_SCORE_SPREAD_SHARE,
+    BOND_SCORE_UNRATED,
     BOND_SCORE_VERY_ATTRACTIVE_MIN,
     BOND_SCORE_WEIGHTS,
     BOND_SCORE_YIELD,
@@ -247,6 +248,10 @@ def _rating_subscore(ranks: pd.Series | None, scales: pd.Series | None = None) -
     calificado del panel se llevaba 69: convenía no tener nota. En escala
     absoluta el mejor crédito se lleva 100 y el incentivo se endereza.
 
+    Un emisor sin calificación tampoco se abstiene acá, a diferencia del resto
+    de las dimensiones: puntúa BOND_SCORE_UNRATED, un valor mediocre. El
+    motivo está explicado junto a esa constante.
+
     Lo que esta escala no puede hacer es comparar entre escalas. Una nota
     nacional se mide contra el resto del país y una global contra el mundo, así
     que "AAA(arg)" y "AAA" global valen los dos 100 sin ser el mismo crédito —
@@ -257,7 +262,9 @@ def _rating_subscore(ranks: pd.Series | None, scales: pd.Series | None = None) -
     if ranks is None or ranks.empty:
         return pd.Series(dtype=float)
     numeric = pd.to_numeric(ranks, errors="coerce")
-    return (numeric / RATING_LADDER_TOP) * 100.0
+    puntaje = (numeric / RATING_LADDER_TOP) * 100.0
+    # No calificado NO se abstiene: puntúa bajo. Ver BOND_SCORE_UNRATED.
+    return puntaje.fillna(BOND_SCORE_UNRATED)
 
 
 def _jurisdiction_subscore(law: pd.Series) -> pd.Series:

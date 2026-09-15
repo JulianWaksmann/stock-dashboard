@@ -20,6 +20,7 @@ from constants import (
     BOND_SCORE_NEUTRAL_MIN,
     BOND_SCORE_RATE_RISK,
     BOND_SCORE_RATING,
+    BOND_SCORE_UNRATED,
     BOND_SCORE_VERY_ATTRACTIVE_MIN,
     BOND_SCORE_WEIGHTS,
     BOND_SCORE_YIELD,
@@ -291,15 +292,24 @@ class TestDimensionCalificacion:
         assert resultado.loc["BUENO", BOND_SCORE_RATING] > resultado.loc["MALO", BOND_SCORE_RATING]
         assert resultado.loc["BUENO", "Puntaje"] > resultado.loc["MALO", "Puntaje"]
 
-    def test_sin_calificacion_se_abstiene_en_vez_de_puntuar_cero(self):
+    def test_sin_calificacion_puntua_bajo_pero_no_cero(self):
+        # Es la excepción deliberada a "lo que no se puede medir se excluye".
+        # Cero sería decir que el emisor está en default, y de uno sin calificar
+        # no sabemos eso; excluirlo hacía que no tener nota saliera gratis.
+        df = panel(bono("SIN_NOTA", CALIF_RANK=np.nan, CALIF_ESCALA="—"))
+        resultado = puntajes(df)
+        assert resultado.loc["SIN_NOTA", BOND_SCORE_RATING] == pytest.approx(BOND_SCORE_UNRATED)
+        assert 0 < BOND_SCORE_UNRATED < 100
+
+    def test_una_nota_mala_conocida_sigue_siendo_peor_que_no_tener_nota(self):
+        # No calificado significa "no sabemos", no "está fundido": un emisor
+        # con nota de default tiene que quedar por debajo.
         df = panel(
-            bono("CON_NOTA", CALIF_RANK=12.0),
+            bono("EN_DEFAULT", CALIF_RANK=0.0),
             bono("SIN_NOTA", CALIF_RANK=np.nan, CALIF_ESCALA="—"),
         )
         resultado = puntajes(df)
-        assert np.isnan(resultado.loc["SIN_NOTA", BOND_SCORE_RATING])
-        # Abstenerse no puede ser peor que tener una nota mediocre.
-        assert resultado.loc["SIN_NOTA", "Puntaje"] >= resultado.loc["CON_NOTA", "Puntaje"]
+        assert resultado.loc["SIN_NOTA", "Puntaje"] > resultado.loc["EN_DEFAULT", "Puntaje"]
 
     def test_la_mejor_nota_vale_cien_aunque_todo_el_panel_la_tenga(self):
         # Es el punto de usar escala absoluta y no percentil. Con percentil, y
@@ -333,10 +343,18 @@ class TestDimensionCalificacion:
         assert resultado.loc["DEFAULT", BOND_SCORE_RATING] == pytest.approx(0.0)
 
     def test_un_panel_sin_ninguna_calificacion_sigue_puntuando(self):
-        # Es el estado de hoy: el archivo de calificaciones está vacío. La
-        # dimensión se descarta para todos y su peso se reparte entre las otras.
+        # Si nadie tiene nota, todos comparten el mismo puntaje de crédito y la
+        # dimensión deja de diferenciar, pero el cuadro sigue funcionando.
         filas = [bono(f"T{i}", CALIF_RANK=np.nan, CALIF_ESCALA="—") for i in range(8)]
         filas[0]["TIR (%)"] = 11.0
         resultado = puntajes(pd.DataFrame(filas))
         assert resultado["Puntaje"].notna().all()
-        assert resultado[BOND_SCORE_RATING].isna().all()
+        assert (resultado[BOND_SCORE_RATING] == BOND_SCORE_UNRATED).all()
+
+    def test_tener_nota_le_gana_a_no_tenerla_con_todo_lo_demas_igual(self):
+        df = panel(
+            bono("CALIFICADO", CALIF_RANK=18.0),
+            bono("SIN_NOTA", CALIF_RANK=np.nan, CALIF_ESCALA="—"),
+        )
+        resultado = puntajes(df)
+        assert resultado.loc["CALIFICADO", "Puntaje"] > resultado.loc["SIN_NOTA", "Puntaje"]
