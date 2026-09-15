@@ -29,12 +29,12 @@ from components.coming_soon import render_coming_soon
 from constants import (
     BOND_COUNTRY_ARGENTINA,
     BOND_COUNTRY_OPTIONS,
+    BOND_FILTER_LIQUIDITY_TOP_50,
+    BOND_FILTER_SETTLEMENT_USD,
+    BOND_FILTER_SIGNAL_ALL,
     BOND_LAW_FILTER_OPTIONS,
-    BOND_LIQUIDITY_FILTER_OPTIONS,
     BOND_MIN_YEARS_FOR_GRADING,
     BOND_PARITY_DISCOUNT_MAX,
-    BOND_PRICE_CONVENTION_OPTIONS,
-    BOND_PRICE_DIRTY,
     BOND_RISK_YIELD_PREMIUM_PP,
     BOND_SCORE_ATTRACTIVE_MIN,
     BOND_SCORE_JURISDICTION,
@@ -47,8 +47,6 @@ from constants import (
     BOND_SCORE_VERY_ATTRACTIVE_MIN,
     BOND_SCORE_WEIGHTS,
     BOND_SCORE_YIELD,
-    BOND_SETTLEMENT_FILTER_OPTIONS,
-    BOND_SIGNAL_FILTER_OPTIONS,
     BOND_SOURCE_NONE,
 )
 
@@ -96,44 +94,6 @@ def _render_sidebar() -> str:
         st.rerun()
 
     return country
-
-
-def _render_controls() -> tuple[date, bool]:
-    """
-    Controles de cálculo de la pestaña.
-
-    La **fecha de liquidación** no está entre los controles visibles a
-    propósito. Los precios que se descargan son los de hoy, así que descontar
-    ese flujo contra una fecha distinta mezcla dos momentos del mercado y
-    devuelve una TIR que no corresponde a nada: el único valor coherente con
-    los precios de pantalla es la fecha de hoy. Queda disponible dentro de
-    "Ajustes avanzados" para verificar contra un informe de otra fecha, que es
-    el único caso en que mover la fecha significa algo.
-    """
-    col1, col2 = st.columns([3, 2])
-
-    with col1:
-        convention = st.radio(
-            "💲 Convención del precio de pantalla",
-            BOND_PRICE_CONVENTION_OPTIONS,
-            horizontal=True,
-            help="BYMA publica precios sucios (con interés corrido incluido). Elegir mal esta opción sesga la TIR y la paridad. Solo tiene efecto sobre las ONs con condiciones de emisión cargadas: pasar de limpio a sucio exige el interés corrido, y para eso hay que saber qué parte de cada pago es renta.",
-        )
-
-    with col2:
-        with st.expander("⚙️ Ajustes avanzados"):
-            settlement = st.date_input(
-                "📅 Fecha de liquidación",
-                value=date.today(),
-                help="A qué fecha se descuenta el flujo de fondos. Cambiarla mientras los precios son los de hoy produce una TIR que no corresponde a ninguna operación real: sirve solo para reproducir el cálculo de un informe de otra fecha.",
-            )
-            if settlement != date.today():
-                st.caption(
-                    "⚠️ Los precios siguen siendo los de hoy. Las métricas de abajo "
-                    "no corresponden a una operación ejecutable."
-                )
-
-    return settlement, convention == BOND_PRICE_DIRTY
 
 
 def _render_kpis(df: pd.DataFrame):
@@ -191,69 +151,80 @@ def _render_kpis(df: pd.DataFrame):
 
 def _render_filters(df: pd.DataFrame) -> pd.DataFrame:
     """
-    Dibuja los filtros rápidos y devuelve el DataFrame ya filtrado.
+    Dibuja los filtros y devuelve el cuadro ya filtrado.
+
+    Son tres, a propósito. Los que había antes o repetían algo que ya se ve en
+    el cuadro —el filtro por atractivo, teniendo la barra de puntaje al lado—,
+    o configuraban el armado del panel en vez de recortarlo, que es una
+    decisión del tablero y no del lector: qué especie mostrar por bono, qué
+    hacer con las que no operaron, y si incluir las que están por vencer.
+    Esas ahora son fijas.
 
     Esta función solo recoge lo que el usuario eligió; el filtrado en sí lo
     hace `apply_bond_filters`, que es código puro y testeado: el orden en que
     se aplican los filtros cambia el resultado y no puede vivir enterrado en
     la capa de dibujo.
     """
-    col_liq, col0, col1, col2, col3, col4 = st.columns([2, 2, 2, 2, 2, 2])
+    col_score, col_dur, col_ley = st.columns([2, 2, 2])
 
-    with col_liq:
-        liquidity_filter = st.selectbox(
-            "💧 Liquidez:",
-            BOND_LIQUIDITY_FILTER_OPTIONS,
-            help="El feed devuelve el panel entero, incluidas especies que no operaron hoy: su precio es el de la última rueda en que se negociaron, así que su TIR mide el mercado de otro día. El ranking se arma dentro de la moneda elegida.",
+    with col_score:
+        score_range = st.slider(
+            "🎯 Puntaje de oportunidad:",
+            min_value=0,
+            max_value=100,
+            value=(0, 100),
+            step=5,
+            help=(
+                "Puntaje de 0 a 100, relativo al resto del panel del día: un bono "
+                "promedio ronda 50. Con el rango completo también se muestran las ONs "
+                "que no tienen puntaje; apenas lo movés, quedan solo las puntuadas."
+            ),
         )
-    with col0:
-        settlement_filter = st.selectbox(
-            "💱 Especie de liquidación:",
-            BOND_SETTLEMENT_FILTER_OPTIONS,
-            help="Cada ON cotiza en tres especies según la última letra del ticker: O liquida en pesos, D en dólar MEP (dólares en tu cuenta local) y C en dólar cable (dólares en el exterior). Son el mismo bono. La opción por defecto trae las dos en dólares y muestra una sola fila por bono, la de la especie más operada.",
-        )
-    with col1:
-        signal_filter = st.selectbox("🚦 Filtrar por atractivo:", BOND_SIGNAL_FILTER_OPTIONS)
-    with col2:
-        law_filter = st.selectbox("⚖️ Filtrar por ley aplicable:", BOND_LAW_FILTER_OPTIONS)
-    with col3:
+
+    with col_dur:
         max_duration = st.slider(
-            "⏳ Duration modificada máxima (años):",
+            "⏳ Riesgo de tasa máximo (años):",
             min_value=0.0,
             max_value=_MAX_DURATION_FILTER_YEARS,
             value=_MAX_DURATION_FILTER_YEARS,
             step=0.5,
-            help="Limita el riesgo de tasa: cuanto menor la duration, menos cae el precio si suben las tasas.",
-        )
-    with col4:
-        only_with_yield = st.checkbox(
-            "Solo ONs con TIR calculada",
-            value=True,
-            help="Oculta las especies que cotizan pero no tienen cronograma de pagos conocido.",
-        )
-        include_near_maturity = st.checkbox(
-            f"Incluir las que vencen en < {BOND_MIN_YEARS_FOR_GRADING * 12:.0f} meses",
-            value=False,
             help=(
-                "Por defecto se ocultan. A semanas del vencimiento la TIR anualizada "
-                "deja de medir rendimiento y pasa a ser un artefacto: anualizar el "
-                "retorno de dos meses convierte un centavo de precio en decenas de "
-                "puntos. Por eso tampoco reciben puntaje y se marcan ⏳ MUY CORTO. "
-                "Tildá esto si lo que querés es ver qué te vence pronto."
+                "Duration modificada: cuánto caería el precio del bono si la tasa "
+                "exigida subiera un punto porcentual. Cuanto más baja, más estable "
+                "es el precio."
             ),
         )
 
-    return apply_bond_filters(
+    with col_ley:
+        law_filter = st.selectbox(
+            "⚖️ Ley aplicable:",
+            BOND_LAW_FILTER_OPTIONS,
+            help=(
+                "En qué tribunales se resuelve un incumplimiento. La ley extranjera "
+                "históricamente se paga con menor rendimiento exigido: el mercado "
+                "cobra por esa protección."
+            ),
+        )
+
+    filtrado = apply_bond_filters(
         df,
-        settlement_filter=settlement_filter,
-        liquidity_filter=liquidity_filter,
-        signal_filter=signal_filter,
+        # Fijos: hacen al armado del panel, no al recorte que elige el lector.
+        settlement_filter=BOND_FILTER_SETTLEMENT_USD,
+        liquidity_filter=BOND_FILTER_LIQUIDITY_TOP_50,
+        signal_filter=BOND_FILTER_SIGNAL_ALL,
+        only_with_yield=True,
+        include_near_maturity=False,
+        # Elegidos por el usuario.
         law_filter=law_filter,
         # El tope del slider significa "sin límite", no "duration 15".
         max_duration=None if max_duration >= _MAX_DURATION_FILTER_YEARS else max_duration,
-        only_with_yield=only_with_yield,
-        include_near_maturity=include_near_maturity,
     )
+
+    if score_range != (0, 100) and "Puntaje" in filtrado.columns:
+        puntaje = pd.to_numeric(filtrado["Puntaje"], errors="coerce")
+        filtrado = filtrado[puntaje.between(score_range[0], score_range[1])]
+
+    return filtrado
 
 
 def _render_glossary():
@@ -452,7 +423,13 @@ def render_bonds_panel():
         unsafe_allow_html=True,
     )
 
-    settlement, price_is_dirty = _render_controls()
+    # La fecha de liquidación es siempre hoy y el precio se toma como lo
+    # publica BYMA (con el interés corrido incluido). Las dos eran controles y
+    # se sacaron: con precios de hoy, descontar a otra fecha da una TIR que no
+    # corresponde a ninguna operación real, y la otra convención de precio no
+    # se puede aplicar sobre la mayoría de las filas.
+    settlement = date.today()
+    price_is_dirty = True
     st.markdown("---")
 
     with st.spinner("⏳ Descargando precios de ONs y calculando TIR, duration y paridad..."):
@@ -481,19 +458,6 @@ def render_bonds_panel():
         )
         with st.expander(f"Ver las {len(without_schedule)} especies sin cronograma"):
             st.write(", ".join(without_schedule))
-
-    # El selector de convención de precio no puede aplicarse sobre las ONs que
-    # solo tienen cronograma publicado. Decirlo es mejor que dejar un control
-    # que no hace nada en la mayoría de las filas.
-    if not price_is_dirty and "Convención Aplicada" in df_bonds.columns:
-        ignoradas = int((df_bonds["Convención Aplicada"] == BOND_PRICE_DIRTY).sum())
-        if ignoradas:
-            st.caption(
-                f"ℹ️ La convención de precio limpio no se pudo aplicar en {ignoradas} de "
-                f"{len(df_bonds)} especies: su cronograma publica el total de cada pago, sin "
-                "separar renta de capital, y sin ese desglose no hay interés corrido que sumarle "
-                "al precio. Esas filas se calcularon con precio sucio, la convención de BYMA."
-            )
 
     unverified = int((~df_bonds["Verificado"] & df_bonds["En Catálogo"]).sum())
     if unverified:

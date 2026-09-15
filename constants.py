@@ -425,7 +425,11 @@ BOND_SCORE_RATE_RISK: Final[str] = "Riesgo de tasa"
 BOND_SCORE_LIQUIDITY: Final[str] = "Liquidez"
 BOND_SCORE_PARITY: Final[str] = "Paridad"
 BOND_SCORE_JURISDICTION: Final[str] = "Jurisdicción"
-BOND_SCORE_RATING: Final[str] = "Calificación"
+# OJO: no puede llamarse "Calificación". Ese es el nombre de la columna que
+# muestra la nota del emisor, y el panel vuelca los subpuntajes al cuadro por
+# nombre de columna: si coinciden, el subpuntaje pisa la nota y la nota
+# desaparece de la tabla.
+BOND_SCORE_RATING: Final[str] = "Calidad crediticia"
 
 # Los tres primeros pesan igual y son el criterio de inversión del tablero:
 # antes de preguntarse cuánto rinde un bono hay que poder comprarlo y venderlo

@@ -25,6 +25,7 @@ from constants import (
     BOND_FILTER_SIGNAL_ALL,
     BOND_PRICE_CLEAN,
     BOND_PRICE_DIRTY,
+    BOND_SCORE_WEIGHTS,
     BOND_SETTLEMENT_CABLE,
     BOND_SETTLEMENT_MEP,
     BOND_SETTLEMENT_PESOS,
@@ -559,3 +560,29 @@ class TestCuartilDeVolumen:
         por_ticker = recorte.set_index("Ticker")[BOND_VOLUME_QUARTILE_COLUMN]
         assert por_ticker["T004D"] == BOND_VOLUME_VERY_HIGH
         assert por_ticker["T001D"] == BOND_VOLUME_LOW
+
+
+class TestNombresDeColumnaQueNoPuedenChocar:
+    """
+    `build_bonds_panel` vuelca los subpuntajes al cuadro por nombre de columna.
+    Si una dimensión del puntaje se llama igual que una columna de datos, el
+    subpuntaje la pisa y el dato desaparece de la tabla sin ningún error.
+
+    Pasó de verdad: la dimensión de crédito se llamó "Calificación", igual que
+    la columna que muestra la nota del emisor, y la nota se perdió.
+    """
+
+    def test_ninguna_dimension_del_puntaje_se_llama_como_una_columna_de_datos(self):
+        panel = build_bonds_panel(make_prices(quote("TSTAD")), {"TSTAD": make_terms("TSTAD")}, SETTLEMENT)
+        # Las columnas que el panel arma ANTES de volcar los subpuntajes.
+        columnas_de_datos = {
+            "Ticker", "Emisor", "Calificación", "Ley", "Precio", "TIR (%)",
+            "Duration Mod.", "Paridad (%)", "Spread (%)", "Volumen", "Fuente",
+        }
+        choques = columnas_de_datos & set(BOND_SCORE_WEIGHTS)
+        assert not choques, f"la dimensión {choques} pisaría una columna de datos"
+        assert panel.loc[0, "Calificación"] == "AAA"
+
+    def test_la_calificacion_del_emisor_sobrevive_al_volcado_de_puntajes(self):
+        panel = build_bonds_panel(make_prices(quote("TSTAD")), {"TSTAD": make_terms("TSTAD", rating="AA+")}, SETTLEMENT)
+        assert panel.loc[0, "Calificación"] == "AA+"
