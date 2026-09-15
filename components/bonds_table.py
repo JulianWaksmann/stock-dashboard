@@ -43,15 +43,15 @@ from theme import (
 VERIFIED_BADGE = "✅ Verificado"
 UNVERIFIED_BADGE = "⚠️ Sin verificar"
 
+# Columnas que identifican la fila. No se ocultan aunque vengan vacías: sin
+# ellas no se sabe de qué bono habla cada renglón.
+_NEVER_HIDE = frozenset({"Atractivo", "Ticker", "Emisor"})
+
 # Lo esencial para decidir, en orden de lectura: qué tan buena es la
 # oportunidad, de qué bono se trata, cuánto rinde, cuánto riesgo tiene y si se
 # puede operar. Todo lo demás (puntas, cantidades, convexidad, valor técnico,
 # interés corrido) es detalle de segundo orden y vive detrás del interruptor
 # de vista completa: una tabla de veinte columnas no se lee, se escanea.
-# Columnas que identifican la fila. No se ocultan aunque vengan vacías: sin
-# ellas no se sabe de qué bono habla cada renglón.
-_NEVER_HIDE = frozenset({"Atractivo", "Ticker", "Emisor"})
-
 ESSENTIAL_COLUMNS = [
     "Atractivo",
     "Puntaje",
@@ -100,7 +100,10 @@ FULL_COLUMNS = [
     "Spread (%)",
     "Volumen",
     "Lámina Mínima",
+    "Garantía",
+    "ISIN",
 ]
+
 
 def style_bond_signal(val):
     """Colorea la etiqueta de atractivo con la misma paleta que el semáforo de acciones."""
@@ -285,6 +288,12 @@ def render_bonds_table(df: pd.DataFrame, full: bool = False, breakdown: bool = F
             help="Diferencia entre punta vendedora y compradora sobre el punto medio. Es el costo de entrar y salir: la medida práctica de liquidez.",
         ),
         "Volumen": st.column_config.NumberColumn("Volumen", format="%.0f"),
+        "Garantía": st.column_config.TextColumn(
+            "Garantía",
+            width="small",
+            help="Tipo de garantía de la emisión, según la ficha técnica de BYMA.",
+        ),
+        "ISIN": st.column_config.TextColumn("ISIN", width="small"),
         "Cobertura": st.column_config.NumberColumn(
             "Cobertura",
             format="%.0f%%",

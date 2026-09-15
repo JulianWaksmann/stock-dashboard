@@ -487,6 +487,16 @@ def render_bonds_panel():
             "un cupón mal cargado devuelve una TIR mansamente incorrecta."
         )
 
+    # Un emisor en default es lo primero que hay que saber, y no puede quedar
+    # escondido detrás del interruptor de columnas completas.
+    if "En Default" in df_bonds.columns and df_bonds["En Default"].any():
+        en_default = sorted(df_bonds.loc[df_bonds["En Default"], "Ticker"])
+        st.error(
+            f"🚨 **{len(en_default)} especie(s) marcadas en default por BYMA:** "
+            f"{', '.join(en_default)}. Su TIR sigue calculándose sobre el flujo contractual, "
+            "que es justamente el que el emisor dejó de pagar."
+        )
+
     _render_kpis(df_bonds)
     st.markdown("---")
 

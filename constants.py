@@ -357,6 +357,17 @@ BOND_SETTLEMENT_FILTER_OPTIONS: Final[tuple[str, ...]] = (
 # tener que explicar por qué a unas les faltan columnas.
 # ----------------------------------------------------------------------
 BOND_SOURCE_CATALOG: Final[str] = "Catálogo local"
+# Flujo reconstruido de la ficha técnica de BYMA. Solo se usa en bonos
+# bullet a tasa fija, donde lo único que hay que suponer es la frecuencia
+# de pago —el único dato del flujo que BYMA no publica—. La etiqueta dice
+# "estimada" porque esa suposición mueve la TIR unos puntos básicos.
+BOND_SOURCE_BYMA: Final[str] = "BYMA (frec. estimada)"
+
+# Etiqueta de la ley cuando se dedujo del prefijo del ISIN en lugar de venir
+# declarada. El sufijo existe para que nadie lea como dato duro algo que es
+# una inferencia: el ISIN dice dónde se registró la emisión, no bajo qué ley
+# se litiga.
+BOND_LAW_INFERRED_SUFFIX: Final[str] = " (ISIN)"
 BOND_SOURCE_NONE: Final[str] = "—"
 
 # ----------------------------------------------------------------------
@@ -464,3 +475,14 @@ BOND_SCORE_MIN_DIMENSION_COVERAGE: Final[float] = 0.5
 BOND_SCORE_VERY_ATTRACTIVE_MIN: Final[float] = 70.0
 BOND_SCORE_ATTRACTIVE_MIN: Final[float] = 55.0
 BOND_SCORE_NEUTRAL_MIN: Final[float] = 40.0
+
+
+# ----------------------------------------------------------------------
+# Cuántas especies se enriquecen con la ficha técnica de BYMA.
+#
+# La ficha técnica se pide de a una especie por llamada, y el panel trae más
+# de 2700: pedirlas todas serían miles de pedidos a una API pública por cada
+# carga. Se piden solo las más operadas de cada moneda, que son las únicas
+# que el panel muestra por defecto y las únicas cuyo precio es ejecutable.
+# ----------------------------------------------------------------------
+BYMA_TERMS_FETCH_LIMIT: Final[int] = 150

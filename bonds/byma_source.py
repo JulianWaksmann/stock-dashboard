@@ -77,6 +77,18 @@ _PREVIOUS_PRICE_FIELDS: Final[tuple[str, ...]] = ("previousSettlementPrice", "pr
 # mejor medida de liquidez, y las otras dos sirven de reemplazo razonable.
 _VOLUME_FIELDS: Final[tuple[str, ...]] = ("volumeAmount", "volume", "tradeVolume")
 
+# Plazo de liquidación que se conserva. La respuesta trae la MISMA especie
+# repetida por plazo —sobre 800 registros hay 419 símbolos distintos—, así que
+# sin este filtro cada bono aparece dos veces y la fila que queda depende del
+# orden en que BYMA las devuelva.
+_SETTLEMENT_TYPE_T2: Final[str] = "2"
+
+# Moneda de cotización según BYMA. "EXT" es la especie cable: se liquida en
+# dólares, solo que en una cuenta del exterior. Se usa este campo en lugar de
+# deducir la moneda de la última letra del ticker, porque es el dato y no la
+# convención.
+_CURRENCY_BY_DENOMINATION: Final[dict[str, str]] = {"ARS": "ARS", "USD": "USD", "EXT": "USD"}
+
 
 def _number(record: dict, field: str) -> float:
     """Lee un campo numérico del registro, devolviendo NaN si no se puede."""
@@ -122,6 +134,13 @@ def parse_byma_bonds(payload: object) -> pd.DataFrame:
         symbol = str(record.get("symbol") or "").strip().upper()
         if not symbol:
             continue
+        # Una misma especie viene repetida por plazo de liquidación. Nos
+        # quedamos con 48 hs, el plazo estándar de la renta fija local; sin
+        # este filtro, cuál de las dos filas sobrevive depende del orden de la
+        # respuesta, y las dos tienen precios distintos.
+        settlement_type = str(record.get("settlementType") or "").strip()
+        if settlement_type and settlement_type != _SETTLEMENT_TYPE_T2:
+            continue
 
         price = _first_positive(record, _PRICE_FIELDS)
         previous = _first_positive(record, _PREVIOUS_PRICE_FIELDS)
@@ -136,6 +155,8 @@ def parse_byma_bonds(payload: object) -> pd.DataFrame:
         change_pct = np.nan
         if traded_today and np.isfinite(price) and np.isfinite(previous) and previous > 0:
             change_pct = (price / previous - 1.0) * 100.0
+
+        denomination = str(record.get("denominationCcy") or "").strip().upper()
 
         rows.append(
             {
@@ -157,7 +178,9 @@ def parse_byma_bonds(payload: object) -> pd.DataFrame:
                 "Vencimiento BYMA": pd.to_datetime(
                     record.get("maturityDate"), format="ISO8601", errors="coerce"
                 ),
-                "Moneda BYMA": str(record.get("denominationCcy") or "").strip().upper() or None,
+                "Moneda BYMA": denomination or None,
+                # Moneda en la que está expresado el precio, según BYMA.
+                "Moneda Precio": _CURRENCY_BY_DENOMINATION.get(denomination),
             }
         )
 
