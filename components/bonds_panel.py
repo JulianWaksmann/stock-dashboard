@@ -25,6 +25,7 @@ from bonds.data_loader import load_bonds_data
 from bonds.flows_source import COMMUNITY_FLOWS_URL
 from bonds.panel import apply_bond_filters
 from components.bonds_table import render_bonds_table
+from components.coming_soon import render_coming_soon
 from constants import (
     BOND_COUNTRY_ARGENTINA,
     BOND_COUNTRY_OPTIONS,
@@ -430,11 +431,12 @@ def render_bonds_panel():
             f'<div class="main-title">💵 Bonos Corporativos — {country}</div>',
             unsafe_allow_html=True,
         )
-        st.info(
-            f"🚧 **{country}**: módulo en desarrollo. Próximamente disponible.\n\n"
-            "La matemática de renta fija (`bonds/bond_math.py`) ya es agnóstica de país: "
-            "descontar un flujo de fondos es la misma aritmética en cualquier mercado. "
-            "Lo que falta para este país es la fuente de precios y el catálogo de emisiones."
+        render_coming_soon(
+            f"Bonos corporativos — {country}",
+            "Vas a poder comparar deuda corporativa de este mercado con el mismo "
+            "criterio que el panel argentino: cuánto rinde cada bono frente a sus "
+            "pares, cuánto riesgo de tasa tiene y si ese rendimiento es realmente "
+            "ejecutable.",
         )
         return
 

@@ -150,12 +150,13 @@ TIMEFRAME_CHOICE_OPTIONS: Final[tuple[str, ...]] = (
 
 # --- Selector de Mercado ---
 MARKET_USA_STOCKS: Final[str] = "Acciones USA (S&P 500)"
-MARKET_CRYPTO: Final[str] = "Criptomonedas"
 MARKET_ARGENTINA: Final[str] = "Acciones Argentinas (Merval)"
 
+# Cripto NO está acá: no es una acción, es otra clase de activo, así que va
+# como sección propia del tablero junto a Acciones y Bonos. Este desplegable
+# es para elegir *qué mercado accionario* se mira.
 MARKET_OPTIONS: Final[tuple[str, ...]] = (
     MARKET_USA_STOCKS,
-    MARKET_CRYPTO,
     MARKET_ARGENTINA,
 )
 
@@ -274,8 +275,9 @@ BOND_PRICE_CONVENTION_OPTIONS: Final[tuple[str, ...]] = (
 # ----------------------------------------------------------------------
 SECTION_STOCKS: Final[str] = "📈 Acciones (Confluencia & Smart Money)"
 SECTION_BONDS: Final[str] = "💵 Bonos Corporativos"
+SECTION_CRYPTO: Final[str] = "🪙 Criptomonedas"
 
-SECTION_OPTIONS: Final[tuple[str, ...]] = (SECTION_STOCKS, SECTION_BONDS)
+SECTION_OPTIONS: Final[tuple[str, ...]] = (SECTION_STOCKS, SECTION_BONDS, SECTION_CRYPTO)
 
 # ----------------------------------------------------------------------
 # País del panel de bonos corporativos (desplegable de la barra lateral).

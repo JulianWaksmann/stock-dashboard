@@ -8,6 +8,7 @@ import streamlit as st
 
 from components.alerts_panel import render_alerts_panel
 from components.bonds_panel import render_bonds_panel
+from components.coming_soon import render_coming_soon
 from components.kpi_cards import render_kpi_cards
 from components.screener_table import render_screener_table
 from constants import (
@@ -25,6 +26,7 @@ from constants import (
     FLOW_FILTER_OPTIONS,
     MARKET_OPTIONS,
     MARKET_USA_STOCKS,
+    SECTION_BONDS,
     SECTION_OPTIONS,
     SECTION_STOCKS,
     SELL_SIGNALS,
@@ -105,7 +107,12 @@ def _render_stocks_tab():
 
     if market_option != MARKET_USA_STOCKS:
         st.sidebar.markdown("---")
-        st.info(f"🚧 **{market_option}**: Módulo en desarrollo. Próximamente disponible.")
+        render_coming_soon(
+            market_option,
+            "Vas a poder seguir las acciones líderes de este mercado con el mismo "
+            "semáforo de confluencia y la misma lectura de flujo institucional que "
+            "ya usás para las acciones de Estados Unidos.",
+        )
         return
 
     tickers_list = TOP_50_DEFAULT
@@ -259,6 +266,23 @@ def _render_stocks_tab():
         """)
 
 
+def _render_crypto_tab():
+    """
+    Sección de criptomonedas: todavía vacía.
+
+    Es una sección propia y no una opción del selector de mercado de Acciones
+    porque no es una acción: se valúa distinto, opera todos los días del año y
+    no tiene balances de los que salga un PER.
+    """
+    st.markdown('<div class="main-title">🪙 Criptomonedas</div>', unsafe_allow_html=True)
+    render_coming_soon(
+        "Criptomonedas",
+        "Vas a poder seguir las principales criptomonedas con la misma lectura "
+        "técnica del tablero de acciones: tendencia, momento y compresión de "
+        "volatilidad, adaptados a un mercado que opera los siete días de la semana.",
+    )
+
+
 def main():
     """
     Punto de entrada: reparte la aplicación en secciones por clase de activo.
@@ -279,8 +303,10 @@ def main():
 
     if section == SECTION_STOCKS:
         _render_stocks_tab()
-    else:
+    elif section == SECTION_BONDS:
         render_bonds_panel()
+    else:
+        _render_crypto_tab()
 
 
 if __name__ == "__main__":
