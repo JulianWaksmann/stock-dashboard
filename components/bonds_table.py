@@ -63,6 +63,7 @@ ESSENTIAL_COLUMNS = [
     "Ticker",
     "Emisor",
     "TIR (%)",
+    "Calificación",
     "Duration Mod.",
     "Paridad (%)",
     "Spread (%)",
@@ -88,13 +89,13 @@ FULL_COLUMNS = [
     "Ticker",
     "Emisor",
     "Ley",
-    "Calificación",
     "Liquidación",
     "Fuente",
     "Verif.",
     "Precio",
     "Var. (%)",
     "TIR (%)",
+    "Calificación",
     "Spread vs UST (pb)",
     "Current Yield (%)",
     "Cupón (%)",
@@ -231,7 +232,15 @@ def render_bonds_table(df: pd.DataFrame, full: bool = False, breakdown: bool = F
         "Calificación": st.column_config.TextColumn(
             "Calificación",
             width="small",
-            help="Calificación crediticia local del emisor (FIX SCR, Moody's Local, etc.). 's/c' = sin cargar en el catálogo.",
+            help=(
+                "Calificación crediticia del EMISOR, no de la especie, con la calificadora "
+                "entre paréntesis: una nota en escala nacional ('AA(arg)') y una global "
+                "('AA') no significan lo mismo ni se comparan entre sí. Se lee al lado de "
+                "la TIR a propósito: un rendimiento alto sin saber a quién le estás "
+                "prestando no dice nada. 's/c' = sin cargar. Ninguna fuente pública la "
+                "publica en formato consultable por máquina, así que se carga a mano en "
+                "`data/calificaciones.json` y solo se muestra con `verificado: true`."
+            ),
         ),
         "Liquidación": st.column_config.TextColumn(
             "Liquidación",

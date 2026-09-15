@@ -40,6 +40,7 @@ from bonds.byma_terms import BondReference, fetch_byma_terms
 from bonds.catalog import load_catalog, quote_currency_of
 from bonds.flows_source import BondFlows, fetch_community_flows
 from bonds.panel import build_bonds_panel
+from bonds.ratings import load_ratings
 from constants import BYMA_TERMS_FETCH_LIMIT
 
 logger = logging.getLogger(__name__)
@@ -204,6 +205,11 @@ def load_bonds_data(
     if references_error:
         warnings.append(references_error)
 
+    # Las calificaciones son un archivo del repositorio: no hay fuente
+    # pública que las publique en formato consultable por máquina.
+    ratings, rating_warnings = load_ratings()
+    warnings.extend(rating_warnings)
+
     panel = build_bonds_panel(
         prices=prices,
         catalog=catalog,
@@ -212,6 +218,7 @@ def load_bonds_data(
         treasury_curve=fetch_us_treasury_curve(),
         flows_by_base=flows_by_base,
         references=references,
+        ratings=ratings,
     )
 
     return panel, warnings

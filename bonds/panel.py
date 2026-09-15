@@ -22,6 +22,7 @@ from bonds.bond_math import analyze_bond, analyze_cashflows, year_fraction
 from bonds.byma_terms import ASSUMED_COUPON_FREQUENCY, BondReference
 from bonds.catalog import BondTerms, base_ticker_of, find_terms, quote_currency_of, settlement_of
 from bonds.flows_source import BondFlows
+from bonds.ratings import IssuerRating, find_rating
 from bonds.scoring import compute_opportunity_scores, evaluate_bond_attractiveness, label_from_score
 from constants import (
     BOND_ATTRACTIVE_SIGNALS,
@@ -118,6 +119,20 @@ def _can_rebuild_from_reference(reference: BondReference | None, quote_currency:
     if reference.maturity <= reference.issue_date:
         return False
     return _reference_currency(reference) == quote_currency
+
+
+def _issuer_rating_label(ratings: dict[str, IssuerRating] | None, issuer: object) -> str | None:
+    """
+    Calificación del emisor, ya formateada con la calificadora entre paréntesis.
+
+    Va con la agencia pegada porque una nota sola no se puede leer: "AA(arg)"
+    de una calificadora local y "AA" de una global no significan lo mismo ni
+    son comparables entre sí.
+    """
+    if not ratings:
+        return None
+    record = find_rating(ratings, issuer)
+    return record.label if record else None
 
 
 def _inferred_law_label(reference: BondReference | None) -> str | None:
@@ -230,6 +245,7 @@ def build_bonds_panel(
     treasury_curve: dict[float, float] | None = None,
     flows_by_base: dict[str, BondFlows] | None = None,
     references: dict[str, BondReference] | None = None,
+    ratings: dict[str, IssuerRating] | None = None,
 ) -> pd.DataFrame:
     """
     Cruza precios, cronogramas de pago y métricas en el cuadro final.
@@ -275,15 +291,20 @@ def build_bonds_panel(
         bid = float(quote.get("Punta Compra", np.nan))
         ask = float(quote.get("Punta Venta", np.nan))
 
+        # Se resuelve antes del diccionario porque la calificación se busca
+        # por emisor: las dos fuentes de precios lo escriben distinto, así que
+        # hay un solo lugar donde se decide cuál es el nombre de esta fila.
+        row_issuer = _first_known(
+            terms.issuer if terms else None,
+            reference.issuer if reference else None,
+            flows.issuer if flows else None,
+            default="— (sin datos)",
+        )
+
         row = {
             "Atractivo": BOND_SIGNAL_NO_DATA,
             "Ticker": ticker,
-            "Emisor": _first_known(
-                terms.issuer if terms else None,
-                reference.issuer if reference else None,
-                flows.issuer if flows else None,
-                default="— (sin datos)",
-            ),
+            "Emisor": row_issuer,
             "Sector": terms.sector if terms else "Sin clasificar",
             "Moneda": _first_known(
                 terms.currency if terms else None,
@@ -323,7 +344,14 @@ def build_bonds_panel(
             "ISIN": reference.isin if reference else None,
             "En Default": bool(reference.in_default) if reference else False,
             "Garantía": reference.guarantee if reference else None,
-            "Calificación": terms.rating if terms else "s/c",
+            # La calificación es del emisor, no de la especie, así que se
+            # busca por emisor y una entrada cubre todas sus series. El
+            # catálogo gana si la declara: es una carga explícita por bono.
+            "Calificación": _first_known(
+                terms.rating if terms else None,
+                _issuer_rating_label(ratings, row_issuer),
+                default="s/c",
+            ),
             "Verificado": bool(terms.verified) if terms else False,
             "En Catálogo": terms is not None,
             "Fuente": BOND_SOURCE_CATALOG if terms else (flows.source if flows else BOND_SOURCE_NONE),

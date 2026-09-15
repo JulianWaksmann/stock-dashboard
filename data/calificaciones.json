@@ -1,0 +1,538 @@
+{
+  "_leeme": [
+    "Calificaciones crediticias por EMISOR. No existe fuente publica y gratuita",
+    "que las publique en formato consultable por maquina (se verifico: la ficha",
+    "tecnica de BYMA no trae el campo, el dataset comunitario tampoco, y la CNV",
+    "las publica dentro del prospecto en PDF). Por eso este archivo se carga a mano.",
+    "",
+    "Como completar una entrada:",
+    "  calificacion -> la nota tal cual la publica la calificadora (ej: 'AA+(arg)')",
+    "  agencia      -> FIX SCR | Moody's Local AR | Evaluadora Latinoamericana | UNTREF ACR | Moody's | S&P | Fitch",
+    "  escala       -> 'nacional' o 'global'. NO son comparables entre si:",
+    "                  un AAA(arg) en escala nacional no equivale a un AAA global.",
+    "  fecha        -> AAAA-MM-DD del informe que la publica",
+    "  fuente       -> URL o referencia del informe",
+    "  verificado   -> true SOLO despues de leerla en el informe. Mientras sea",
+    "                  false la entrada se ignora y la columna queda vacia.",
+    "",
+    "'alias' son las formas en que las fuentes de precios escriben al mismo emisor.",
+    "El matcheo normaliza (saca acentos, puntuacion y forma societaria), asi que",
+    "no hace falta listar variantes que solo difieran en eso."
+  ],
+  "emisores": [
+    {
+      "emisor": "Aeropuertos Argentina 2000 S.A.",
+      "alias": [],
+      "calificacion": "",
+      "agencia": "",
+      "escala": "",
+      "fecha": "",
+      "fuente": "",
+      "verificado": false
+    },
+    {
+      "emisor": "AES Argentina Generación S.A.",
+      "alias": [],
+      "calificacion": "",
+      "agencia": "",
+      "escala": "",
+      "fecha": "",
+      "fuente": "",
+      "verificado": false
+    },
+    {
+      "emisor": "ALUAR ALUMINIO ARGENTINO S.A.",
+      "alias": [],
+      "calificacion": "",
+      "agencia": "",
+      "escala": "",
+      "fecha": "",
+      "fuente": "",
+      "verificado": false
+    },
+    {
+      "emisor": "ARCOR S.A.I.C.",
+      "alias": [
+        "Arcor"
+      ],
+      "calificacion": "",
+      "agencia": "",
+      "escala": "",
+      "fecha": "",
+      "fuente": "",
+      "verificado": false
+    },
+    {
+      "emisor": "Banco BBVA",
+      "alias": [],
+      "calificacion": "",
+      "agencia": "",
+      "escala": "",
+      "fecha": "",
+      "fuente": "",
+      "verificado": false
+    },
+    {
+      "emisor": "BANCO BBVA ARGENTINA S.A.",
+      "alias": [],
+      "calificacion": "",
+      "agencia": "",
+      "escala": "",
+      "fecha": "",
+      "fuente": "",
+      "verificado": false
+    },
+    {
+      "emisor": "BANCO COMAFI S.A.",
+      "alias": [],
+      "calificacion": "",
+      "agencia": "",
+      "escala": "",
+      "fecha": "",
+      "fuente": "",
+      "verificado": false
+    },
+    {
+      "emisor": "BANCO DE GALICIA Y BUENOS AIRES S.A.",
+      "alias": [],
+      "calificacion": "",
+      "agencia": "",
+      "escala": "",
+      "fecha": "",
+      "fuente": "",
+      "verificado": false
+    },
+    {
+      "emisor": "BANCO DE VALORES S.A.",
+      "alias": [],
+      "calificacion": "",
+      "agencia": "",
+      "escala": "",
+      "fecha": "",
+      "fuente": "",
+      "verificado": false
+    },
+    {
+      "emisor": "BANCO HIPOTECARIO S.A.",
+      "alias": [],
+      "calificacion": "",
+      "agencia": "",
+      "escala": "",
+      "fecha": "",
+      "fuente": "",
+      "verificado": false
+    },
+    {
+      "emisor": "BANCO MACRO S.A.",
+      "alias": [],
+      "calificacion": "",
+      "agencia": "",
+      "escala": "",
+      "fecha": "",
+      "fuente": "",
+      "verificado": false
+    },
+    {
+      "emisor": "BANCO MARIVA S.A.",
+      "alias": [],
+      "calificacion": "",
+      "agencia": "",
+      "escala": "",
+      "fecha": "",
+      "fuente": "",
+      "verificado": false
+    },
+    {
+      "emisor": "BANCO PATAGONIA S.A.",
+      "alias": [],
+      "calificacion": "",
+      "agencia": "",
+      "escala": "",
+      "fecha": "",
+      "fuente": "",
+      "verificado": false
+    },
+    {
+      "emisor": "BANCO SUPERVIELLE S.A.",
+      "alias": [],
+      "calificacion": "",
+      "agencia": "",
+      "escala": "",
+      "fecha": "",
+      "fuente": "",
+      "verificado": false
+    },
+    {
+      "emisor": "CAMUZZI GAS PAMPEANA S.A.",
+      "alias": [],
+      "calificacion": "",
+      "agencia": "",
+      "escala": "",
+      "fecha": "",
+      "fuente": "",
+      "verificado": false
+    },
+    {
+      "emisor": "CAPEX S.A.",
+      "alias": [],
+      "calificacion": "",
+      "agencia": "",
+      "escala": "",
+      "fecha": "",
+      "fuente": "",
+      "verificado": false
+    },
+    {
+      "emisor": "CENTRAL PUERTO S.A.",
+      "alias": [],
+      "calificacion": "",
+      "agencia": "",
+      "escala": "",
+      "fecha": "",
+      "fuente": "",
+      "verificado": false
+    },
+    {
+      "emisor": "CGC",
+      "alias": [],
+      "calificacion": "",
+      "agencia": "",
+      "escala": "",
+      "fecha": "",
+      "fuente": "",
+      "verificado": false
+    },
+    {
+      "emisor": "CNH Industrial Capital Argentina S.A.",
+      "alias": [],
+      "calificacion": "",
+      "agencia": "",
+      "escala": "",
+      "fecha": "",
+      "fuente": "",
+      "verificado": false
+    },
+    {
+      "emisor": "CRESUD S.A.",
+      "alias": [],
+      "calificacion": "",
+      "agencia": "",
+      "escala": "",
+      "fecha": "",
+      "fuente": "",
+      "verificado": false
+    },
+    {
+      "emisor": "EMPRESA DISTRIB. Y COMERCIALZADORA NORTE S.A. (EDENOR S.A.)",
+      "alias": [],
+      "calificacion": "",
+      "agencia": "",
+      "escala": "",
+      "fecha": "",
+      "fuente": "",
+      "verificado": false
+    },
+    {
+      "emisor": "EMPRESA DISTRIBUIDORA DE ELECTRICIDAD DE SALTA - EDESA S.A.",
+      "alias": [],
+      "calificacion": "",
+      "agencia": "",
+      "escala": "",
+      "fecha": "",
+      "fuente": "",
+      "verificado": false
+    },
+    {
+      "emisor": "FyO",
+      "alias": [],
+      "calificacion": "",
+      "agencia": "",
+      "escala": "",
+      "fecha": "",
+      "fuente": "",
+      "verificado": false
+    },
+    {
+      "emisor": "GENNEIA S.A.",
+      "alias": [
+        "Genneia"
+      ],
+      "calificacion": "",
+      "agencia": "",
+      "escala": "",
+      "fecha": "",
+      "fuente": "",
+      "verificado": false
+    },
+    {
+      "emisor": "IRSA",
+      "alias": [],
+      "calificacion": "",
+      "agencia": "",
+      "escala": "",
+      "fecha": "",
+      "fuente": "",
+      "verificado": false
+    },
+    {
+      "emisor": "IRSA INVERSIONES Y REPRESENTACIONES S.A.",
+      "alias": [],
+      "calificacion": "",
+      "agencia": "",
+      "escala": "",
+      "fecha": "",
+      "fuente": "",
+      "verificado": false
+    },
+    {
+      "emisor": "John Deere",
+      "alias": [],
+      "calificacion": "",
+      "agencia": "",
+      "escala": "",
+      "fecha": "",
+      "fuente": "",
+      "verificado": false
+    },
+    {
+      "emisor": "John Deere Credit Cía. Financiera S.A.",
+      "alias": [],
+      "calificacion": "",
+      "agencia": "",
+      "escala": "",
+      "fecha": "",
+      "fuente": "",
+      "verificado": false
+    },
+    {
+      "emisor": "LEDESMA S.A.",
+      "alias": [],
+      "calificacion": "",
+      "agencia": "",
+      "escala": "",
+      "fecha": "",
+      "fuente": "",
+      "verificado": false
+    },
+    {
+      "emisor": "LOMA NEGRA COMPAÑIA INDUSTRIAL ARGENTINA SOCIEDAD ANONIMA",
+      "alias": [],
+      "calificacion": "",
+      "agencia": "",
+      "escala": "",
+      "fecha": "",
+      "fuente": "",
+      "verificado": false
+    },
+    {
+      "emisor": "Luz de Tres Picos S.A.",
+      "alias": [],
+      "calificacion": "",
+      "agencia": "",
+      "escala": "",
+      "fecha": "",
+      "fuente": "",
+      "verificado": false
+    },
+    {
+      "emisor": "MASTELLONE HNOS. S.A.",
+      "alias": [],
+      "calificacion": "",
+      "agencia": "",
+      "escala": "",
+      "fecha": "",
+      "fuente": "",
+      "verificado": false
+    },
+    {
+      "emisor": "MIRGOR S.A.",
+      "alias": [],
+      "calificacion": "",
+      "agencia": "",
+      "escala": "",
+      "fecha": "",
+      "fuente": "",
+      "verificado": false
+    },
+    {
+      "emisor": "MSU S.A.",
+      "alias": [],
+      "calificacion": "",
+      "agencia": "",
+      "escala": "",
+      "fecha": "",
+      "fuente": "",
+      "verificado": false
+    },
+    {
+      "emisor": "MSU GREEN ENERGY S.A.",
+      "alias": [],
+      "calificacion": "",
+      "agencia": "",
+      "escala": "",
+      "fecha": "",
+      "fuente": "",
+      "verificado": false
+    },
+    {
+      "emisor": "Oleoductos del Valle S.A.",
+      "alias": [],
+      "calificacion": "",
+      "agencia": "",
+      "escala": "",
+      "fecha": "",
+      "fuente": "",
+      "verificado": false
+    },
+    {
+      "emisor": "OTAMERICA EBYTEM SOCIEDAD ANONIMA",
+      "alias": [],
+      "calificacion": "",
+      "agencia": "",
+      "escala": "",
+      "fecha": "",
+      "fuente": "",
+      "verificado": false
+    },
+    {
+      "emisor": "PAMPA ENERGIA S.A",
+      "alias": [],
+      "calificacion": "",
+      "agencia": "",
+      "escala": "",
+      "fecha": "",
+      "fuente": "",
+      "verificado": false
+    },
+    {
+      "emisor": "PAN AMERICAN ENERGY, S.L. SUCURSAL ARGENTINA",
+      "alias": [],
+      "calificacion": "",
+      "agencia": "",
+      "escala": "",
+      "fecha": "",
+      "fuente": "",
+      "verificado": false
+    },
+    {
+      "emisor": "Pecom Servicios de Energía S.A.U.",
+      "alias": [],
+      "calificacion": "",
+      "agencia": "",
+      "escala": "",
+      "fecha": "",
+      "fuente": "",
+      "verificado": false
+    },
+    {
+      "emisor": "Plaza Logística S.R.L.",
+      "alias": [],
+      "calificacion": "",
+      "agencia": "",
+      "escala": "",
+      "fecha": "",
+      "fuente": "",
+      "verificado": false
+    },
+    {
+      "emisor": "Pluspetrol S.A.",
+      "alias": [],
+      "calificacion": "",
+      "agencia": "",
+      "escala": "",
+      "fecha": "",
+      "fuente": "",
+      "verificado": false
+    },
+    {
+      "emisor": "PROFERTIL S.A.",
+      "alias": [],
+      "calificacion": "",
+      "agencia": "",
+      "escala": "",
+      "fecha": "",
+      "fuente": "",
+      "verificado": false
+    },
+    {
+      "emisor": "Scania Credit Argentina S.A.U.",
+      "alias": [],
+      "calificacion": "",
+      "agencia": "",
+      "escala": "",
+      "fecha": "",
+      "fuente": "",
+      "verificado": false
+    },
+    {
+      "emisor": "SIDERSA S.A.",
+      "alias": [],
+      "calificacion": "",
+      "agencia": "",
+      "escala": "",
+      "fecha": "",
+      "fuente": "",
+      "verificado": false
+    },
+    {
+      "emisor": "TECPETROL S.A.",
+      "alias": [],
+      "calificacion": "",
+      "agencia": "",
+      "escala": "",
+      "fecha": "",
+      "fuente": "",
+      "verificado": false
+    },
+    {
+      "emisor": "TELECOM ARGENTINA S. A.",
+      "alias": [],
+      "calificacion": "",
+      "agencia": "",
+      "escala": "",
+      "fecha": "",
+      "fuente": "",
+      "verificado": false
+    },
+    {
+      "emisor": "TRANSPORTADORA DE GAS DEL SUR S.A.",
+      "alias": [],
+      "calificacion": "",
+      "agencia": "",
+      "escala": "",
+      "fecha": "",
+      "fuente": "",
+      "verificado": false
+    },
+    {
+      "emisor": "VISTA ENERGY ARGENTINA S.A.U.",
+      "alias": [],
+      "calificacion": "",
+      "agencia": "",
+      "escala": "",
+      "fecha": "",
+      "fuente": "",
+      "verificado": false
+    },
+    {
+      "emisor": "YPF S.A.",
+      "alias": [],
+      "calificacion": "",
+      "agencia": "",
+      "escala": "",
+      "fecha": "",
+      "fuente": "",
+      "verificado": false
+    },
+    {
+      "emisor": "YPF Energía Eléctrica S.A.",
+      "alias": [],
+      "calificacion": "",
+      "agencia": "",
+      "escala": "",
+      "fecha": "",
+      "fuente": "",
+      "verificado": false
+    }
+  ]
+}
