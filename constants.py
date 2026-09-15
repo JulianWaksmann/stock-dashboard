@@ -508,9 +508,14 @@ BYMA_TERMS_FETCH_LIMIT: Final[int] = 150
 #      arrastrando hacia abajo a las que sí operaron poco. Se etiquetan
 #      aparte y no participan del cálculo.
 #
-# Se calculan sobre el panel completo de cada moneda y no sobre lo que
-# dejen los filtros: "muy alto" tiene que significar muy alto en el mercado,
-# no muy alto entre las treinta filas que quedaron en pantalla.
+#   3. **Se calculan sobre las filas que quedan después de filtrar**, no
+#      sobre el mercado entero. Es lo contrario de lo que parece razonable,
+#      y la razón es que el corte de liquidez por defecto es él mismo un
+#      "top N por volumen": contra todo el mercado, las filas en pantalla
+#      eran por construcción las más operadas y salían todas en el cuartil
+#      más alto, con lo cual la columna no distinguía nada. El costo de esta
+#      decisión es que "muy alto" significa muy alto en la vista actual y
+#      cambia al cambiar los filtros; a cambio, la columna siempre reparte.
 # ----------------------------------------------------------------------
 BOND_VOLUME_VERY_HIGH: Final[str] = "🔵 Muy alto"
 BOND_VOLUME_HIGH: Final[str] = "🟢 Alto"

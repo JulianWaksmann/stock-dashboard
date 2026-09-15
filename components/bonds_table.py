@@ -309,12 +309,13 @@ def render_bonds_table(df: pd.DataFrame, full: bool = False, breakdown: bool = F
             "Vol. (cuartil)",
             width="small",
             help=(
-                "Cuartil de volumen operado, calculado DENTRO de cada moneda: el "
-                "volumen de la especie en pesos está en pesos y el de la MEP en "
-                "dólares, así que un ranking conjunto no compararía lo mismo. "
-                "Se mide contra el panel entero del mercado, no contra las filas "
-                "que dejaron los filtros. Las que no operaron no entran al "
-                "cálculo: se etiquetan aparte."
+                "Cuartil de volumen operado entre las ONs que estás viendo, y "
+                "dentro de cada moneda: el volumen de la especie en pesos está en "
+                "pesos y el de la MEP en dólares, así que un ranking conjunto no "
+                "compararía lo mismo. Es relativo a la vista: cambia al cambiar "
+                "los filtros, porque contra el mercado entero todas las filas del "
+                "corte por defecto caían en el cuartil más alto y la columna no "
+                "distinguía nada. Las que no operaron no entran al cálculo."
             ),
         ),
         "Garantía": st.column_config.TextColumn(

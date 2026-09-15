@@ -666,6 +666,18 @@ def apply_bond_filters(
     # primero), que los pasos de ranking y deduplicación alteran.
     # Se ordena por puntaje y, a igualdad, por TIR. Se toman solo las columnas
     # presentes para que la función siga sirviendo sobre un panel recortado.
+    # El cuartil de volumen se recalcula sobre lo que quedó, y no se hereda del
+    # panel completo. La columna describe filas que el usuario está comparando
+    # entre sí, así que tiene que repartirse entre las filas que ve.
+    #
+    # Calculado contra todo el mercado no servía para nada, y no por un error de
+    # cuentas: el corte de liquidez por defecto es él mismo un "top N por
+    # volumen", de modo que todas las filas en pantalla eran, por construcción,
+    # las más operadas del mercado y salían las treinta en el cuartil más alto.
+    # Es el precio de esta decisión: "muy alto" significa muy alto **en la vista
+    # actual**, y cambia si se cambian los filtros.
+    filtered[BOND_VOLUME_QUARTILE_COLUMN] = volume_quartiles(filtered)
+
     sort_columns = [c for c in ("Puntaje", "TIR (%)") if c in filtered.columns]
     if sort_columns:
         filtered = filtered.sort_values(sort_columns, ascending=False, na_position="last")
