@@ -497,6 +497,22 @@ BOND_SCORE_MIN_COVERAGE: Final[float] = 0.5
 # cuánto te importe que un emisor esté calificado.
 BOND_SCORE_UNRATED: Final[float] = 40.0
 
+# Piso de la escala NACIONAL, en peldaños de la escalera de notas.
+#
+# Una escala nacional no usa la escalera completa: se define contra el resto
+# del país, así que "AAA(arg)" es el mejor crédito de Argentina y no un AAA
+# global. Medida contra la escalera entera (D…AAA), toda la deuda corporativa
+# argentina que cotiza cae entre 80 y 100 y la dimensión deja de distinguir:
+# un AA-(arg) puntuaba 85, a quince puntos de un AAA, cuando en este mercado
+# esa diferencia es la que separa al mejor crédito del país de uno bastante
+# más flojo.
+#
+# Se mapea entonces el tramo que la escala nacional efectivamente usa: de
+# BBB-(arg) —el límite del grado de inversión doméstico— para arriba. Por
+# debajo de ahí el crédito es especulativo incluso en su propio país y puntúa
+# cero. El valor es el peldaño de BBB- en la escalera.
+BOND_RATING_NATIONAL_FLOOR: Final[int] = 11
+
 # Tamaño mínimo del panel comparable para publicar puntajes. El puntaje es
 # un percentil: con dos o tres bonos, "estar en el percentil 100" significa
 # ganarle a dos, y con uno solo significa nada. Por debajo de este número no
