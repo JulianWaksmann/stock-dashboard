@@ -301,18 +301,36 @@ class TestDimensionCalificacion:
         # Abstenerse no puede ser peor que tener una nota mediocre.
         assert resultado.loc["SIN_NOTA", "Puntaje"] >= resultado.loc["CON_NOTA", "Puntaje"]
 
-    def test_las_escalas_no_se_mezclan(self):
-        # Una nota nacional y una global no son comparables: un "AAA" local
-        # convive con un "B" global sobre el mismo emisor. Rankearlas juntas
-        # pondría a todos los calificados localmente arriba de todos los
-        # calificados afuera, que es notación y no crédito.
-        filas = [bono(f"NAC{i}", CALIF_RANK=float(18 + i % 3), CALIF_ESCALA="nacional") for i in range(4)]
-        filas += [bono(f"GLO{i}", CALIF_RANK=float(5 + i % 3), CALIF_ESCALA="global") for i in range(4)]
+    def test_la_mejor_nota_vale_cien_aunque_todo_el_panel_la_tenga(self):
+        # Es el punto de usar escala absoluta y no percentil. Con percentil, y
+        # como en escala nacional argentina casi todos los emisores calificados
+        # son AAA, todos quedaban empatados cerca de 69: el mejor crédito del
+        # panel puntuaba menos que un emisor sin calificación, al que la
+        # dimensión simplemente se le excluye. Convenía no tener nota.
+        filas = [bono(f"T{i}", CALIF_RANK=20.0) for i in range(8)]
         resultado = puntajes(pd.DataFrame(filas))
-        # El mejor de la escala global llega al tope de SU escala, aunque su
-        # nota absoluta sea muy inferior a cualquiera de la escala nacional.
-        mejor_global = resultado.loc[[f"GLO{i}" for i in range(4)], BOND_SCORE_RATING].max()
-        assert mejor_global == pytest.approx(100.0)
+        # `Serie == pytest.approx(x)` no compara elemento a elemento: hay que
+        # pasarle una lista.
+        assert resultado[BOND_SCORE_RATING].tolist() == pytest.approx([100.0] * 8)
+
+    def test_tener_la_mejor_nota_le_gana_a_no_tener_ninguna(self):
+        df = panel(
+            bono("CALIFICADO", CALIF_RANK=20.0),
+            bono("SIN_NOTA", CALIF_RANK=np.nan, CALIF_ESCALA="—"),
+        )
+        resultado = puntajes(df)
+        assert resultado.loc["CALIFICADO", "Puntaje"] > resultado.loc["SIN_NOTA", "Puntaje"]
+
+    def test_la_escalera_se_reparte_pareja_entre_0_y_100(self):
+        df = panel(
+            bono("AAA", CALIF_RANK=20.0),
+            bono("MEDIA", CALIF_RANK=10.0),
+            bono("DEFAULT", CALIF_RANK=0.0),
+        )
+        resultado = puntajes(df)
+        assert resultado.loc["AAA", BOND_SCORE_RATING] == pytest.approx(100.0)
+        assert resultado.loc["MEDIA", BOND_SCORE_RATING] == pytest.approx(50.0)
+        assert resultado.loc["DEFAULT", BOND_SCORE_RATING] == pytest.approx(0.0)
 
     def test_un_panel_sin_ninguna_calificacion_sigue_puntuando(self):
         # Es el estado de hoy: el archivo de calificaciones está vacío. La

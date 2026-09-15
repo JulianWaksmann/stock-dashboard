@@ -209,6 +209,11 @@ _RATING_RANKS: Final[dict[str, int]] = {
 _SCALE_SUFFIX: Final[re.Pattern[str]] = re.compile(r"\((?:ARG|AR|BOL|PY|UY)\)|\.(?:ARG|AR)$")
 
 
+# Peldaño máximo de la escalera (la nota más alta). Se deriva de la escalera
+# para que agregar un peldaño no deje el puntaje mal escalado en silencio.
+RATING_LADDER_TOP: Final[int] = len(_RATING_LADDER) - 1
+
+
 def rating_rank(rating: object) -> int | None:
     """
     Peldaño de una calificación: 0 es default, 20 es la nota máxima.

@@ -21,6 +21,7 @@ import numpy as np
 import pandas as pd
 
 from bonds.catalog import LAW_ARGENTINA, LAW_NEW_YORK
+from bonds.ratings import RATING_LADDER_TOP
 from constants import (
     BOND_LIQUID_SPREAD_MAX_PCT,
     BOND_MIN_YEARS_FOR_GRADING,
@@ -228,28 +229,35 @@ def _liquidity_subscore(spread_pct: pd.Series, volume: pd.Series) -> pd.Series:
     return combined.fillna(tightness).fillna(depth)
 
 
-def _rating_subscore(ranks: pd.Series | None, scales: pd.Series | None) -> pd.Series:
+def _rating_subscore(ranks: pd.Series | None, scales: pd.Series | None = None) -> pd.Series:
     """
-    Puntaje de calidad crediticia, por percentil DENTRO de cada escala.
+    Puntaje de calidad crediticia, en escala absoluta: AAA vale 100.
 
-    Una nota en escala nacional y una en escala global no significan lo mismo:
-    la nacional mide contra el resto del país y la global contra el mundo, así
-    que un "AAA" local convive con un "B" global sobre el mismo emisor.
-    Rankearlas juntas pondría a todos los calificados localmente por encima de
-    todos los calificados afuera, que es un artefacto de notación y no una
-    diferencia de crédito.
+    Es la única dimensión que NO se mide por percentil contra el panel, y es
+    deliberado. Las demás no tienen un "bueno" fijo —una TIR del 11% o una
+    duration de 3 años son mucho o poco según qué más haya en oferta ese día—,
+    pero una calificación ya viene en una escala: la escalera de notas ES la
+    medida, y AAA es AAA aunque ese día todo el panel sea AAA.
 
-    Un emisor sin calificación no puntúa cero: se abstiene, igual que en
-    jurisdicción. Cero sería afirmar que es mal crédito, y lo único que se
-    sabe es que no tenemos el dato.
+    Medirla por percentil tenía además un efecto perverso comprobado sobre los
+    datos reales: como en escala nacional argentina la mayoría de los emisores
+    calificados son AAA(arg), el percentil los empataba a todos en torno a 69.
+    Una dimensión que no se puede medir se excluye y su peso se reparte, así
+    que un emisor SIN calificación no perdía nada mientras que el mejor
+    calificado del panel se llevaba 69: convenía no tener nota. En escala
+    absoluta el mejor crédito se lleva 100 y el incentivo se endereza.
+
+    Lo que esta escala no puede hacer es comparar entre escalas. Una nota
+    nacional se mide contra el resto del país y una global contra el mundo, así
+    que "AAA(arg)" y "AAA" global valen los dos 100 sin ser el mismo crédito —
+    pueden ser hasta el mismo emisor. Hoy el panel es todo escala nacional; el
+    día que convivan, la columna muestra la agencia al lado de la nota para que
+    se vea cuál es cuál, pero el puntaje no las va a distinguir.
     """
     if ranks is None or ranks.empty:
         return pd.Series(dtype=float)
     numeric = pd.to_numeric(ranks, errors="coerce")
-    if scales is None:
-        return _percentile(numeric, higher_is_better=True)
-    grupos = scales.fillna("—").astype(str)
-    return numeric.groupby(grupos).rank(pct=True, ascending=True, na_option="keep") * 100.0
+    return (numeric / RATING_LADDER_TOP) * 100.0
 
 
 def _jurisdiction_subscore(law: pd.Series) -> pd.Series:
@@ -306,9 +314,7 @@ def compute_opportunity_scores(
             BOND_SCORE_RATE_RISK: _percentile(ranked["Duration Mod."], higher_is_better=False),
             BOND_SCORE_PARITY: _percentile(ranked["Paridad (%)"], higher_is_better=False),
             BOND_SCORE_JURISDICTION: _jurisdiction_subscore(ranked["Ley"]),
-            BOND_SCORE_RATING: _rating_subscore(
-                ranked.get("CALIF_RANK"), ranked.get("CALIF_ESCALA")
-            ),
+            BOND_SCORE_RATING: _rating_subscore(ranked.get("CALIF_RANK")),
         },
         index=df.index,
     )
