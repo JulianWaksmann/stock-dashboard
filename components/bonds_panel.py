@@ -228,6 +228,17 @@ def _render_filters(df: pd.DataFrame) -> pd.DataFrame:
             value=True,
             help="Oculta las especies que cotizan pero no tienen cronograma de pagos conocido.",
         )
+        include_near_maturity = st.checkbox(
+            f"Incluir las que vencen en < {BOND_MIN_YEARS_FOR_GRADING * 12:.0f} meses",
+            value=False,
+            help=(
+                "Por defecto se ocultan. A semanas del vencimiento la TIR anualizada "
+                "deja de medir rendimiento y pasa a ser un artefacto: anualizar el "
+                "retorno de dos meses convierte un centavo de precio en decenas de "
+                "puntos. Por eso tampoco reciben puntaje y se marcan ⏳ MUY CORTO. "
+                "Tildá esto si lo que querés es ver qué te vence pronto."
+            ),
+        )
 
     return apply_bond_filters(
         df,
@@ -238,6 +249,7 @@ def _render_filters(df: pd.DataFrame) -> pd.DataFrame:
         # El tope del slider significa "sin límite", no "duration 15".
         max_duration=None if max_duration >= _MAX_DURATION_FILTER_YEARS else max_duration,
         only_with_yield=only_with_yield,
+        include_near_maturity=include_near_maturity,
     )
 
 

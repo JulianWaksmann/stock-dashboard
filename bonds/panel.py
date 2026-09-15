@@ -605,6 +605,7 @@ def apply_bond_filters(
     law_filter: str,
     max_duration: float | None = None,
     only_with_yield: bool = False,
+    include_near_maturity: bool = False,
 ) -> pd.DataFrame:
     """
     Aplica los filtros del panel. Vive acá, y no en la capa de dibujo, porque
@@ -620,7 +621,8 @@ def apply_bond_filters(
       3. **Liquidez.** El "top N" rankea contra todo el universo de esa moneda
          y no contra lo que dejen los filtros de abajo: "las 50 más operadas"
          no debe depender de si además se filtró por ley.
-      4. El resto (atractivo, ley, duration, TIR calculada), que solo recortan.
+      4. El resto (atractivo, ley, duration, TIR calculada y vencimiento
+         cercano), que solo recortan.
     """
     filtered = df.copy()
 
@@ -661,6 +663,22 @@ def apply_bond_filters(
 
     if only_with_yield:
         filtered = filtered[filtered["TIR (%)"].notna()]
+
+    # Las ONs a semanas del vencimiento se ocultan por defecto. No es una
+    # preferencia de presentación: su TIR anualizada es un artefacto
+    # aritmético —MIC3D, a ocho semanas del vencimiento, rendía 22% anual
+    # porque anualizar el retorno de ocho semanas convierte un centavo de
+    # precio en decenas de puntos—, y por eso mismo ya están excluidas del
+    # panel comparable y no reciben puntaje. Mostrarlas sin puntaje al lado de
+    # bonos puntuados invita a leer esa TIR como si fuera una oportunidad.
+    #
+    # Se usa el mismo umbral que decide si una ON se califica, para que "tres
+    # meses" tenga una sola definición en todo el motor.
+    if not include_near_maturity and "Años al Vto." in filtered.columns:
+        filtered = filtered[
+            filtered["Años al Vto."].isna()
+            | (filtered["Años al Vto."] >= BOND_MIN_YEARS_FOR_GRADING)
+        ]
 
     # Se devuelve en el mismo orden que arma build_bonds_panel (mayor TIR
     # primero), que los pasos de ranking y deduplicación alteran.
