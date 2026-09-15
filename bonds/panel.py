@@ -279,11 +279,21 @@ def build_bonds_panel(
     #     negociaron, así que su TIR mide el mercado de otro día.
     traded = ~(df["Volumen"].notna() & (df["Volumen"] <= 0))
     long_enough = df["Años al Vto."] >= BOND_MIN_YEARS_FOR_GRADING
-    comparable = df.loc[traded & long_enough, "TIR (%)"].dropna()
-    median_ytm = comparable.median() if not comparable.empty else np.nan
+    # Una sola máscara para las dos cosas: la mediana de TIR y la población
+    # contra la que se rankea cada dimensión tienen que ser el mismo conjunto.
+    #
+    # Pasarla no es opcional. El panel de BYMA trae el mercado entero (~2700
+    # especies) y solo unas pocas decenas tienen cronograma de pagos conocido,
+    # así que TIR y duration existen en una fracción mínima de las filas. Si el
+    # ranking se hace contra el panel completo, esas dos dimensiones caen por
+    # debajo de BOND_SCORE_MIN_DIMENSION_COVERAGE y se descartan para todos:
+    # queda solo liquidez, cuyo peso no llega a BOND_SCORE_MIN_COVERAGE, y
+    # entonces NINGUNA ON recibe puntaje. El cuadro entero sale "⚪ SIN DATOS".
+    is_comparable = traded & long_enough & df["TIR (%)"].notna()
+    median_ytm = df.loc[is_comparable, "TIR (%)"].median() if is_comparable.any() else np.nan
     # El puntaje pondera cada dimensión contra el resto del panel, así que
     # necesita todas las filas calculadas: por eso va en esta segunda pasada.
-    scores = compute_opportunity_scores(df, median_ytm)
+    scores = compute_opportunity_scores(df, median_ytm, comparable=is_comparable)
     for column in scores.columns:
         df[column] = scores[column]
 

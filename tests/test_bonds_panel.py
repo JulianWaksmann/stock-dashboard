@@ -416,3 +416,57 @@ class TestConvencionDePrecioAplicada:
         sucio = build_bonds_panel(prices, catalogo, settlement, price_is_dirty=True)
         assert limpio.iloc[0]["TIR (%)"] < sucio.iloc[0]["TIR (%)"]
         assert limpio.iloc[0]["Convención Aplicada"] == BOND_PRICE_CLEAN
+
+
+class TestPuntajeSobreUnPanelRealista:
+    """
+    El panel de BYMA trae el mercado entero y solo una fracción mínima de las
+    especies tiene cronograma de pagos conocido. Ese desbalance es el caso
+    normal, no el excepcional, y es el que rompió el cuadro en producción: el
+    ranking se hacía contra las ~2700 filas del panel completo, así que
+    rendimiento y riesgo de tasa (que solo existen donde hay cronograma)
+    quedaban por debajo de la cobertura mínima de dimensión y se descartaban
+    para todos. Sobrevivía únicamente liquidez, cuyo peso no alcanza la
+    cobertura mínima para publicar puntaje, y el cuadro entero salía
+    "⚪ SIN DATOS".
+    """
+
+    def _panel(self, con_cronograma: int = 6, sin_cronograma: int = 40):
+        quotes = []
+        catalogo = {}
+        for i in range(con_cronograma):
+            ticker = f"CAL{i}D"
+            quotes.append(quote(ticker, price=95.0 + i, bid=94.0 + i, ask=96.0 + i))
+            catalogo[ticker] = make_terms(ticker, coupon_rate=8.0 + i * 0.5)
+        for i in range(sin_cronograma):
+            quotes.append(quote(f"NAD{i}D", price=100.0 + i, volume=500.0 + i))
+        return build_bonds_panel(make_prices(*quotes), catalogo, SETTLEMENT)
+
+    def test_las_ons_con_cronograma_reciben_puntaje(self):
+        panel = self._panel()
+        con_tir = panel[panel["TIR (%)"].notna()]
+        assert len(con_tir) == 6
+        assert con_tir["Puntaje"].notna().all(), (
+            "Ninguna ON recibió puntaje: el ranking se está haciendo contra el "
+            "panel completo en vez de contra el subconjunto comparable."
+        )
+
+    def test_ninguna_queda_etiquetada_sin_datos(self):
+        panel = self._panel()
+        con_tir = panel[panel["TIR (%)"].notna()]
+        assert not (con_tir["Atractivo"] == BOND_SIGNAL_NO_DATA).any()
+
+    def test_las_dimensiones_medibles_no_se_descartan(self):
+        # Rendimiento y riesgo de tasa se conocen para el 100% de las ONs
+        # comparables, aunque sean un puñado dentro de un panel enorme.
+        panel = self._panel()
+        con_tir = panel[panel["TIR (%)"].notna()]
+        assert con_tir["Rendimiento"].notna().all()
+        assert con_tir["Riesgo de tasa"].notna().all()
+
+    def test_las_especies_sin_cronograma_siguen_sin_puntaje(self):
+        # El arreglo no debe inventar puntajes donde no hay con qué calcularlos.
+        panel = self._panel()
+        sin_tir = panel[panel["TIR (%)"].isna()]
+        assert len(sin_tir) == 40
+        assert sin_tir["Puntaje"].isna().all()
