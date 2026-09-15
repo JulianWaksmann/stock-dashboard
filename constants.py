@@ -437,6 +437,23 @@ BOND_SCORE_RATING: Final[str] = "Calidad crediticia"
 # 35 a 20 por eso mismo: una TIR alta que no se puede ejecutar, o que paga un
 # emisor al borde del default, no es una oportunidad.
 #
+# Riesgo de tasa pesa la mitad que los tres primeros, y no lo mismo, porque
+# la duration se estaba contando dos veces. El cuadro ya tiene un filtro de
+# duration: quien no quiere riesgo de tasa lo recorta ahí. Que además lo
+# castigue el puntaje convertía al ranking en una lista de bonos cortos.
+#
+# El caso que lo mostró: una ON de Pampa con AAA(arg), el mejor spread de
+# puntas del panel y medio millón operado quedaba por debajo de una AA- que
+# casi no operaba, solo porque su duration de 7 años la dejaba en 0,7 sobre
+# 100 en esta dimensión. Una duration larga no es un defecto, es una
+# característica: un bono a siete años no es peor que uno a seis meses, es
+# otra cosa.
+#
+# Los 10 puntos liberados se reparten entre las dos secundarias, que estaban
+# parejas. OJO con jurisdicción: hoy la ley no viene declarada por el mercado
+# sino deducida del prefijo del ISIN, así que ese 15% descansa sobre un
+# indicio y no sobre un dato.
+#
 # La calificación se pondera aunque hoy no haya ninguna cargada. No hace falta
 # hacer nada especial para eso: una dimensión que no se puede medir en buena
 # parte del panel se descarta para todos y su peso se reparte entre las demás,
@@ -446,9 +463,9 @@ BOND_SCORE_WEIGHTS: Final[dict[str, float]] = {
     BOND_SCORE_YIELD: 20.0,
     BOND_SCORE_LIQUIDITY: 20.0,
     BOND_SCORE_RATING: 20.0,
-    BOND_SCORE_RATE_RISK: 20.0,
-    BOND_SCORE_PARITY: 10.0,
-    BOND_SCORE_JURISDICTION: 10.0,
+    BOND_SCORE_RATE_RISK: 10.0,
+    BOND_SCORE_PARITY: 15.0,
+    BOND_SCORE_JURISDICTION: 15.0,
 }
 
 # Pendiente del castigo por prima excesiva. Pasado el umbral de riesgo, cada
