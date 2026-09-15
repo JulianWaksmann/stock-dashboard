@@ -6,9 +6,12 @@ de repartirla en `app.py`: la pestaña de acciones y la de bonos no comparten
 estado ni filtros, y tenerlas mezcladas en un único `main()` haría que agregar
 un filtro de un lado obligue a releer el otro.
 
-Los filtros viven **dentro** de la pestaña y no en la barra lateral a propósito:
-Streamlit dibuja la barra lateral una sola vez para toda la app, así que filtros
-de bonos en el sidebar aparecerían también mientras se miran acciones.
+Reparto entre barra lateral y cuerpo de la pestaña: la barra lateral es única
+para toda la app y la dibuja la sección activa, así que ahí va lo que elige
+**qué panel se carga** (el país, que determina fuente de precios, catálogo y
+convenciones). Los filtros del cuadro se quedan en el cuerpo porque recortan un
+panel ya descargado y son muchos: en el sidebar competirían por el espacio con
+lo único que hay que decidir antes de bajar datos.
 """
 
 from datetime import date
@@ -23,6 +26,8 @@ from bonds.flows_source import COMMUNITY_FLOWS_URL
 from bonds.panel import apply_bond_filters
 from components.bonds_table import render_bonds_table
 from constants import (
+    BOND_COUNTRY_ARGENTINA,
+    BOND_COUNTRY_OPTIONS,
     BOND_LAW_FILTER_OPTIONS,
     BOND_LIQUIDITY_FILTER_OPTIONS,
     BOND_MIN_YEARS_FOR_GRADING,
@@ -59,18 +64,52 @@ _EXPLICACION_DIMENSION = {
 _MAX_DURATION_FILTER_YEARS = 15.0
 
 
+def _render_sidebar() -> str:
+    """
+    Barra lateral de la sección de bonos: el desplegable de país.
+
+    La barra lateral es única para toda la app y la dibuja la sección que esté
+    activa, así que lo que se ponga acá solo aparece mientras se miran bonos.
+    Por eso el país va acá y los filtros del cuadro siguen dentro de la
+    pestaña: el país elige **qué panel se carga** (fuente de precios, catálogo,
+    convenciones), mientras que los filtros recortan un panel ya descargado.
+    """
+    st.sidebar.header("🌐 Mercado de bonos")
+
+    country = st.sidebar.selectbox(
+        "País:",
+        BOND_COUNTRY_OPTIONS,
+        help="Cada país tiene su propia fuente de precios y sus propias convenciones de cálculo. Hoy solo Argentina está implementada.",
+    )
+
+    st.sidebar.markdown("---")
+    if st.sidebar.button(
+        "🔄 Refrescar ONs",
+        use_container_width=True,
+        type="primary",
+        help="Limpia la caché y vuelve a consultar precios",
+    ):
+        st.cache_data.clear()
+        st.rerun()
+
+    return country
+
+
 def _render_controls() -> tuple[date, bool]:
-    """Controles de cálculo: fecha de liquidación y convención de precio."""
-    col1, col2, col3 = st.columns([1, 2, 1])
+    """
+    Controles de cálculo de la pestaña.
+
+    La **fecha de liquidación** no está entre los controles visibles a
+    propósito. Los precios que se descargan son los de hoy, así que descontar
+    ese flujo contra una fecha distinta mezcla dos momentos del mercado y
+    devuelve una TIR que no corresponde a nada: el único valor coherente con
+    los precios de pantalla es la fecha de hoy. Queda disponible dentro de
+    "Ajustes avanzados" para verificar contra un informe de otra fecha, que es
+    el único caso en que mover la fecha significa algo.
+    """
+    col1, col2 = st.columns([3, 2])
 
     with col1:
-        settlement = st.date_input(
-            "📅 Fecha de liquidación",
-            value=date.today(),
-            help="Fecha a la que se descuenta el flujo de fondos. En BYMA la renta fija liquida habitualmente en 24 hs (T+1).",
-        )
-
-    with col2:
         convention = st.radio(
             "💲 Convención del precio de pantalla",
             BOND_PRICE_CONVENTION_OPTIONS,
@@ -78,11 +117,18 @@ def _render_controls() -> tuple[date, bool]:
             help="BYMA publica precios sucios (con interés corrido incluido). Elegir mal esta opción sesga la TIR y la paridad. Solo tiene efecto sobre las ONs con condiciones de emisión cargadas: pasar de limpio a sucio exige el interés corrido, y para eso hay que saber qué parte de cada pago es renta.",
         )
 
-    with col3:
-        st.markdown("<div style='padding-top: 28px;'></div>", unsafe_allow_html=True)
-        if st.button("🔄 Refrescar ONs", use_container_width=True, help="Limpia la caché y vuelve a consultar precios"):
-            st.cache_data.clear()
-            st.rerun()
+    with col2:
+        with st.expander("⚙️ Ajustes avanzados"):
+            settlement = st.date_input(
+                "📅 Fecha de liquidación",
+                value=date.today(),
+                help="A qué fecha se descuenta el flujo de fondos. Cambiarla mientras los precios son los de hoy produce una TIR que no corresponde a ninguna operación real: sirve solo para reproducir el cálculo de un informe de otra fecha.",
+            )
+            if settlement != date.today():
+                st.caption(
+                    "⚠️ Los precios siguen siendo los de hoy. Las métricas de abajo "
+                    "no corresponden a una operación ejecutable."
+                )
 
     return settlement, convention == BOND_PRICE_DIRTY
 
@@ -364,7 +410,22 @@ Cocos, etc. exponen API con cuenta).
 
 
 def render_bonds_panel():
-    """Dibuja la pestaña completa de Bonos Corporativos (ONs)."""
+    """Dibuja la sección completa de Bonos Corporativos."""
+    country = _render_sidebar()
+
+    if country != BOND_COUNTRY_ARGENTINA:
+        st.markdown(
+            f'<div class="main-title">💵 Bonos Corporativos — {country}</div>',
+            unsafe_allow_html=True,
+        )
+        st.info(
+            f"🚧 **{country}**: módulo en desarrollo. Próximamente disponible.\n\n"
+            "La matemática de renta fija (`bonds/bond_math.py`) ya es agnóstica de país: "
+            "descontar un flujo de fondos es la misma aritmética en cualquier mercado. "
+            "Lo que falta para este país es la fuente de precios y el catálogo de emisiones."
+        )
+        return
+
     st.markdown(
         '<div class="main-title">💵 Bonos Corporativos Argentinos (Obligaciones Negociables)</div>',
         unsafe_allow_html=True,

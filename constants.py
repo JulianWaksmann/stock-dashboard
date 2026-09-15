@@ -273,9 +273,31 @@ BOND_PRICE_CONVENTION_OPTIONS: Final[tuple[str, ...]] = (
 # sección consulta sus fuentes recién cuando se la elige.
 # ----------------------------------------------------------------------
 SECTION_STOCKS: Final[str] = "📈 Acciones (Confluencia & Smart Money)"
-SECTION_BONDS: Final[str] = "💵 Bonos Corporativos Argentinos (ONs)"
+SECTION_BONDS: Final[str] = "💵 Bonos Corporativos"
 
 SECTION_OPTIONS: Final[tuple[str, ...]] = (SECTION_STOCKS, SECTION_BONDS)
+
+# ----------------------------------------------------------------------
+# País del panel de bonos corporativos (desplegable de la barra lateral).
+#
+# El país no es una etiqueta cosmética: define la fuente de precios, las
+# convenciones de cálculo y el catálogo de emisiones. Hoy solo Argentina
+# está implementada (BYMA + ONs en dólares); el resto figura acá para que
+# el desplegable exponga el rumbo y para que el día que se sume un país
+# nuevo el punto de extensión ya esté donde corresponde: una rama por país
+# en `components/bonds_panel.py`, no un `if` repartido por el módulo.
+#
+# `bonds/bond_math.py` es agnóstico de país a propósito (descontar un flujo
+# de fondos es la misma aritmética en cualquier mercado); lo que cambia por
+# país es de dónde salen los precios y las condiciones de emisión.
+# ----------------------------------------------------------------------
+BOND_COUNTRY_ARGENTINA: Final[str] = "🇦🇷 Argentina (ONs)"
+BOND_COUNTRY_USA: Final[str] = "🇺🇸 Estados Unidos"
+
+BOND_COUNTRY_OPTIONS: Final[tuple[str, ...]] = (
+    BOND_COUNTRY_ARGENTINA,
+    BOND_COUNTRY_USA,
+)
 
 # ----------------------------------------------------------------------
 # Especies de liquidación de una ON.
