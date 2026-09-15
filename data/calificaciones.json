@@ -23,44 +23,48 @@
     {
       "emisor": "Aeropuertos Argentina 2000 S.A.",
       "alias": [],
-      "calificacion": "",
-      "agencia": "",
-      "escala": "",
-      "fecha": "",
-      "fuente": "",
-      "verificado": false
+      "calificacion": "AA+(arg)",
+      "agencia": "FIX SCR",
+      "escala": "nacional",
+      "fecha": "2026-08-04",
+      "fuente": "https://www.fixscr.com/calificaciones",
+      "verificado": true,
+      "origen": "fixscr-listado"
     },
     {
       "emisor": "AES Argentina Generación S.A.",
       "alias": [],
-      "calificacion": "",
-      "agencia": "",
-      "escala": "",
-      "fecha": "",
-      "fuente": "",
-      "verificado": false
+      "calificacion": "AA-(arg)",
+      "agencia": "FIX SCR",
+      "escala": "nacional",
+      "fecha": "2026-07-28",
+      "fuente": "https://www.fixscr.com/calificaciones",
+      "verificado": true,
+      "origen": "fixscr-listado"
     },
     {
       "emisor": "ALUAR ALUMINIO ARGENTINO S.A.",
       "alias": [],
-      "calificacion": "",
-      "agencia": "",
-      "escala": "",
-      "fecha": "",
-      "fuente": "",
-      "verificado": false
+      "calificacion": "AAA(arg)",
+      "agencia": "FIX SCR",
+      "escala": "nacional",
+      "fecha": "2026-06-24",
+      "fuente": "https://www.fixscr.com/calificaciones",
+      "verificado": true,
+      "origen": "fixscr-listado"
     },
     {
       "emisor": "ARCOR S.A.I.C.",
       "alias": [
         "Arcor"
       ],
-      "calificacion": "",
-      "agencia": "",
-      "escala": "",
-      "fecha": "",
-      "fuente": "",
-      "verificado": false
+      "calificacion": "AAA(arg)",
+      "agencia": "FIX SCR",
+      "escala": "nacional",
+      "fecha": "2026-05-15",
+      "fuente": "https://www.fixscr.com/calificaciones",
+      "verificado": true,
+      "origen": "fixscr-listado"
     },
     {
       "emisor": "Banco BBVA",
@@ -75,62 +79,68 @@
     {
       "emisor": "BANCO BBVA ARGENTINA S.A.",
       "alias": [],
-      "calificacion": "",
-      "agencia": "",
-      "escala": "",
-      "fecha": "",
-      "fuente": "",
-      "verificado": false
+      "calificacion": "AAA(arg)",
+      "agencia": "FIX SCR",
+      "escala": "nacional",
+      "fecha": "2026-06-04",
+      "fuente": "https://www.fixscr.com/calificaciones",
+      "verificado": true,
+      "origen": "fixscr-listado"
     },
     {
       "emisor": "BANCO COMAFI S.A.",
       "alias": [],
-      "calificacion": "",
-      "agencia": "",
-      "escala": "",
-      "fecha": "",
-      "fuente": "",
-      "verificado": false
+      "calificacion": "AA(arg)",
+      "agencia": "FIX SCR",
+      "escala": "nacional",
+      "fecha": "2026-06-03",
+      "fuente": "https://www.fixscr.com/calificaciones",
+      "verificado": true,
+      "origen": "fixscr-listado"
     },
     {
       "emisor": "BANCO DE GALICIA Y BUENOS AIRES S.A.",
       "alias": [],
-      "calificacion": "",
-      "agencia": "",
-      "escala": "",
-      "fecha": "",
-      "fuente": "",
-      "verificado": false
+      "calificacion": "AAA(arg)",
+      "agencia": "FIX SCR",
+      "escala": "nacional",
+      "fecha": "2026-06-02",
+      "fuente": "https://www.fixscr.com/calificaciones",
+      "verificado": true,
+      "origen": "fixscr-listado"
     },
     {
       "emisor": "BANCO DE VALORES S.A.",
       "alias": [],
-      "calificacion": "",
-      "agencia": "",
-      "escala": "",
-      "fecha": "",
-      "fuente": "",
-      "verificado": false
+      "calificacion": "AA+(arg)",
+      "agencia": "FIX SCR",
+      "escala": "nacional",
+      "fecha": "2026-07-02",
+      "fuente": "https://www.fixscr.com/calificaciones",
+      "verificado": true,
+      "origen": "fixscr-listado"
     },
     {
       "emisor": "BANCO HIPOTECARIO S.A.",
       "alias": [],
-      "calificacion": "",
-      "agencia": "",
-      "escala": "",
-      "fecha": "",
-      "fuente": "",
-      "verificado": false
+      "calificacion": "AA-(arg)",
+      "agencia": "FIX SCR",
+      "escala": "nacional",
+      "fecha": "2026-07-08",
+      "fuente": "https://www.fixscr.com/calificaciones",
+      "verificado": true,
+      "origen": "fixscr-listado"
     },
     {
       "emisor": "BANCO MACRO S.A.",
       "alias": [],
-      "calificacion": "",
-      "agencia": "",
-      "escala": "",
-      "fecha": "",
-      "fuente": "",
-      "verificado": false
+      "calificacion": "AAA(arg)",
+      "agencia": "FIX SCR",
+      "escala": "nacional",
+      "fecha": "2026-07-28",
+      "fuente": "https://www.fixscr.com/calificaciones",
+      "verificado": true,
+      "origen": "fixscr-listado"
     },
     {
       "emisor": "BANCO MARIVA S.A.",
@@ -165,32 +175,35 @@
     {
       "emisor": "CAMUZZI GAS PAMPEANA S.A.",
       "alias": [],
-      "calificacion": "",
-      "agencia": "",
-      "escala": "",
-      "fecha": "",
-      "fuente": "",
-      "verificado": false
+      "calificacion": "AA-(arg)",
+      "agencia": "FIX SCR",
+      "escala": "nacional",
+      "fecha": "2026-08-10",
+      "fuente": "https://www.fixscr.com/calificaciones",
+      "verificado": true,
+      "origen": "fixscr-listado"
     },
     {
       "emisor": "CAPEX S.A.",
       "alias": [],
-      "calificacion": "",
-      "agencia": "",
-      "escala": "",
-      "fecha": "",
-      "fuente": "",
-      "verificado": false
+      "calificacion": "AA(arg)",
+      "agencia": "FIX SCR",
+      "escala": "nacional",
+      "fecha": "2026-05-22",
+      "fuente": "https://www.fixscr.com/calificaciones",
+      "verificado": true,
+      "origen": "fixscr-listado"
     },
     {
       "emisor": "CENTRAL PUERTO S.A.",
       "alias": [],
-      "calificacion": "",
-      "agencia": "",
-      "escala": "",
-      "fecha": "",
-      "fuente": "",
-      "verificado": false
+      "calificacion": "AAA(arg)",
+      "agencia": "FIX SCR",
+      "escala": "nacional",
+      "fecha": "2026-08-03",
+      "fuente": "https://www.fixscr.com/calificaciones",
+      "verificado": true,
+      "origen": "fixscr-listado"
     },
     {
       "emisor": "CGC",
@@ -205,12 +218,13 @@
     {
       "emisor": "CNH Industrial Capital Argentina S.A.",
       "alias": [],
-      "calificacion": "",
-      "agencia": "",
-      "escala": "",
-      "fecha": "",
-      "fuente": "",
-      "verificado": false
+      "calificacion": "AAA(arg)",
+      "agencia": "FIX SCR",
+      "escala": "nacional",
+      "fecha": "2026-08-07",
+      "fuente": "https://www.fixscr.com/calificaciones",
+      "verificado": true,
+      "origen": "fixscr-listado"
     },
     {
       "emisor": "CRESUD S.A.",
@@ -277,12 +291,13 @@
     {
       "emisor": "IRSA INVERSIONES Y REPRESENTACIONES S.A.",
       "alias": [],
-      "calificacion": "",
-      "agencia": "",
-      "escala": "",
-      "fecha": "",
-      "fuente": "",
-      "verificado": false
+      "calificacion": "AAA(arg)",
+      "agencia": "FIX SCR",
+      "escala": "nacional",
+      "fecha": "2026-06-01",
+      "fuente": "https://www.fixscr.com/calificaciones",
+      "verificado": true,
+      "origen": "fixscr-listado"
     },
     {
       "emisor": "John Deere",
@@ -297,12 +312,13 @@
     {
       "emisor": "John Deere Credit Cía. Financiera S.A.",
       "alias": [],
-      "calificacion": "",
-      "agencia": "",
-      "escala": "",
-      "fecha": "",
-      "fuente": "",
-      "verificado": false
+      "calificacion": "AAA(arg)",
+      "agencia": "FIX SCR",
+      "escala": "nacional",
+      "fecha": "2026-08-07",
+      "fuente": "https://www.fixscr.com/calificaciones",
+      "verificado": true,
+      "origen": "fixscr-listado"
     },
     {
       "emisor": "LEDESMA S.A.",
@@ -327,12 +343,13 @@
     {
       "emisor": "Luz de Tres Picos S.A.",
       "alias": [],
-      "calificacion": "",
-      "agencia": "",
-      "escala": "",
-      "fecha": "",
-      "fuente": "",
-      "verificado": false
+      "calificacion": "AA(arg)",
+      "agencia": "FIX SCR",
+      "escala": "nacional",
+      "fecha": "2026-08-05",
+      "fuente": "https://www.fixscr.com/calificaciones",
+      "verificado": true,
+      "origen": "fixscr-listado"
     },
     {
       "emisor": "MASTELLONE HNOS. S.A.",
@@ -357,32 +374,35 @@
     {
       "emisor": "MSU S.A.",
       "alias": [],
-      "calificacion": "",
-      "agencia": "",
-      "escala": "",
-      "fecha": "",
-      "fuente": "",
-      "verificado": false
+      "calificacion": "A+(arg)",
+      "agencia": "FIX SCR",
+      "escala": "nacional",
+      "fecha": "2026-09-03",
+      "fuente": "https://www.fixscr.com/calificaciones",
+      "verificado": true,
+      "origen": "fixscr-listado"
     },
     {
       "emisor": "MSU GREEN ENERGY S.A.",
       "alias": [],
-      "calificacion": "",
-      "agencia": "",
-      "escala": "",
-      "fecha": "",
-      "fuente": "",
-      "verificado": false
+      "calificacion": "AA-(arg)",
+      "agencia": "FIX SCR",
+      "escala": "nacional",
+      "fecha": "2026-07-07",
+      "fuente": "https://www.fixscr.com/calificaciones",
+      "verificado": true,
+      "origen": "fixscr-listado"
     },
     {
       "emisor": "Oleoductos del Valle S.A.",
       "alias": [],
-      "calificacion": "",
-      "agencia": "",
-      "escala": "",
-      "fecha": "",
-      "fuente": "",
-      "verificado": false
+      "calificacion": "AAA(arg)",
+      "agencia": "FIX SCR",
+      "escala": "nacional",
+      "fecha": "2026-08-04",
+      "fuente": "https://www.fixscr.com/calificaciones",
+      "verificado": true,
+      "origen": "fixscr-listado"
     },
     {
       "emisor": "OTAMERICA EBYTEM SOCIEDAD ANONIMA",
@@ -397,12 +417,13 @@
     {
       "emisor": "PAMPA ENERGIA S.A",
       "alias": [],
-      "calificacion": "",
-      "agencia": "",
-      "escala": "",
-      "fecha": "",
-      "fuente": "",
-      "verificado": false
+      "calificacion": "AAA(arg)",
+      "agencia": "FIX SCR",
+      "escala": "nacional",
+      "fecha": "2026-08-18",
+      "fuente": "https://www.fixscr.com/calificaciones",
+      "verificado": true,
+      "origen": "fixscr-listado"
     },
     {
       "emisor": "PAN AMERICAN ENERGY, S.L. SUCURSAL ARGENTINA",
@@ -427,72 +448,79 @@
     {
       "emisor": "Plaza Logística S.R.L.",
       "alias": [],
-      "calificacion": "",
-      "agencia": "",
-      "escala": "",
-      "fecha": "",
-      "fuente": "",
-      "verificado": false
+      "calificacion": "AA(arg)",
+      "agencia": "FIX SCR",
+      "escala": "nacional",
+      "fecha": "2026-06-22",
+      "fuente": "https://www.fixscr.com/calificaciones",
+      "verificado": true,
+      "origen": "fixscr-listado"
     },
     {
       "emisor": "Pluspetrol S.A.",
       "alias": [],
-      "calificacion": "",
-      "agencia": "",
-      "escala": "",
-      "fecha": "",
-      "fuente": "",
-      "verificado": false
+      "calificacion": "AAA(arg)",
+      "agencia": "FIX SCR",
+      "escala": "nacional",
+      "fecha": "2026-07-24",
+      "fuente": "https://www.fixscr.com/calificaciones",
+      "verificado": true,
+      "origen": "fixscr-listado"
     },
     {
       "emisor": "PROFERTIL S.A.",
       "alias": [],
-      "calificacion": "",
-      "agencia": "",
-      "escala": "",
-      "fecha": "",
-      "fuente": "",
-      "verificado": false
+      "calificacion": "AAA(arg)",
+      "agencia": "FIX SCR",
+      "escala": "nacional",
+      "fecha": "2026-08-21",
+      "fuente": "https://www.fixscr.com/calificaciones",
+      "verificado": true,
+      "origen": "fixscr-listado"
     },
     {
       "emisor": "Scania Credit Argentina S.A.U.",
       "alias": [],
-      "calificacion": "",
-      "agencia": "",
-      "escala": "",
-      "fecha": "",
-      "fuente": "",
-      "verificado": false
+      "calificacion": "AAA(arg)",
+      "agencia": "FIX SCR",
+      "escala": "nacional",
+      "fecha": "2026-08-28",
+      "fuente": "https://www.fixscr.com/calificaciones",
+      "verificado": true,
+      "origen": "fixscr-listado"
     },
     {
       "emisor": "SIDERSA S.A.",
       "alias": [],
-      "calificacion": "",
-      "agencia": "",
-      "escala": "",
-      "fecha": "",
-      "fuente": "",
-      "verificado": false
+      "calificacion": "A+(arg)",
+      "agencia": "FIX SCR",
+      "escala": "nacional",
+      "fecha": "2026-06-11",
+      "fuente": "https://www.fixscr.com/calificaciones",
+      "verificado": true,
+      "origen": "fixscr-listado"
     },
     {
       "emisor": "TECPETROL S.A.",
       "alias": [],
-      "calificacion": "",
-      "agencia": "",
-      "escala": "",
-      "fecha": "",
-      "fuente": "",
-      "verificado": false
+      "calificacion": "AAA(arg)",
+      "agencia": "FIX SCR",
+      "escala": "nacional",
+      "fecha": "2026-05-15",
+      "fuente": "https://www.fixscr.com/calificaciones",
+      "verificado": true,
+      "origen": "fixscr-listado"
     },
     {
       "emisor": "TELECOM ARGENTINA S. A.",
       "alias": [],
-      "calificacion": "",
-      "agencia": "",
-      "escala": "",
-      "fecha": "",
-      "fuente": "",
-      "verificado": false
+      "calificacion": "AAA(arg)",
+      "agencia": "FIX SCR",
+      "escala": "nacional",
+      "fecha": "2026-07-28",
+      "fuente": "https://www.fixscr.com/calificaciones",
+      "verificado": true,
+      "origen": "fixscr-listado"
     },
     {
       "emisor": "TRANSPORTADORA DE GAS DEL SUR S.A.",
@@ -507,32 +535,35 @@
     {
       "emisor": "VISTA ENERGY ARGENTINA S.A.U.",
       "alias": [],
-      "calificacion": "",
-      "agencia": "",
-      "escala": "",
-      "fecha": "",
-      "fuente": "",
-      "verificado": false
+      "calificacion": "AAA(arg)",
+      "agencia": "FIX SCR",
+      "escala": "nacional",
+      "fecha": "2026-07-08",
+      "fuente": "https://www.fixscr.com/calificaciones",
+      "verificado": true,
+      "origen": "fixscr-listado"
     },
     {
       "emisor": "YPF S.A.",
       "alias": [],
-      "calificacion": "",
-      "agencia": "",
-      "escala": "",
-      "fecha": "",
-      "fuente": "",
-      "verificado": false
+      "calificacion": "AAA(arg)",
+      "agencia": "FIX SCR",
+      "escala": "nacional",
+      "fecha": "2026-07-07",
+      "fuente": "https://www.fixscr.com/calificaciones",
+      "verificado": true,
+      "origen": "fixscr-listado"
     },
     {
       "emisor": "YPF Energía Eléctrica S.A.",
       "alias": [],
-      "calificacion": "",
-      "agencia": "",
-      "escala": "",
-      "fecha": "",
-      "fuente": "",
-      "verificado": false
+      "calificacion": "AAA(arg)",
+      "agencia": "FIX SCR",
+      "escala": "nacional",
+      "fecha": "2026-08-11",
+      "fuente": "https://www.fixscr.com/calificaciones",
+      "verificado": true,
+      "origen": "fixscr-listado"
     }
   ]
 }
