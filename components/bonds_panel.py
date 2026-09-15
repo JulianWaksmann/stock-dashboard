@@ -338,8 +338,9 @@ por debajo 🟠 POCO ATRACTIVO. Dos casos ganan sobre el puntaje: la alerta de r
 donde anualizar el retorno de unas semanas convierte un centavo de precio en decenas de puntos de
 TIR.
 
-Los pesos están en `constants.py` (`BOND_SCORE_WEIGHTS`). Son un criterio de inversión explícito,
-no una verdad: si para vos la liquidez pesa más que el rendimiento, cambialos ahí.
+Los pesos son un criterio de inversión explícito, no una verdad del mercado: dicen que antes de
+preguntarse cuánto rinde un bono hay que poder operarlo y saber a quién se le presta. Si tu criterio
+es otro, se pueden ajustar.
 
 ---
 
@@ -361,33 +362,34 @@ def _render_sources():
     with st.expander("🔌 De dónde salen los datos"):
         st.markdown(
             f"""
-| Dato | Fuente | Cómo se obtiene |
+| Dato | De dónde sale | Qué tan confiable es |
 | --- | --- | --- |
-| Precios, puntas, volumen | [BYMA Open Data]({BYMA_BASE_URL}) | El mercado donde las ONs cotizan. API pública sin API key, pero sin documentar: es POST y valida cookie de navegador. Trae además vencimiento y moneda de cada especie. |
-| Cronogramas de pago | [rendimientos-ar]({COMMUNITY_FLOWS_URL}) | Se descarga en cada carga. Es un dataset **comunitario** mantenido a mano por terceros (licencia ISC), no una fuente oficial. Publica el total de cada pago, sin separar renta de capital. |
-| Condiciones de emisión | `data/ons_catalog.csv` (este repo) | Opcional y vacío por defecto. Solo hace falta para las métricas que necesitan el desglose renta/capital, o para una ON que la fuente comunitaria no cubra. |
-| Curva del Tesoro de EE.UU. | Yahoo Finance (`^IRX`, `^FVX`, `^TNX`, `^TYX`) | Vía `yfinance`, igual que el panel de acciones. |
+| Precios, puntas y volumen | [BYMA]({BYMA_BASE_URL}) | El mercado donde estos bonos efectivamente cotizan, así que es el dato de origen y no una copia. Se actualiza durante la rueda. |
+| Calendario de pagos | [Proyecto abierto rendimientos-ar]({COMMUNITY_FLOWS_URL}) | Mantenido por terceros de forma voluntaria, no es una fuente oficial. Informa el total de cada pago sin separar cuánto es interés y cuánto capital. |
+| Condiciones de emisión | Carga manual, contra el prospecto | Lo más confiable cuando está verificado, porque sale del contrato del bono. Cubre pocas emisiones. |
+| Calificación crediticia | Carga manual, contra el informe de la calificadora | Solo se muestra una vez verificada. |
+| Rendimiento del Tesoro de EE.UU. | Yahoo Finance | Referencia de mercado, para medir cuánto paga cada bono por encima de un activo sin riesgo de crédito. |
 
 **Por qué el cronograma no sale de una fuente oficial:** las condiciones de emisión de una ON
 (cupón, amortizaciones, ley) viven en su prospecto. Ni BYMA ni la CNV las publican en un formato
 consultable por máquina, así que todas las alternativas son o bien datasets mantenidos a mano como
 este, o bien scraping del Informe Diario del IAMC.
 
-**Para verificar o completar el catálogo:**
+**Dónde verificar o completar estos datos:**
 
-* **Prospecto de emisión** — es la fuente autoritativa. Se consigue en la web del emisor o en la
-  [CNV](https://www.argentina.gob.ar/cnv).
-* **[IAMC](https://www.iamc.com.ar)** — el Informe Diario publica precio, TIR, paridad, duration
-  y valor técnico de todas las especies listadas. Es la mejor forma de validar de una sola vez
-  los datos cargados *y* el resultado del cálculo.
-* **[BYMA](https://www.byma.com.ar)** — boletín diario oficial y datos de la especie.
+* **Prospecto de emisión** — es el contrato del bono y manda sobre cualquier otra fuente. Se
+  consigue en la web del emisor o en la [CNV](https://www.argentina.gob.ar/cnv).
+* **[IAMC](https://www.iamc.com.ar)** — su Informe Diario publica precio, rendimiento, paridad y
+  riesgo de tasa de todos los bonos listados. Es la forma más rápida de contrastar de una sola vez
+  tanto los datos cargados como los números que devuelve este cuadro.
+* **[BYMA](https://www.byma.com.ar)** — boletín diario oficial y ficha de cada bono.
 
-**Por qué BYMA y no un feed alternativo:** se comparó contra data912 con
-`scripts/verificar_fuentes.py`. BYMA lista 2727 especies contra 616, y sobre las 614 en común la
-mitad de los precios del feed alternativo llegaba con atraso: 0,17% de diferencia mediana y hasta
-2,75% en el mismo título. Sobre un bono de duration 3 eso son entre 6 y 90 puntos básicos de TIR,
-que es justamente lo que el panel compara. No se dejó como respaldo porque un respaldo que
-devuelve otro número no es un respaldo.
+**Por qué los precios salen de BYMA y no de otra fuente:** se comparó contra un proveedor
+alternativo y se lo descartó midiendo. BYMA informa 2727 bonos contra 616, y sobre los que ambos
+tenían, la mitad de los precios del otro proveedor llegaba con atraso. Parece poco —una diferencia
+típica del 0,17%, y hasta 2,75% en un mismo título— pero sobre el rendimiento de un bono eso son
+entre 6 y 90 puntos básicos, que es justamente la diferencia que el cuadro compara. Tampoco quedó
+como respaldo: un respaldo que devuelve otro número no sirve de respaldo.
 
 **Si necesitás precios ejecutables**, la fuente es el broker donde operás (IOL, Bull Market,
 Cocos, etc. exponen API con cuenta).
@@ -450,11 +452,11 @@ def render_bonds_panel():
     without_schedule = sorted(df_bonds.loc[df_bonds["Fuente"] == BOND_SOURCE_NONE, "Ticker"])
     if without_schedule:
         st.info(
-            f"📗 **{len(without_schedule)} de {len(df_bonds)} especies cotizan sin cronograma de pagos conocido.** "
-            "Se les muestra precio, puntas y volumen, pero no se les puede calcular TIR ni duration. "
-            "El cronograma de las ONs más operadas se descarga solo; para incorporar una que la fuente "
-            "no cubra, agregá una fila en `data/ons_catalog.csv`: alcanza con cargar una especie "
-            "(por ejemplo la O) y el panel la aplica también a las especies D y C del mismo bono."
+            f"📗 **De {len(df_bonds)} obligaciones negociables que cotizan, {len(without_schedule)} no "
+            "publican su calendario de pagos.** De esas se muestra precio y volumen, pero sin saber "
+            "cuándo y cuánto paga un bono no hay forma de calcular su rendimiento ni su riesgo de tasa. "
+            "El calendario de las más operadas se obtiene automáticamente; el resto depende de que sus "
+            "condiciones de emisión se carguen a mano."
         )
         with st.expander(f"Ver las {len(without_schedule)} especies sin cronograma"):
             st.write(", ".join(without_schedule))
@@ -462,9 +464,9 @@ def render_bonds_panel():
     unverified = int((~df_bonds["Verificado"] & df_bonds["En Catálogo"]).sum())
     if unverified:
         st.warning(
-            f"⚠️ **{unverified} ON(s) del catálogo local tienen condiciones de emisión sin verificar.** "
-            "Verificalas contra el prospecto y marcá `verificado=si` en `data/ons_catalog.csv`: "
-            "un cupón mal cargado devuelve una TIR mansamente incorrecta."
+            f"⚠️ **{unverified} obligación(es) negociable(s) tienen condiciones de emisión sin verificar "
+            "contra el prospecto.** Su rendimiento y su riesgo de tasa son estimaciones: si la tasa de "
+            "cupón o el calendario cargados no son exactos, los números salen mal sin que nada lo avise."
         )
 
     # Un emisor en default es lo primero que hay que saber, y no puede quedar

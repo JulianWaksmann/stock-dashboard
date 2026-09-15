@@ -144,9 +144,10 @@ def _render_stocks_tab():
 
     if failed_tickers:
         st.warning(
-            f"⚠️ No se pudieron cargar {len(failed_tickers)} ticker(s). "
-            "Suele deberse a límites de la API de Yahoo Finance o a símbolos "
-            "deslistados. Probá de nuevo con el botón **🔄 Refrescar Todo**."
+            f"⚠️ No se pudieron cargar {len(failed_tickers)} acción(es). "
+            "Suele pasar cuando el proveedor de datos limita las consultas, o "
+            "cuando la acción dejó de cotizar. Probá de nuevo con el botón "
+            "**🔄 Refrescar Todo**."
         )
         with st.expander("Ver tickers omitidos"):
             st.write(", ".join(failed_tickers))
@@ -246,23 +247,40 @@ def _render_stocks_tab():
 
     render_screener_table(df_filtered, timeframe_label=timeframe_label)
 
-    with st.expander("ℹ️ Sistema de Grados del Algoritmo de Confluencia"):
+    with st.expander("ℹ️ Cómo se lee el semáforo"):
         st.markdown("""
-        **Lógica de Compra (Swing):**
-        * Exige **obligatoriamente**: Proximidad a Soporte (+/- 4% de SMA 50 o debajo de Banda Inferior) Y RSI < 45.
-        * Suma puntos por: Tendencia alcista (SMA 50 > SMA 200), Estocástico alcista (%K < 30) y Acumulación OBV.
-        * **🌟 COMPRA FUERTE**: 4 o 5 puntos cumplidos.
-        * **🟢 COMPRA MODERADA**: 3 puntos cumplidos.
+        El semáforo no busca adivinar el precio: busca **momentos en que varias señales
+        independientes coinciden**. Una sola señal se equivoca seguido; tres a la vez, bastante
+        menos. De ahí el nombre "confluencia", y de ahí que haya dos grados según cuántas
+        coincidan.
 
-        **Lógica de Venta / Rotación:**
-        * Exige **obligatoriamente**: Proximidad a Techo (< 6% del Máx 52S) Y RSI > 65.
-        * Suma puntos por: Pérdida de momento (Estocástico bajista o MACD débil) y Distribución OBV.
-        * **🚨 VENTA FUERTE / ROTAR**: 3 o 4 puntos cumplidos.
-        * **🟠 VENTA MODERADA**: 2 puntos cumplidos.
+        **Señales de compra — un retroceso dentro de una tendencia sana**
 
-        **Otros Estados:**
-        * **🚨 SQUEEZE**: Ancho de Bandas de Bollinger en mínimos de 6 meses.
-        * **🟡 NEUTRAL**: No alcanza los umbrales de confluencia.
+        La idea es comprar una acción que viene bien y está tomando un descanso, no una que está
+        cayendo. Por eso se exigen dos cosas **sí o sí**: que el precio haya vuelto a una zona de
+        soporte, y que no venga de estar sobrecomprada. Cumplidas ésas, suman puntos que la
+        tendencia de fondo siga siendo alcista, que el impulso de corto plazo esté girando para
+        arriba, y que el volumen muestre que hay dinero entrando en vez de saliendo.
+
+        * 🌟 **COMPRA FUERTE** — coinciden casi todas las señales.
+        * 🟢 **COMPRA MODERADA** — coinciden las justas.
+
+        **Señales de venta o rotación — un techo con el impulso agotándose**
+
+        El espejo del anterior. Se exige **sí o sí** que el precio esté pegado a su máximo del
+        último año y que venga sobrecomprado. Suman puntos que el impulso ya esté girando para
+        abajo y que el volumen muestre dinero saliendo. No dice "vendé": dice que el tramo de suba
+        está maduro y conviene revisar la posición.
+
+        * 🚨 **VENTA FUERTE / ROTAR** — el agotamiento está confirmado por varias señales.
+        * 🟠 **VENTA MODERADA** — hay indicios, no confirmación.
+
+        **Otros estados**
+
+        * 🚨 **SQUEEZE** — la acción lleva meses moviéndose en un rango cada vez más angosto. No
+          anticipa la dirección, pero esa compresión suele resolverse con un movimiento grande.
+        * 🟡 **NEUTRAL** — no hay suficientes señales coincidiendo. Es el estado más común, y está
+          bien que lo sea: el sistema está pensado para hablar poco.
         """)
 
 

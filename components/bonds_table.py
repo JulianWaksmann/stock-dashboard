@@ -240,8 +240,8 @@ def render_bonds_table(df: pd.DataFrame, full: bool = False, breakdown: bool = F
                 "('AA') no significan lo mismo ni se comparan entre sí. Se lee al lado de "
                 "la TIR a propósito: un rendimiento alto sin saber a quién le estás "
                 "prestando no dice nada. 's/c' = sin cargar. Ninguna fuente pública la "
-                "publica en formato consultable por máquina, así que se carga a mano en "
-                "`data/calificaciones.json` y solo se muestra con `verificado: true`."
+                "publica de forma automática, así que se carga a mano y solo se muestra una vez "
+                "verificada contra el informe de la calificadora."
             ),
         ),
         "Liquidación": st.column_config.TextColumn(
@@ -354,8 +354,8 @@ def render_bonds_table(df: pd.DataFrame, full: bool = False, breakdown: bool = F
 
     if empty:
         st.caption(
-            f"ℹ️ Sin datos para {len(empty)} columna(s), así que no se muestran: "
-            f"**{', '.join(empty)}**. Estas métricas necesitan saber qué parte de cada pago "
-            "es renta y cuál es capital; el cronograma público solo publica el total. Se "
-            "completan cargando las condiciones de emisión en `data/ons_catalog.csv`."
+            f"ℹ️ No hay datos para {len(empty)} columna(s), así que no se muestran: "
+            f"**{', '.join(empty)}**. Estas medidas necesitan saber qué parte de cada pago es "
+            "interés y qué parte devuelve capital, y la fuente pública solo informa el total de "
+            "cada pago. Se completan cuando se cargan las condiciones de emisión del bono."
         )
