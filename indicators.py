@@ -2,6 +2,9 @@
 indicators.py - Cálculos matemáticos en Pandas, OBV y Algoritmo de Confluencia por Sistema de Grados
 """
 
+from dataclasses import dataclass
+from typing import Final
+
 import numpy as np
 import pandas as pd
 
@@ -173,7 +176,75 @@ def compute_percent_diff(current_price: float, reference_value: float) -> float:
     return ((current_price - reference_value) / reference_value) * 100.0
 
 
-def evaluate_confluence_signal(df_history: pd.DataFrame, tech_data: dict) -> str:
+@dataclass(frozen=True)
+class ConfluenceThresholds:
+    """
+    Los umbrales del semáforo, agrupados para poder calibrarlos por clase de activo.
+
+    El **algoritmo** es uno solo: las mismas condiciones obligatorias, el mismo
+    conteo de puntos, los mismos grados. Lo que se parametriza son los números,
+    porque un mismo umbral no significa lo mismo en dos mercados con
+    volatilidades que difieren por un factor de cinco.
+
+    `stretch_sigmas` es el único campo que no tiene equivalente en acciones, y
+    por omisión está apagado (None), así que el comportamiento del tablero de
+    acciones no cambia. Ver `_sell_near_ceiling` para qué resuelve.
+    """
+
+    trend_tolerance: float = BUY_SMA200_TREND_TOLERANCE
+    sma50_proximity_pct: float = BUY_SMA50_PROXIMITY_PCT
+    bb_lower_tolerance: float = BUY_BB_LOWER_TOLERANCE
+    buy_rsi_max: float = BUY_RSI_MAX
+    buy_stoch_oversold: float = BUY_STOCH_K_OVERSOLD
+    sell_dist_52w_high_min_pct: float = SELL_DIST_52W_HIGH_MIN_PCT
+    sell_rsi_min: float = SELL_RSI_MIN
+    sell_stoch_overbought: float = SELL_STOCH_K_OVERBOUGHT
+    stretch_sigmas: float | None = None
+
+
+# Calibración de acciones: los valores históricos del tablero, sin el camino
+# de extensión. Es el valor por omisión en todos lados.
+STOCK_THRESHOLDS: Final[ConfluenceThresholds] = ConfluenceThresholds()
+
+
+def _sell_near_ceiling(tech_data: dict, thresholds: ConfluenceThresholds) -> bool:
+    """
+    Condición obligatoria del lado venta: que el precio esté en un techo.
+
+    Hay dos caminos, y el segundo existe por una razón concreta medida sobre
+    datos reales. El camino clásico —estar a menos de 6% del máximo de 52
+    semanas— asume un activo que cotiza habitualmente cerca de sus máximos, que
+    es el caso de una acción líder. Una criptomoneda que cayó 70% y rebotó 50%
+    puede estar con RSI 80 y 50% por encima de su media de 50 barras y seguir
+    a 60% de su máximo anual: el primer camino no dispara nunca y el semáforo
+    se queda mudo justo cuando el activo está más estirado.
+
+    El segundo camino mide la **extensión sobre la media en desvíos propios**:
+    cuántas veces la dispersión típica de esa moneda separa hoy al precio de su
+    SMA 50. Es relativo al activo, no un porcentaje fijo, así que una moneda
+    que normalmente oscila ±20% alrededor de su media no queda marcada por
+    estar 20% arriba, y una que oscila ±5%, sí.
+    """
+    dist_52w_high = tech_data.get('dist_52w_high_pct', np.nan)
+    if not np.isnan(dist_52w_high) and dist_52w_high >= thresholds.sell_dist_52w_high_min_pct:
+        return True
+
+    if thresholds.stretch_sigmas is None:
+        return False
+
+    dispersion = tech_data.get('sma50_dispersion_pct', np.nan)
+    diff_sma_50 = tech_data.get('diff_sma_50_pct', np.nan)
+    if np.isnan(dispersion) or np.isnan(diff_sma_50) or dispersion <= 0:
+        return False
+
+    return (diff_sma_50 / dispersion) >= thresholds.stretch_sigmas
+
+
+def evaluate_confluence_signal(
+    df_history: pd.DataFrame,
+    tech_data: dict,
+    thresholds: ConfluenceThresholds = STOCK_THRESHOLDS,
+) -> str:
     """
     Algoritmo de Confluencia por Sistema de Grados (John Murphy + Smart Money):
     
@@ -187,7 +258,8 @@ def evaluate_confluence_signal(df_history: pd.DataFrame, tech_data: dict) -> str
       --> 3 ptos: 🟢 COMPRA MODERADA
       
     LÓGICA DE VENTA / ROTACIÓN:
-      1. Precio a < 6% de Máx 52S (1 pto) [OBLIGATORIO]
+      1. Techo: precio a < 6% de Máx 52S, o extensión sobre la SMA 50 por
+         encima de `thresholds.stretch_sigmas` desvíos propios (1 pto) [OBLIGATORIO]
       2. RSI > 65 (1 pto) [OBLIGATORIO]
       3. Estocástico bajista O MACD hist decreciente (1 pto)
       4. OBV < SMA_OBV_20 (1 pto)
@@ -197,12 +269,15 @@ def evaluate_confluence_signal(df_history: pd.DataFrame, tech_data: dict) -> str
     OTROS:
       --> Squeeze: Bandwidth en mínimos de 6 meses (🚨 SQUEEZE)
       --> Resto: 🟡 NEUTRAL
+
+    `thresholds` permite calibrar los números por clase de activo sin duplicar
+    el algoritmo. Por omisión son los de acciones, que es como se comportó
+    siempre el tablero.
     """
     if df_history is None or df_history.empty or len(df_history) < 20:
         return SIGNAL_NEUTRAL
 
     close = tech_data.get('close', np.nan)
-    dist_52w_high = tech_data.get('dist_52w_high_pct', np.nan)
     rsi_14 = tech_data.get('rsi_14', np.nan)
     stoch_k = tech_data.get('stoch_k', np.nan)
     stoch_d = tech_data.get('stoch_d', np.nan)
@@ -226,22 +301,22 @@ def evaluate_confluence_signal(df_history: pd.DataFrame, tech_data: dict) -> str
     # 1. EVALUACIÓN DE COMPRA (SWING)
     # ----------------------------------------------------
     # Condición 1: Tendencia de fondo
-    buy_c1_trend = (not np.isnan(sma_50) and not np.isnan(sma_200) and sma_50 > sma_200 and close >= sma_200 * BUY_SMA200_TREND_TOLERANCE)
+    buy_c1_trend = (not np.isnan(sma_50) and not np.isnan(sma_200) and sma_50 > sma_200 and close >= sma_200 * thresholds.trend_tolerance)
 
     # Condición 2 (OBLIGATORIA): Proximidad a Soporte (+/- 4% de SMA 50 o debajo de Banda Inferior)
     buy_c2_support = False
     if not np.isnan(close):
-        if not np.isnan(sma_50) and abs((close - sma_50) / sma_50 * 100.0) <= BUY_SMA50_PROXIMITY_PCT:
+        if not np.isnan(sma_50) and abs((close - sma_50) / sma_50 * 100.0) <= thresholds.sma50_proximity_pct:
             buy_c2_support = True
-        elif not np.isnan(bb_lower) and close <= bb_lower * BUY_BB_LOWER_TOLERANCE:
+        elif not np.isnan(bb_lower) and close <= bb_lower * thresholds.bb_lower_tolerance:
             buy_c2_support = True
 
     # Condición 3 (OBLIGATORIA): Sobreventa aliviada (RSI < 45)
-    buy_c3_rsi = (not np.isnan(rsi_14) and rsi_14 < BUY_RSI_MAX)
+    buy_c3_rsi = (not np.isnan(rsi_14) and rsi_14 < thresholds.buy_rsi_max)
 
     # Condición 4: Gatillo de Momento (Estocástico al alza o %K < 30)
     buy_c4_stoch = (
-        (not np.isnan(stoch_k) and stoch_k < BUY_STOCH_K_OVERSOLD) or
+        (not np.isnan(stoch_k) and stoch_k < thresholds.buy_stoch_oversold) or
         (not np.isnan(stoch_k) and not np.isnan(stoch_d) and not np.isnan(prev_stoch_k) and not np.isnan(prev_stoch_d) and prev_stoch_k <= prev_stoch_d and stoch_k > stoch_d)
     )
 
@@ -259,15 +334,16 @@ def evaluate_confluence_signal(df_history: pd.DataFrame, tech_data: dict) -> str
     # ----------------------------------------------------
     # 2. EVALUACIÓN DE VENTA / ROTACIÓN
     # ----------------------------------------------------
-    # Condición 1 (OBLIGATORIA): Proximidad a Techo (< 6% del Máximo 52S)
-    sell_c1_high = (not np.isnan(dist_52w_high) and dist_52w_high >= SELL_DIST_52W_HIGH_MIN_PCT)
+    # Condición 1 (OBLIGATORIA): techo, por proximidad al máximo anual o por
+    # extensión sobre la media medida en desvíos propios (ver _sell_near_ceiling).
+    sell_c1_high = _sell_near_ceiling(tech_data, thresholds)
 
     # Condición 2 (OBLIGATORIA): Sobrecompra (RSI > 65)
-    sell_c2_rsi = (not np.isnan(rsi_14) and rsi_14 > SELL_RSI_MIN)
+    sell_c2_rsi = (not np.isnan(rsi_14) and rsi_14 > thresholds.sell_rsi_min)
 
     # Condición 3: Pérdida de Momento (Estocástico a la baja o MACD debilitándose)
     sell_c3_momentum = (
-        (not np.isnan(stoch_k) and stoch_k >= SELL_STOCH_K_OVERBOUGHT) or
+        (not np.isnan(stoch_k) and stoch_k >= thresholds.sell_stoch_overbought) or
         (not np.isnan(stoch_k) and not np.isnan(stoch_d) and not np.isnan(prev_stoch_k) and not np.isnan(prev_stoch_d) and prev_stoch_k >= prev_stoch_d and stoch_k < stoch_d) or
         (not np.isnan(macd_hist) and not np.isnan(prev_macd_hist) and macd_hist < prev_macd_hist) or
         (not np.isnan(macd_line) and not np.isnan(signal_line) and macd_line < signal_line)
@@ -291,6 +367,31 @@ def evaluate_confluence_signal(df_history: pd.DataFrame, tech_data: dict) -> str
         return SIGNAL_SQUEEZE
 
     return SIGNAL_NEUTRAL
+
+
+def compute_sma50_dispersion(close: pd.Series, window: int) -> float:
+    """
+    Dispersión típica del precio alrededor de su SMA 50, en %.
+
+    Es el desvío estándar de `(precio - SMA50) / SMA50` sobre la ventana, y
+    responde a "¿cuánto se suele separar este activo de su media?". Sirve para
+    medir la extensión actual en unidades del propio activo en vez de en un
+    porcentaje fijo: 20% por encima de la media es rutina en una memecoin y un
+    extremo histórico en una acción de consumo básico.
+
+    Devuelve NaN si no hay al menos 30 observaciones válidas: un desvío
+    calculado sobre cuatro datos no describe ninguna dispersión típica.
+    """
+    if close is None or len(close) < 50:
+        return np.nan
+
+    sma_50 = compute_sma(close, 50)
+    ratio = ((close - sma_50) / sma_50.replace(0, np.nan) * 100.0).dropna().tail(window)
+    if len(ratio) < 30:
+        return np.nan
+
+    dispersion = float(ratio.std(ddof=1))
+    return dispersion if np.isfinite(dispersion) and dispersion > 0 else np.nan
 
 
 def _empty_stock_technicals() -> dict:
@@ -321,6 +422,7 @@ def _empty_stock_technicals() -> dict:
         'bb_lower': np.nan,
         'bb_bandwidth': np.nan,
         'is_bb_squeeze': False,
+        'sma50_dispersion_pct': np.nan,
         'stoch_k': np.nan,
         'stoch_d': np.nan,
         'prev_stoch_k': np.nan,
@@ -336,8 +438,27 @@ def _empty_stock_technicals() -> dict:
     }
 
 
-def compute_stock_technicals(df_history: pd.DataFrame) -> dict:
-    """Calcula todos los indicadores técnicos, OBV y estado de acumulación/distribución."""
+def compute_stock_technicals(
+    df_history: pd.DataFrame,
+    window_52w: int = 252,
+    squeeze_lookback: int = SQUEEZE_LOOKBACK_BARS,
+    thresholds: ConfluenceThresholds = STOCK_THRESHOLDS,
+) -> dict:
+    """
+    Calcula todos los indicadores técnicos, OBV y estado de acumulación/distribución.
+
+    `window_52w` y `squeeze_lookback` están parametrizados porque **no son
+    períodos, son plazos de calendario expresados en barras**, y cuántas barras
+    entran en un año depende del mercado: una acción cotiza unas 252 ruedas al
+    año y una cripto 365, porque opera todos los días. Dejar 252 fijo haría que
+    el "máximo de 52 semanas" de una cripto fuese en realidad el máximo de ocho
+    meses y medio, y que el squeeze se midiera contra cuatro meses en vez de
+    seis. Los valores por omisión son los de una acción, para no cambiar el
+    comportamiento de la sección que ya existía.
+
+    `thresholds` calibra el semáforo por clase de activo; por omisión son los
+    umbrales de acciones.
+    """
     if df_history is not None and not df_history.empty and 'Close' in df_history.columns:
         close_series = df_history['Close'].dropna()
     else:
@@ -359,7 +480,7 @@ def compute_stock_technicals(df_history: pd.DataFrame) -> dict:
     df_bb = compute_bollinger_bands(close_series, period=20, num_std=2.0)
     df_stoch = compute_stochastic(df_history, period_k=14, period_d=3)
     df_obv = compute_obv(df_history, period_sma=20)
-    df_52w = compute_52w_high_low(df_history, window=252)
+    df_52w = compute_52w_high_low(df_history, window=window_52w)
 
     # Extracción de valores
     sma_20 = float(sma_20_series.iloc[-1]) if not sma_20_series.empty else np.nan
@@ -373,7 +494,7 @@ def compute_stock_technicals(df_history: pd.DataFrame) -> dict:
     bb_bandwidth = float(df_bb['bb_bandwidth'].iloc[-1]) if not df_bb.empty else np.nan
 
     # Squeeze en mínimos de 6 meses (126 ruedas)
-    bandwidth_6m = df_bb['bb_bandwidth'].tail(SQUEEZE_LOOKBACK_BARS).dropna()
+    bandwidth_6m = df_bb['bb_bandwidth'].tail(squeeze_lookback).dropna()
     is_bb_squeeze = False
     if len(bandwidth_6m) >= 20 and bb_bandwidth <= bandwidth_6m.min() * SQUEEZE_BANDWIDTH_TOLERANCE:
         is_bb_squeeze = True
@@ -423,10 +544,11 @@ def compute_stock_technicals(df_history: pd.DataFrame) -> dict:
         'institutional_flow': institutional_flow,
         'high_52w': high_52w,
         'low_52w': low_52w,
-        'dist_52w_high_pct': dist_52w_high_pct
+        'dist_52w_high_pct': dist_52w_high_pct,
+        'sma50_dispersion_pct': compute_sma50_dispersion(close_series, window_52w),
     }
 
-    confluence_signal = evaluate_confluence_signal(df_history, tech_dict)
+    confluence_signal = evaluate_confluence_signal(df_history, tech_dict, thresholds)
     tech_dict['confluence_signal'] = confluence_signal
     tech_dict['technical_status'] = confluence_signal
 
