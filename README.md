@@ -1,6 +1,6 @@
-# Tablero Cuantitativo de Acciones y Bonos Corporativos
+# Tablero Cuantitativo de Acciones, Bonos Corporativos y Criptomonedas
 
-Tablero de análisis cuantitativo construido con **Streamlit**, **Pandas** y **Yahoo Finance (`yfinance`)**, dividido en dos secciones: **Acciones** (screener de confluencia técnica) y **Bonos Corporativos Argentinos** (analítica de renta fija para Obligaciones Negociables). Las secciones se eligen con un selector en lugar de pestañas, así cada una consulta sus fuentes recién cuando se la abre.
+Tablero de análisis cuantitativo construido con **Streamlit**, **Pandas** y **Yahoo Finance (`yfinance`)**, dividido en tres secciones: **Acciones** (screener de confluencia técnica), **Bonos Corporativos Argentinos** (analítica de renta fija para Obligaciones Negociables) y **Criptomonedas** (el mismo screener técnico, adaptado a un mercado que opera los siete días). Las secciones se eligen con un selector en lugar de pestañas, así cada una consulta sus fuentes recién cuando se la abre.
 
 La sección de acciones monitorea las 50 principales líderes del mercado en tiempo real, combinando **métricas de valuación fundamental** (PER pasado, PER futuro y PER promedio de 5 años) con los **principios de confluencia técnica de John Murphy** y una lectura de flujo institucional vía **On-Balance Volume ("Smart Money")**, para identificar de un vistazo oportunidades de swing, agotamientos de rotación y compresiones de volatilidad.
 
@@ -259,6 +259,141 @@ que se les quita es la influencia sobre la calificación.
 
 ---
 
+## 🪙 Criptomonedas
+
+La tercera sección aplica el mismo semáforo de confluencia del tablero de acciones a un universo de
+criptomonedas, agrupado en cuatro conjuntos que se eligen desde la barra lateral: principales por
+capitalización, capa 1, DeFi e infraestructura, y memecoins.
+
+### Qué comparte con la sección de acciones
+
+El algoritmo del semáforo es **exactamente el mismo** (`indicators.evaluate_confluence_signal`), con
+los mismos umbrales: las mismas condiciones obligatorias de soporte y RSI del lado compra, el mismo
+techo con impulso agotándose del lado venta, el mismo squeeze de Bollinger. Leer un retroceso dentro
+de una tendencia sana no depende de qué se esté mirando, así que duplicar el algoritmo sería
+duplicar el mantenimiento de una sola regla.
+
+### Qué cambia, y por qué
+
+**1. El semáforo se calibra, no se duplica.** El algoritmo es el mismo, pero una de sus condiciones
+obligatorias necesita otro número. El lado venta exige "estar en un techo", y en acciones eso se mide
+como proximidad al máximo de 52 semanas, porque una acción líder cotiza cerca de sus máximos. En
+cripto los drawdowns son de 70-80%: una moneda puede estar con RSI 80, un 50% por encima de su media
+de 50 barras, y seguir a 60% de su máximo anual. Medido sobre el panel real, con la calibración de
+acciones 19 de 20 monedas salían NEUTRAL teniendo RSI entre 60 y 80. Por eso en cripto se habilita un
+camino alternativo: **extensión sobre la media medida en desvíos propios** de cada moneda, que se
+adapta sola a lo volátil que sea cada una en vez de fijar un porcentaje arbitrario para todas. La
+columna **Extensión** del cuadro muestra ese número.
+
+**2. El calendario.** Cripto opera los 365 días del año; una acción cotiza unas 252 ruedas. El
+"máximo de las últimas 52 semanas" son 252 barras allá y **365 acá**, y el squeeze se mide contra
+182 barras en vez de 126. Con los números de acciones, el máximo anual de una cripto sería en
+realidad el de los últimos ocho meses y medio, y un precio cerca de su techo parecería más alto de
+lo que está.
+
+**3. La referencia es Bitcoin, no un índice.** En esta clase de activo casi todo se mueve junto, así
+que "subió 8% en el mes" no dice nada por sí solo: si Bitcoin subió 12%, esa moneda perdió terreno.
+La columna **vs BTC** mide el exceso de retorno sobre Bitcoin en la ventana larga (30 barras diarias
+o 13 semanales), con una banda muerta de ±2 puntos porcentuales: en un activo que se mueve 5% en un
+día, dos puntos acumulados en un mes son ruido, no una ventaja. Bitcoin se descarga siempre, esté o
+no en el universo elegido.
+
+**4. No hay balances.** No existe el PER, ni el sector, ni el dividendo: una red no publica
+resultados trimestrales. En su lugar el cuadro muestra la **volatilidad anualizada** del último mes
+—desvío de los retornos logarítmicos, anualizado con la raíz de 365— que es la medida de riesgo que
+efectivamente se usa acá. Se usan retornos logarítmicos y no simples porque sobre saltos del 20% en
+una barra, corrientes en cripto, los dos dejan de ser intercambiables.
+
+### Sobre el volumen
+
+La columna de flujo es el mismo OBV del tablero de acciones, pero **no se llama "Smart Money"**: el
+volumen que publica el proveedor es la suma de decenas de exchanges minoristas, no la huella de un
+fondo institucional. Sirve para ver si un movimiento de precio viene acompañado de operaciones o
+está vacío; no para deducir quién está del otro lado.
+
+### Las stablecoins quedan afuera
+
+USDT, USDC y DAI no están en el universo, y es una decisión, no un olvido: cotizan pegadas a un
+dólar por diseño, así que su RSI, sus medias y sus bandas describen ruido de centésimas y el
+semáforo leería ese ruido como si fuera una tendencia.
+
+### Dominancia: ¿Bitcoin o altcoins?
+
+En cripto casi todo se mueve junto, así que la pregunta útil no es cuánto subió una moneda sino si
+conviene estar en ella o en Bitcoin. La sección la responde con **dos mediciones distintas, que se
+muestran juntas a propósito**:
+
+* **Dominancia**, que mide *dónde está el valor*. Se informan dos números que no son el mismo: la
+  **dominancia global** (la porción de todo el mercado cripto que es Bitcoin, contando miles de
+  monedas y stablecoins) viene de CoinGecko, y la **dominancia dentro del panel** se reconstruye
+  acá. La del panel da más alto —tiene decenas de monedas, no miles— así que de ella se informa la
+  **variación en la ventana**, no el nivel: si sube, Bitcoin le está ganando al conjunto.
+* **Termómetro de temporada**, que mide *cuántas monedas* le ganan a Bitcoin. Por encima del 75% se
+  habla de temporada de altcoins; por debajo del 25%, de temporada de Bitcoin.
+
+Las dos se contradicen seguido, y ahí está lo interesante: si la dominancia sube mientras varias
+altcoins le ganan a Bitcoin, la suba de las alts es **angosta** —unas pocas tirando, el resto
+quedándose—. Con un solo número esa lectura no aparece.
+
+**Cómo se reconstruye la serie de dominancia.** La capitalización de una moneda es su precio por su
+oferta en circulación; con los precios diarios (que hay, por años) y la oferta de hoy se rearma cómo
+se movió el reparto del valor. La aproximación es usar la oferta actual para todo el período, porque
+el histórico de emisión no está en la fuente: sobre un mes el error es despreciable (Bitcoin emite
+~0,1% de su oferta mensual), sobre varios años deja de valer, y por eso la serie se corta en un año.
+Es una aproximación honesta para leer rotación de corto plazo, no una reconstrucción histórica.
+
+### Gráfico con soportes y resistencias
+
+Debajo del cuadro hay un gráfico de velas de cualquier moneda del panel (arranca en Bitcoin), con
+sus medias de 50 y 200, el volumen, y los niveles donde el precio giró.
+
+La **escala es un selector y arranca en mensual**, porque la escala no es una preferencia visual:
+define qué se considera un nivel. En velas diarias de seis meses aparecen los giros de las últimas
+semanas; en velas mensuales de varios años aparecen los techos y pisos a los que el precio vuelve.
+Cada escala trae sus propios parámetros, medidos sobre el historial real de Bitcoin y no elegidos a
+ojo: un entorno de 10 barras son dos semanas en diario y casi un año en mensual.
+
+Los niveles se detectan como **pivotes** —una barra cuyo máximo no es superado por las de su
+entorno— y después se agrupan por cercanía porcentual, porque un nivel al que el precio volvió
+cuatro veces es el mismo nivel visto cuatro veces, no cuatro líneas pegadas. Lo que distingue un
+nivel importante es **cuántas veces el precio lo respetó**.
+
+Cada nivel se dibuja como **zona** y no como línea: el precio no gira en un número exacto sino en
+una franja, y una línea de un píxel sugiere una precisión que el nivel no tiene. Relleno y línea
+llena a partir de tres toques, punteada y tenue con uno o dos. La etiqueta dice a qué precio está,
+cuántas veces se respetó y a qué distancia quedó de hoy. Se dibujan solo los tres más cercanos de
+cada lado: con quince líneas siempre hay una cerca del precio y el gráfico deja de decir nada.
+
+### Divergencias
+
+Debajo de las velas hay un panel de **RSI 14** que marca las divergencias entre el precio y su
+impulso: el precio hace un máximo más alto pero el RSI uno más bajo (bajista), o el precio hace un
+mínimo más bajo y el RSI uno más alto (alcista). Cada una se dibuja con dos segmentos del mismo
+color —uno sobre las velas y otro sobre el RSI— porque la divergencia *es* esa comparación, y verla
+requiere ver las dos líneas ir en direcciones opuestas.
+
+Se detectan sobre los **mismos giros** que los soportes y resistencias, y con tres filtros para que
+la marca signifique algo: los dos giros no pueden estar separados por más de 60 barras (serían dos
+tramos distintos del mercado), el RSI tiene que diferir al menos 3 puntos, y el precio al menos 1%
+(dos máximos iguales son un doble techo, no una divergencia).
+
+**No son una señal de entrada, y el panel lo dice en pantalla.** Una divergencia puede sostenerse
+meses antes de que el precio gire, y en una tendencia fuerte el oscilador se satura y divergir es lo
+normal. Por eso se marcan en el gráfico y no entran al semáforo.
+
+### Límites conocidos
+
+* **El universo es una lista mantenida a mano** (`crypto/catalog.py`): no se reordena solo cuando
+  cambia el ranking de capitalización.
+* **Yahoo redondea el precio de las monedas muy chicas** a un decimal significativo, así que dos
+  columnas de variación de ventanas distintas pueden dar el mismo número para una moneda que cotiza
+  en millonésimos. No es un error de cálculo del panel.
+* **Los tickers de Yahoo no siempre coinciden con el símbolo del mercado**: cuando el símbolo choca
+  con otro instrumento, Yahoo le agrega un número (`UNI7083-USD` es Uniswap, `PEPE24478-USD` es
+  Pepe). Los del catálogo están verificados contra el feed.
+
+---
+
 ## 📁 Estructura del repositorio
 
 ```
@@ -278,6 +413,15 @@ stock-dashboard/
 │   ├── panel.py                    # Cruce puro de precios + condiciones + métricas, y los filtros del panel
 │   ├── scoring.py                  # Puntaje de Oportunidad ponderado, relativo al panel del día
 │   └── data_loader.py              # Solo I/O: precios, curva del Tesoro, orquestación cacheada
+├── crypto/
+│   ├── __init__.py                 # Paquete del motor de criptomonedas
+│   ├── catalog.py                  # Universo de criptos: ticker de Yahoo, símbolo, nombre y categoría (puro)
+│   ├── panel.py                    # Métricas del cuadro: calendario de 365 días, fuerza vs BTC, volatilidad (puro)
+│   ├── dominance.py                # Dominancia reconstruida, rotación y termómetro de temporada (puro)
+│   ├── levels.py                   # Soportes y resistencias por pivotes agrupados (puro)
+│   ├── prices_source.py            # Descarga del OHLCV en Yahoo; toca red, no Streamlit
+│   ├── market_source.py            # Capitalización y oferta (Yahoo) + dominancia global (CoinGecko)
+│   └── data_loader.py              # Solo I/O: orquestación cacheada del panel
 ├── data/
 │   └── ons_catalog.csv             # Condiciones de emisión opcionales por ON; vacío por defecto
 ├── components/
@@ -286,13 +430,17 @@ stock-dashboard/
 │   ├── bonds_panel.py              # La sección de Bonos completa: controles, KPIs, filtros, glosario y metodología
 │   ├── bonds_table.py              # Cuadro comparativo de ONs con formato condicional y ayuda por columna
 │   ├── charts.py                   # Gráfico técnico de 4 paneles y dispersión valuación vs momento
+│   ├── crypto_chart.py             # Velas con soportes/resistencias y gráfico de dominancia
+│   ├── crypto_panel.py             # La sección de Cripto completa: controles, alertas, KPIs, filtros y metodología
+│   ├── crypto_table.py             # Cuadro de criptomonedas con formato adaptativo de precio y volumen
 │   ├── formatting.py               # Helpers de formato de texto compartidos
 │   ├── kpi_cards.py                # Tarjetas de KPIs de amplitud de mercado y valuación
 │   ├── screener_table.py           # Tabla interactiva del screener con resaltado condicional
 │   └── ticker_detail.py            # Vista de detalle por ticker; todavía no conectada a app.py
 ├── scripts/
 │   ├── verificar_fuentes.py        # Diagnóstico de las fuentes de datos y comparación entre feeds
-│   └── panel_ons.py                # El panel de ONs en la terminal, con el mismo motor que la interfaz
+│   ├── panel_ons.py                # El panel de ONs en la terminal, con el mismo motor que la interfaz
+│   └── panel_cripto.py             # El panel de cripto en la terminal, con el mismo motor que la interfaz
 ├── tests/
 │   ├── conftest.py                 # Fixtures compartidas (series sintéticas deterministas)
 │   ├── test_52w_high_low.py        # compute_52w_high_low
@@ -308,6 +456,10 @@ stock-dashboard/
 │   ├── test_flows_source.py        # Parser de los cronogramas publicados
 │   ├── test_compute_stock_technicals.py
 │   ├── test_confluence_signal.py   # evaluate_confluence_signal
+│   ├── test_crypto_catalog.py      # Integridad del universo cripto y de sus grupos
+│   ├── test_crypto_dominance.py    # Reconstrucción de la dominancia, rotación y temporada
+│   ├── test_crypto_levels.py       # Pivotes, agrupamiento de niveles y soportes/resistencias
+│   ├── test_crypto_panel.py        # Calendario de 365 días, fuerza vs BTC, volatilidad, filtros y formato de precio
 │   ├── test_obv.py                 # compute_obv
 │   ├── test_rsi.py                 # compute_rsi
 │   ├── test_sma_ema_macd.py        # compute_sma / compute_ema / compute_macd
@@ -364,6 +516,9 @@ python3 scripts/verificar_fuentes.py
 
 # El panel de ONs en la terminal, con el mismo motor y los mismos filtros que la interfaz
 python3 scripts/panel_ons.py --top 20 --desglose
+
+# El panel de criptomonedas en la terminal, con el mismo motor que la interfaz
+python3 scripts/panel_cripto.py --grupo memes --semanal
 ```
 
 ---
@@ -398,6 +553,13 @@ pasos falla.
 * El dataset de cronogramas de pago: `COMMUNITY_FLOWS_URL` en `bonds/flows_source.py`.
 * La fuente de precios de bonos: `bonds/byma_source.py`. Su parseo es una función pura, así que otra
   fuente entra normalizando a las mismas columnas.
+* Ventanas de calendario, referencia y textos de la sección de cripto: `constants.py`, sección
+  "CRIPTOMONEDAS".
+* Calibración del semáforo por clase de activo: `indicators.ConfluenceThresholds` (los números, en
+  `constants.py`).
+* Sensibilidad de los soportes y resistencias (ancho del pivote, agrupamiento, cuántos se dibujan):
+  `constants.py`, bloque de niveles.
+* Qué criptomonedas integran cada universo: `crypto/catalog.py`.
 * Colores del cuadro y de los gráficos: `theme.py`.
 
 ---
