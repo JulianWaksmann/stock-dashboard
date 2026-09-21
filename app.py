@@ -9,6 +9,7 @@ import streamlit as st
 from components.alerts_panel import render_alerts_panel
 from components.bonds_panel import render_bonds_panel
 from components.coming_soon import render_coming_soon
+from components.crypto_panel import render_crypto_panel
 from components.kpi_cards import render_kpi_cards
 from components.screener_table import render_screener_table
 from constants import (
@@ -284,23 +285,6 @@ def _render_stocks_tab():
         """)
 
 
-def _render_crypto_tab():
-    """
-    Sección de criptomonedas: todavía vacía.
-
-    Es una sección propia y no una opción del selector de mercado de Acciones
-    porque no es una acción: se valúa distinto, opera todos los días del año y
-    no tiene balances de los que salga un PER.
-    """
-    st.markdown('<div class="main-title">🪙 Criptomonedas</div>', unsafe_allow_html=True)
-    render_coming_soon(
-        "Criptomonedas",
-        "Vas a poder seguir las principales criptomonedas con la misma lectura "
-        "técnica del tablero de acciones: tendencia, momento y compresión de "
-        "volatilidad, adaptados a un mercado que opera los siete días de la semana.",
-    )
-
-
 def main():
     """
     Punto de entrada: reparte la aplicación en secciones por clase de activo.
@@ -308,9 +292,9 @@ def main():
     Es un selector y no `st.tabs` a propósito. Streamlit ejecuta el cuerpo de
     **todas** las pestañas en cada corrida, no solo el de la visible: con
     `st.tabs`, abrir el tablero de acciones dispararía también la descarga de
-    precios de ONs y la curva del Tesoro sin que nadie haya entrado a esa
-    sección. Un selector dibuja únicamente la sección elegida, así que cada
-    fuente de datos se consulta recién cuando se la mira.
+    precios de ONs, la curva del Tesoro y el panel de cripto sin que nadie haya
+    entrado a esas secciones. Un selector dibuja únicamente la sección elegida,
+    así que cada fuente de datos se consulta recién cuando se la mira.
     """
     section = st.radio(
         "Sección",
@@ -324,7 +308,7 @@ def main():
     elif section == SECTION_BONDS:
         render_bonds_panel()
     else:
-        _render_crypto_tab()
+        render_crypto_panel()
 
 
 if __name__ == "__main__":

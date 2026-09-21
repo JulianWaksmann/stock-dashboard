@@ -611,3 +611,313 @@ BOND_VOLUME_QUARTILES: Final[tuple[str, ...]] = (
 
 # Nombre de la columna, junto a "Volumen".
 BOND_VOLUME_QUARTILE_COLUMN: Final[str] = "Volumen (cuartil)"
+
+
+# ======================================================================
+# CRIPTOMONEDAS
+#
+# Mismo criterio que en las dos secciones anteriores: etiquetas, umbrales y
+# textos de los selectores viven acá para que el motor (`crypto/panel.py`),
+# la tabla (`components/crypto_table.py`) y los filtros
+# (`components/crypto_panel.py`) lean siempre el mismo literal.
+#
+# El semáforo de confluencia es **el mismo que el de acciones**: se reusa
+# `indicators.evaluate_confluence_signal` sin tocar sus umbrales. Lo que
+# cambia en cripto no son las reglas de lectura técnica sino el calendario
+# (opera los siete días) y el hecho de que no hay balances de los que salga
+# un PER. Por eso acá abajo hay ventanas en barras y no umbrales de señal.
+# ======================================================================
+
+# ----------------------------------------------------------------------
+# Calendario: cuántas barras entra un plazo en un mercado que no cierra
+#
+# Una acción cotiza ~252 ruedas al año y ~126 en seis meses; una cripto
+# opera los 365 días. Estos números son los que se le pasan a
+# `compute_stock_technicals` para que "máximo de 52 semanas" y "squeeze de
+# seis meses" signifiquen en cripto lo mismo que significan en acciones.
+# ----------------------------------------------------------------------
+CRYPTO_52W_WINDOW_DAILY: Final[int] = 365
+CRYPTO_52W_WINDOW_WEEKLY: Final[int] = 52
+CRYPTO_SQUEEZE_LOOKBACK_DAILY: Final[int] = 182
+CRYPTO_SQUEEZE_LOOKBACK_WEEKLY: Final[int] = 26
+
+# Barras por año, para anualizar el desvío de los retornos.
+CRYPTO_BARS_PER_YEAR_DAILY: Final[int] = 365
+CRYPTO_BARS_PER_YEAR_WEEKLY: Final[int] = 52
+
+# Ventana sobre la que se mide la volatilidad anualizada: un mes.
+CRYPTO_VOLATILITY_WINDOW_DAILY: Final[int] = 30
+CRYPTO_VOLATILITY_WINDOW_WEEKLY: Final[int] = 13
+
+# Ventanas de las columnas de variación (corto y mediano plazo).
+CRYPTO_RETURN_SHORT_DAILY: Final[int] = 7
+CRYPTO_RETURN_SHORT_WEEKLY: Final[int] = 4
+CRYPTO_RETURN_LONG_DAILY: Final[int] = 30
+CRYPTO_RETURN_LONG_WEEKLY: Final[int] = 13
+
+# ----------------------------------------------------------------------
+# Fuerza relativa contra Bitcoin
+#
+# Es la métrica nativa de esta sección y no existe en acciones. En cripto
+# casi todo sube y baja junto con Bitcoin, así que "subió 8% en el mes" no
+# dice nada por sí solo: si Bitcoin subió 12%, esa moneda perdió terreno.
+# La columna mide el exceso de retorno sobre Bitcoin en la misma ventana.
+# ----------------------------------------------------------------------
+CRYPTO_BENCHMARK_TICKER: Final[str] = "BTC-USD"
+CRYPTO_BENCHMARK_LABEL: Final[str] = "BTC"
+
+# Banda muerta, en puntos porcentuales: por debajo de esta diferencia el
+# desempeño se considera "en línea" con Bitcoin y no una ventaja real.
+CRYPTO_RS_NEUTRAL_BAND_PP: Final[float] = 2.0
+
+CRYPTO_RS_OUTPERFORM: Final[str] = "💪 Supera a BTC"
+CRYPTO_RS_INLINE: Final[str] = "➖ En línea con BTC"
+CRYPTO_RS_UNDERPERFORM: Final[str] = "🐢 Rezagada vs BTC"
+CRYPTO_RS_NOT_AVAILABLE: Final[str] = "N/A"
+
+# ----------------------------------------------------------------------
+# Umbral de volatilidad anualizada, en %, para el aviso de riesgo del KPI.
+# Una acción grande se mueve en el orden del 20-30% anual; en cripto el
+# piso del universo mayorista ronda el 40% y las monedas chicas superan
+# holgadamente el 100%.
+# ----------------------------------------------------------------------
+CRYPTO_HIGH_VOLATILITY_PCT: Final[float] = 100.0
+
+# ----------------------------------------------------------------------
+# Textos de los selectores de la sección (mismo motivo que en acciones:
+# el `if/elif` compara contra estos literales, no contra texto suelto).
+# ----------------------------------------------------------------------
+
+# --- Selector de universo ---
+CRYPTO_UNIVERSE_TOP: Final[str] = "Principales por capitalización"
+CRYPTO_UNIVERSE_LAYER1: Final[str] = "Capa 1 (redes base)"
+CRYPTO_UNIVERSE_DEFI: Final[str] = "DeFi e infraestructura"
+CRYPTO_UNIVERSE_MEME: Final[str] = "Memecoins"
+
+CRYPTO_UNIVERSE_OPTIONS: Final[tuple[str, ...]] = (
+    CRYPTO_UNIVERSE_TOP,
+    CRYPTO_UNIVERSE_LAYER1,
+    CRYPTO_UNIVERSE_DEFI,
+    CRYPTO_UNIVERSE_MEME,
+)
+
+# --- Filtro por Semáforo ---
+CRYPTO_FILTER_SIGNAL_ALL: Final[str] = "Todas las Criptos"
+CRYPTO_FILTER_SIGNAL_STRONG_BUY: Final[str] = "🌟 Solo Compra Fuerte"
+CRYPTO_FILTER_SIGNAL_BUY: Final[str] = "🟢 Solo Compras (Fuerte + Moderada)"
+CRYPTO_FILTER_SIGNAL_SELL: Final[str] = "🚨 Solo Venta / Rotar (Fuerte + Moderada)"
+CRYPTO_FILTER_SIGNAL_SQUEEZE: Final[str] = "⚡ Solo Squeezes"
+
+CRYPTO_SIGNAL_FILTER_OPTIONS: Final[tuple[str, ...]] = (
+    CRYPTO_FILTER_SIGNAL_ALL,
+    CRYPTO_FILTER_SIGNAL_STRONG_BUY,
+    CRYPTO_FILTER_SIGNAL_BUY,
+    CRYPTO_FILTER_SIGNAL_SELL,
+    CRYPTO_FILTER_SIGNAL_SQUEEZE,
+)
+
+# --- Filtro por fuerza relativa contra Bitcoin ---
+CRYPTO_FILTER_RS_ALL: Final[str] = "Todas"
+CRYPTO_FILTER_RS_OUTPERFORM: Final[str] = "💪 Solo las que superan a BTC"
+CRYPTO_FILTER_RS_UNDERPERFORM: Final[str] = "🐢 Solo las rezagadas vs BTC"
+
+CRYPTO_RS_FILTER_OPTIONS: Final[tuple[str, ...]] = (
+    CRYPTO_FILTER_RS_ALL,
+    CRYPTO_FILTER_RS_OUTPERFORM,
+    CRYPTO_FILTER_RS_UNDERPERFORM,
+)
+
+# --- Filtro por Tendencia vs SMA 200 ---
+CRYPTO_FILTER_TREND_ALL: Final[str] = "Todas"
+CRYPTO_FILTER_TREND_BULLISH: Final[str] = "Solo Alcistas (> SMA 200)"
+CRYPTO_FILTER_TREND_BEARISH: Final[str] = "Solo Bajistas (< SMA 200)"
+
+CRYPTO_TREND_FILTER_OPTIONS: Final[tuple[str, ...]] = (
+    CRYPTO_FILTER_TREND_ALL,
+    CRYPTO_FILTER_TREND_BULLISH,
+    CRYPTO_FILTER_TREND_BEARISH,
+)
+
+# --- Columna de flujo de volumen ---
+# El OBV se calcula igual que en acciones, pero la etiqueta no puede ser
+# "Smart Money": el volumen de una cripto es la suma de lo operado en
+# decenas de exchanges minoristas, no la huella de un fondo institucional.
+CRYPTO_FLOW_COLUMN: Final[str] = "Flujo de Volumen (OBV)"
+
+
+# ----------------------------------------------------------------------
+# Calibración del semáforo para cripto: extensión sobre la media
+#
+# El algoritmo del semáforo no cambia, pero una de sus condiciones
+# obligatorias sí necesita recalibrarse. El lado venta exige "estar en un
+# techo", y en acciones eso se mide como proximidad al máximo de 52
+# semanas, porque una acción líder cotiza habitualmente cerca de sus
+# máximos. En cripto los drawdowns son de 70-80%: medido sobre el panel,
+# una moneda puede estar con RSI 80 y 50% arriba de su SMA 50 y seguir a
+# 60% de su máximo anual. Con la condición de acciones, el semáforo se
+# queda mudo justo cuando el activo está más estirado.
+#
+# El camino alternativo mide la extensión sobre la SMA 50 en **desvíos
+# propios** de cada moneda (ver `indicators.compute_sma50_dispersion`), así
+# que se adapta sola a la volatilidad de cada una en vez de fijar un
+# porcentaje que sería arbitrario para todas.
+#
+# El valor está calibrado sobre el panel real: con 2 desvíos quedan
+# marcadas las monedas visiblemente estiradas sin que la etiqueta pierda
+# valor por repartirse a medio cuadro.
+# ----------------------------------------------------------------------
+CRYPTO_STRETCH_SIGMAS: Final[float] = 2.0
+
+# ----------------------------------------------------------------------
+# DOMINANCIA Y ROTACIÓN BTC / ALTCOINS
+#
+# La pregunta que responde este bloque es "¿conviene estar en Bitcoin o en
+# altcoins?". Se mide de dos maneras, que son distintas a propósito:
+#
+#   * **Dominancia global**: la porción del valor de todo el mercado cripto
+#     que es Bitcoin. Es el número que se publica en todos lados y sirve de
+#     referencia conocida. Viene de una fuente externa.
+#   * **Dominancia del panel**: la porción que es Bitcoin dentro del
+#     universo que se está mirando. No coincide con la global (el panel no
+#     tiene miles de monedas ni stablecoins) y por eso se informa su
+#     **variación**, no su nivel: lo que importa es hacia dónde se mueve.
+# ----------------------------------------------------------------------
+
+# Ventana, en barras, sobre la que se mide el cambio de dominancia. Es la
+# misma que la de la fuerza relativa contra BTC, para que las dos columnas
+# hablen del mismo período.
+CRYPTO_DOMINANCE_WINDOW_DAILY: Final[int] = 30
+CRYPTO_DOMINANCE_WINDOW_WEEKLY: Final[int] = 13
+
+# Cuántos puntos porcentuales de cambio de dominancia se consideran un
+# movimiento real y no ruido de medición.
+CRYPTO_DOMINANCE_BAND_PP: Final[float] = 0.5
+
+CRYPTO_ROTATION_TO_BTC: Final[str] = "🟠 Rotación hacia Bitcoin"
+CRYPTO_ROTATION_TO_ALTS: Final[str] = "🟢 Rotación hacia altcoins"
+CRYPTO_ROTATION_STABLE: Final[str] = "⚪ Sin rotación clara"
+
+# --- Termómetro de temporada de altcoins ---
+#
+# Réplica del índice de uso corriente: qué porcentaje del universo le ganó
+# a Bitcoin en la ventana. El umbral clásico es 75% para declarar
+# "temporada de altcoins" y 25% para "temporada de Bitcoin"; por debajo de
+# 75% no hay temporada de altcoins, hay monedas sueltas que rindieron bien.
+CRYPTO_ALTSEASON_MIN_PCT: Final[float] = 75.0
+CRYPTO_BTCSEASON_MAX_PCT: Final[float] = 25.0
+
+CRYPTO_SEASON_ALTS: Final[str] = "🟢 Temporada de altcoins"
+CRYPTO_SEASON_BTC: Final[str] = "🟠 Temporada de Bitcoin"
+CRYPTO_SEASON_MIXED: Final[str] = "⚪ Mercado mixto"
+
+# ----------------------------------------------------------------------
+# Soportes y resistencias del gráfico
+#
+# Los niveles se detectan como pivotes (máximos y mínimos locales) y se
+# agrupan por cercanía: un nivel al que el precio volvió varias veces vale
+# más que uno tocado una sola vez, y dos pivotes a medio punto porcentual
+# de distancia son el mismo nivel visto dos veces, no dos niveles.
+# ----------------------------------------------------------------------
+
+# Barras a cada lado que debe superar un pivote para contar como tal.
+CRYPTO_PIVOT_LOOKAROUND_BARS: Final[int] = 10
+
+# Dos pivotes a menos de esta distancia porcentual son el mismo nivel.
+CRYPTO_LEVEL_CLUSTER_PCT: Final[float] = 2.5
+
+# Cuántos niveles se dibujan de cada lado. Más de tres convierten el
+# gráfico en una parrilla donde ningún nivel se distingue del resto.
+CRYPTO_LEVELS_PER_SIDE: Final[int] = 3
+
+# Toques mínimos para que un nivel se considere fuerte (línea llena en vez
+# de punteada).
+CRYPTO_LEVEL_STRONG_TOUCHES: Final[int] = 3
+
+
+# ----------------------------------------------------------------------
+# Escala del gráfico de soportes y resistencias
+#
+# Un nivel es fuerte cuando el precio lo respetó varias veces a lo largo
+# del tiempo, así que la escala en la que se lo busca **es** la definición
+# de qué se considera un nivel. En velas diarias de seis meses salen giros
+# de corto plazo, casi todos con uno o dos toques; en velas mensuales de
+# varios años salen los techos y pisos que el mercado reconoce.
+#
+# Por eso la escala es un selector y arranca en mensual: es la que da los
+# niveles estructurales, que son los que sirven para decidir dónde comprar
+# o dónde salir.
+#
+# Cada escala necesita sus propios parámetros. Un entorno de 10 barras son
+# dos semanas en diario y casi un año en mensual; una tolerancia de
+# agrupamiento de 2,5% separa bien niveles diarios y parte en dos el mismo
+# techo cuando se lo mira en meses.
+# ----------------------------------------------------------------------
+CRYPTO_CHART_SCALE_MONTHLY: Final[str] = "🗓️ Mensual (niveles estructurales)"
+CRYPTO_CHART_SCALE_WEEKLY: Final[str] = "📅 Semanal (niveles intermedios)"
+CRYPTO_CHART_SCALE_DAILY: Final[str] = "☀️ Diario (niveles de corto plazo)"
+
+CRYPTO_CHART_SCALE_OPTIONS: Final[tuple[str, ...]] = (
+    CRYPTO_CHART_SCALE_MONTHLY,
+    CRYPTO_CHART_SCALE_WEEKLY,
+    CRYPTO_CHART_SCALE_DAILY,
+)
+
+# Por escala: (intervalo de yfinance, barras a cada lado del pivote,
+# tolerancia de agrupamiento en %, barras que se dibujan).
+#
+# Los valores están medidos sobre el historial real de Bitcoin, no elegidos
+# a ojo. En mensual hay pocas barras (145 en doce años), así que un entorno
+# de ±2 meses deja apenas dos o tres pivotes y casi ninguno se agrupa: los
+# niveles salen todos con un solo toque. Con ±1 mes y 8% de tolerancia, en
+# cambio, quedan seis zonas de dos toques cada una, que es lo que hace que
+# la línea signifique algo.
+CRYPTO_CHART_SCALE_PARAMS: Final[dict[str, tuple[str, int, float, int]]] = {
+    CRYPTO_CHART_SCALE_MONTHLY: ("1mo", 1, 8.0, 120),
+    CRYPTO_CHART_SCALE_WEEKLY: ("1wk", 4, 4.0, 220),
+    CRYPTO_CHART_SCALE_DAILY: ("1d", 10, 2.5, 280),
+}
+
+# Separación mínima entre dos etiquetas de nivel, en píxeles. Las zonas
+# cercanas al precio de hoy siempre quedan juntas, y sin este piso sus
+# textos se montan uno sobre otro y no se lee ninguno.
+CRYPTO_LEVEL_LABEL_GAP_PX: Final[int] = 30
+
+# Un nivel se dibuja como **zona** y no como línea: el precio no gira en un
+# número exacto, gira en una franja. El ancho es la mitad de la tolerancia
+# de agrupamiento de la escala, que es justamente la distancia dentro de la
+# cual dos giros se consideraron el mismo nivel.
+CRYPTO_LEVEL_BAND_RATIO: Final[float] = 0.5
+
+
+# ----------------------------------------------------------------------
+# Divergencias entre el precio y el oscilador (RSI)
+#
+# Una divergencia es que el precio y su impulso digan cosas distintas: el
+# precio marca un máximo más alto que el anterior pero el RSI marca uno más
+# bajo (bajista), o el precio hace un mínimo más bajo y el RSI uno más alto
+# (alcista). Se lee como que el movimiento pierde fuerza.
+#
+# No es una señal de entrada por sí sola —una divergencia puede sostenerse
+# mucho tiempo antes de que el precio gire, o no girar nunca— y por eso el
+# panel las **marca** en el gráfico en vez de convertirlas en una etiqueta
+# del semáforo.
+# ----------------------------------------------------------------------
+
+# Separación máxima entre los dos giros comparados. Dos máximos separados
+# por años no son una divergencia: son dos tramos distintos del mercado.
+CRYPTO_DIVERGENCE_MAX_GAP_BARS: Final[int] = 60
+
+# Diferencia mínima, en puntos de RSI, para que el segundo giro cuente como
+# más débil. Sin este piso, medio punto de RSI ya dibujaría una divergencia.
+CRYPTO_DIVERGENCE_MIN_RSI_GAP: Final[float] = 3.0
+
+# Diferencia mínima de precio entre los dos giros, en %. Dos máximos
+# prácticamente iguales son un doble techo, no una divergencia.
+CRYPTO_DIVERGENCE_MIN_PRICE_GAP_PCT: Final[float] = 1.0
+
+# Cuántas se dibujan, de la más reciente hacia atrás. El gráfico muestra
+# las últimas: una divergencia de hace tres años ya no informa nada.
+CRYPTO_DIVERGENCE_MAX_SHOWN: Final[int] = 3
+
+CRYPTO_DIVERGENCE_BEARISH: Final[str] = "Divergencia bajista"
+CRYPTO_DIVERGENCE_BULLISH: Final[str] = "Divergencia alcista"
