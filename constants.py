@@ -106,6 +106,51 @@ SIGNAL_STATS_MIN_CASES: Final[int] = 30
 SIGNAL_STATS_HORIZONS_DAILY: Final[tuple[int, ...]] = (5, 20, 60)
 SIGNAL_STATS_HORIZONS_WEEKLY: Final[tuple[int, ...]] = (4, 13, 26)
 
+
+# ----------------------------------------------------------------------
+# Panel de acciones argentinas (Merval), medido en dólares.
+#
+# El precio en pesos mezcla lo que vale la empresa con lo que dejó de valer el
+# peso: un RSI sobre pesos nominales marca sobrecompra en cada salto
+# devaluatorio. Las acciones se convierten con el dólar implícito del panel
+# (ver `merval/ccl.py`).
+# ----------------------------------------------------------------------
+# Cuántas barras se puede arrastrar el último CCL conocido cuando una de las
+# dos puntas no operó. Un feriado norteamericano se puentea; una semana sin
+# datos no, porque sería inventar un tipo de cambio.
+MERVAL_CCL_MAX_STALE_BARS: Final[int] = 5
+
+# Desvío porcentual contra la mediana a partir del cual un par queda marcado
+# como sospechoso. Con ratios correctos los pares coinciden dentro de pocos
+# puntos —el resto es costo de arbitraje—; un ratio mal cargado se va a cientos.
+MERVAL_CCL_PAIR_OUTLIER_PCT: Final[float] = 15.0
+
+# Dispersión del panel (rango entre pares, en % de la mediana) que se considera
+# saludable. Por encima, el tablero avisa que la tabla de ratios necesita una
+# revisión en vez de mostrar un dólar que nadie verificó.
+MERVAL_CCL_MAX_DISPERSION_PCT: Final[float] = 25.0
+
+# Ventanas de calendario del mercado local: la bolsa de Buenos Aires opera unas
+# 245 ruedas al año (menos que las 252 de Nueva York, por los feriados
+# propios), y el squeeze se mide contra seis meses de esas ruedas.
+MERVAL_52W_WINDOW_DAILY: Final[int] = 245
+MERVAL_52W_WINDOW_WEEKLY: Final[int] = 52
+MERVAL_SQUEEZE_LOOKBACK_DAILY: Final[int] = 122
+MERVAL_SQUEEZE_LOOKBACK_WEEKLY: Final[int] = 26
+
+# Splits que el proveedor no ajustó (ver `merval/splits.py`). Pasa seguido en
+# las especies locales: MIRG.BA pasó de 16.350 a 1.640 pesos el 2026-08-03 sin
+# que Yahoo lo corrigiera, y con ese salto adentro la acción mostraba un precio
+# 89% por debajo de su media de 200 ruedas.
+#
+# Salto mínimo para sospechar de un split: nadie parte una acción en 1,1.
+MERVAL_SPLIT_MIN_JUMP_PCT: Final[float] = 35.0
+
+# Cuánto puede alejarse el salto de un factor simple (2, 5, 10, 100…) y seguir
+# siendo atribuible a un split. Ajustado fino a propósito: cuanto más ancho,
+# más probable es confundir un derrumbe real con una acción partida.
+MERVAL_SPLIT_FACTOR_TOLERANCE_PCT: Final[float] = 3.0
+
 # Tolerancia sobre el mínimo de Bandwidth de la ventana: se considera
 # squeeze si el Bandwidth actual está hasta un 8% por encima del mínimo
 # de los últimos 6 meses (no exige que sea el mínimo exacto).
