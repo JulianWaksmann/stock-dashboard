@@ -86,6 +86,26 @@ SELL_STOCH_K_OVERBOUGHT: Final[float] = 80.0
 # equivalen aproximadamente a 6 meses de operatoria diaria (21 ruedas/mes).
 SQUEEZE_LOOKBACK_BARS: Final[int] = 126
 
+
+# ----------------------------------------------------------------------
+# Medición del semáforo contra lo que pasó después (`signal_stats.py`).
+# ----------------------------------------------------------------------
+# Etiqueta de la fila de referencia: el retorno promedio de **todas** las
+# barras del período. Es la única contra la que tiene sentido comparar una
+# señal; sin ella, un "+3% a veinte ruedas" no se sabe si es bueno.
+SIGNAL_STATS_BASELINE: Final[str] = "📊 Base (todas las barras)"
+
+# Casos por debajo de los cuales el promedio de una señal es anecdótico. No se
+# oculta la fila —que una señal casi no dispare es información—, se marca.
+SIGNAL_STATS_MIN_CASES: Final[int] = 30
+
+# Horizontes de medición, en barras, por temporalidad. En diario: una semana,
+# un mes y un trimestre de ruedas. En semanal: un mes, un trimestre y medio
+# año. El semáforo busca movimientos de swing, así que medirlo a una barra
+# sería medir ruido y a dos años, otra cosa.
+SIGNAL_STATS_HORIZONS_DAILY: Final[tuple[int, ...]] = (5, 20, 60)
+SIGNAL_STATS_HORIZONS_WEEKLY: Final[tuple[int, ...]] = (4, 13, 26)
+
 # Tolerancia sobre el mínimo de Bandwidth de la ventana: se considera
 # squeeze si el Bandwidth actual está hasta un 8% por encima del mínimo
 # de los últimos 6 meses (no exige que sea el mínimo exacto).

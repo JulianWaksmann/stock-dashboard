@@ -22,6 +22,7 @@ from components.coming_soon import render_coming_soon
 from components.crypto_panel import render_crypto_panel
 from components.kpi_cards import render_kpi_cards
 from components.screener_table import render_screener_table
+from components.signal_stats_panel import render_signal_stats
 from components.ticker_detail import render_ticker_detail_view
 from constants import (
     BUY_SIGNALS,
@@ -318,6 +319,18 @@ def _render_stocks_tab():
             "las más castigadas respecto de su propia tendencia; los de arriba, las más "
             "estiradas."
         )
+
+    # ----------------------------------------------------
+    # 6. MEDICIÓN DEL SEMÁFORO
+    # ----------------------------------------------------
+    # Sobre los mismos historiales que ya están en memoria, con la calibración
+    # de acciones: medir con otra daría el número de otro sistema.
+    st.markdown("---")
+    render_signal_stats(
+        dict_history,
+        timeframe_label=timeframe_label,
+        key_prefix="acciones",
+    )
 
     with st.expander("ℹ️ Cómo se lee el semáforo"):
         st.markdown("""

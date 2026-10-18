@@ -24,6 +24,7 @@ from components.formatting import (
     format_signed_pct,
     format_usd_compact,
 )
+from components.signal_stats_panel import render_signal_stats
 from constants import (
     CRYPTO_ALTSEASON_MIN_PCT,
     CRYPTO_BENCHMARK_LABEL,
@@ -49,7 +50,7 @@ from constants import (
 from crypto.data_loader import load_chart_history, load_crypto_data
 from crypto.divergences import detect_divergences
 from crypto.levels import detect_support_resistance, scale_params
-from crypto.panel import apply_crypto_filters, spec_for_timeframe
+from crypto.panel import CRYPTO_THRESHOLDS, apply_crypto_filters, spec_for_timeframe
 from indicators import compute_rsi
 
 
@@ -508,6 +509,19 @@ def render_crypto_panel():
 
     st.markdown("---")
     _render_chart(df, historiales)
+
+    # La medición usa las ventanas y los umbrales de **cripto**: con los de
+    # acciones mediría un semáforo que esta sección no muestra (ver CLAUDE.md,
+    # "El semáforo se calibra, no se duplica").
+    st.markdown("---")
+    render_signal_stats(
+        historiales,
+        timeframe_label=timeframe_label,
+        window_52w=spec.ventana_52w,
+        squeeze_lookback=spec.squeeze_lookback,
+        thresholds=CRYPTO_THRESHOLDS,
+        key_prefix="cripto",
+    )
 
     with st.expander("ℹ️ Qué cambia respecto del tablero de acciones"):
         st.markdown(f"""
