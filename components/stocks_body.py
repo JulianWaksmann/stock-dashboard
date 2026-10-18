@@ -92,7 +92,7 @@ def render_failed_tickers_notice(df_summary: pd.DataFrame, nombre_activo: str = 
         return
 
     st.warning(
-        f"⚠️ No se pudieron cargar {len(fallidos)} {nombre_activo}(es). "
+        f"No se pudieron cargar {len(fallidos)} {nombre_activo}(es). "
         "Suele pasar cuando el proveedor de datos limita las consultas, o "
         "cuando el activo dejó de cotizar. Probá de nuevo con el botón "
         "**Refrescar datos**."
@@ -134,7 +134,7 @@ def render_stocks_body(
     render_changes(df_summary, motor_registro)
 
 
-    st.subheader("⚡ Alertas de Confluencia del Día")
+    st.subheader("Alertas del día")
     render_alerts_panel(df_summary)
     st.markdown("---")
 
@@ -149,13 +149,14 @@ def render_stocks_body(
     # ----------------------------------------------------
     col_t1, col_t2 = st.columns([3, 1])
     with col_t1:
-        st.markdown(
-            f"### 📋 Matriz Cuantitativa ({len(df_filtered)} de {len(df_summary)} "
-            f"{nombre_activo} | Base: **{timeframe_label}**)"
+        st.markdown("### Matriz cuantitativa")
+        st.caption(
+            f"{len(df_filtered)} de {len(df_summary)} {nombre_activo} · "
+            f"base {timeframe_label.lower()}"
         )
     with col_t2:
         st.download_button(
-            label="📥 Exportar a CSV",
+            label="Exportar CSV",
             data=df_filtered.to_csv(index=False).encode("utf-8"),
             file_name=f"{nombre_archivo}_{timeframe}.csv",
             mime="text/csv",
@@ -171,18 +172,23 @@ def render_stocks_body(
     # El cuadro dice *qué* activo mirar; la ficha es la que permite decidir, y
     # necesita el historial completo.
     st.markdown("---")
-    st.markdown("### 🔎 Ficha de detalle")
+    st.markdown("### Ficha de detalle")
 
     disponibles = df_filtered["Ticker"].tolist() if "Ticker" in df_filtered.columns else []
     if not disponibles:
         st.info("Ningún activo pasa los filtros actuales, así que no hay ficha para mostrar.")
     else:
-        elegido = st.selectbox(
-            "Activo a examinar:",
-            disponibles,
-            help="La lista respeta los filtros de la barra lateral.",
-            key=f"{key_prefix}_ficha",
-        )
+        # En una columna angosta: a ancho completo, un desplegable con tres
+        # letras adentro parece una barra vacía y no se lee como el control
+        # que elige de qué activo habla todo lo que sigue.
+        col_sel, _ = st.columns([1, 3])
+        with col_sel:
+            elegido = st.selectbox(
+                "Activo a examinar",
+                disponibles,
+                help="La lista respeta los filtros de arriba.",
+                key=f"{key_prefix}_ficha",
+            )
         render_ticker_detail_view(
             elegido,
             df_summary,
@@ -196,7 +202,7 @@ def render_stocks_body(
     # De a una y no las tres apiladas: son tres gráficos de 500 a 900 px y
     # juntos no se comparan, se scrollean. Ninguna descarga datos nuevos.
     st.markdown("---")
-    st.markdown("### 📊 Vistas agregadas del panel")
+    st.markdown("### Vistas agregadas")
 
     vista = st.radio(
         "Vista agregada",
@@ -248,5 +254,5 @@ def render_stocks_body(
         key_prefix=key_prefix,
     )
 
-    with st.expander("ℹ️ Cómo se lee el semáforo"):
+    with st.expander("Cómo se lee el semáforo"):
         st.markdown(_COMO_SE_LEE)

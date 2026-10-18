@@ -169,10 +169,10 @@ SQUEEZE_BANDWIDTH_TOLERANCE: Final[float] = 1.08
 
 # --- Filtro por Semáforo (Sistema de Grados) ---
 FILTER_SIGNAL_ALL: Final[str] = "Todas las Acciones"
-FILTER_SIGNAL_STRONG_BUY: Final[str] = "🌟 Solo Compra Fuerte"
-FILTER_SIGNAL_BUY: Final[str] = "🟢 Solo Compras (Fuerte + Moderada)"
-FILTER_SIGNAL_SELL: Final[str] = "🚨 Solo Venta / Rotar (Fuerte + Moderada)"
-FILTER_SIGNAL_SQUEEZE: Final[str] = "⚡ Solo Squeezes"
+FILTER_SIGNAL_STRONG_BUY: Final[str] = "Solo Compra Fuerte"
+FILTER_SIGNAL_BUY: Final[str] = "Solo Compras (Fuerte + Moderada)"
+FILTER_SIGNAL_SELL: Final[str] = "Solo Venta / Rotar (Fuerte + Moderada)"
+FILTER_SIGNAL_SQUEEZE: Final[str] = "Solo Squeezes"
 
 SIGNAL_FILTER_OPTIONS: Final[tuple[str, ...]] = (
     FILTER_SIGNAL_ALL,
@@ -184,8 +184,8 @@ SIGNAL_FILTER_OPTIONS: Final[tuple[str, ...]] = (
 
 # --- Filtro por Flujo Institucional / Smart Money (OBV) ---
 FILTER_FLOW_ALL: Final[str] = "Todos los Flujos"
-FILTER_FLOW_ACCUMULATION: Final[str] = "🐳 Solo Acumulación (OBV > SMA 20)"
-FILTER_FLOW_DISTRIBUTION: Final[str] = "📉 Solo Distribución (OBV < SMA 20)"
+FILTER_FLOW_ACCUMULATION: Final[str] = "Solo Acumulación (OBV > SMA 20)"
+FILTER_FLOW_DISTRIBUTION: Final[str] = "Solo Distribución (OBV < SMA 20)"
 
 FLOW_FILTER_OPTIONS: Final[tuple[str, ...]] = (
     FILTER_FLOW_ALL,
@@ -205,8 +205,8 @@ SMA200_FILTER_OPTIONS: Final[tuple[str, ...]] = (
 )
 
 # --- Selector de Temporalidad (Diario vs Semanal) ---
-TIMEFRAME_CHOICE_DAILY: Final[str] = "☀️ Diario (1D)"
-TIMEFRAME_CHOICE_WEEKLY: Final[str] = "📅 Semanal (1W)"
+TIMEFRAME_CHOICE_DAILY: Final[str] = "Diario (1D)"
+TIMEFRAME_CHOICE_WEEKLY: Final[str] = "Semanal (1W)"
 
 TIMEFRAME_CHOICE_OPTIONS: Final[tuple[str, ...]] = (
     TIMEFRAME_CHOICE_DAILY,
@@ -296,9 +296,9 @@ BOND_LIQUID_SPREAD_MAX_PCT: Final[float] = 1.0
 
 # --- Filtro por Atractivo ---
 BOND_FILTER_SIGNAL_ALL: Final[str] = "Todas las ONs"
-BOND_FILTER_SIGNAL_ATTRACTIVE: Final[str] = "🟢 Solo Atractivas (Muy + Atractivo)"
-BOND_FILTER_SIGNAL_VERY_ATTRACTIVE: Final[str] = "🌟 Solo Muy Atractivas"
-BOND_FILTER_SIGNAL_RISK: Final[str] = "🚨 Solo Alertas de Riesgo"
+BOND_FILTER_SIGNAL_ATTRACTIVE: Final[str] = "Solo Atractivas (Muy + Atractivo)"
+BOND_FILTER_SIGNAL_VERY_ATTRACTIVE: Final[str] = "Solo Muy Atractivas"
+BOND_FILTER_SIGNAL_RISK: Final[str] = "Solo Alertas de Riesgo"
 
 BOND_SIGNAL_FILTER_OPTIONS: Final[tuple[str, ...]] = (
     BOND_FILTER_SIGNAL_ALL,
@@ -309,8 +309,8 @@ BOND_SIGNAL_FILTER_OPTIONS: Final[tuple[str, ...]] = (
 
 # --- Filtro por Ley aplicable ---
 BOND_FILTER_LAW_ALL: Final[str] = "Todas las leyes"
-BOND_FILTER_LAW_NY: Final[str] = "🇺🇸 Solo Ley Nueva York"
-BOND_FILTER_LAW_ARG: Final[str] = "🇦🇷 Solo Ley Argentina"
+BOND_FILTER_LAW_NY: Final[str] = "Solo Ley Nueva York"
+BOND_FILTER_LAW_ARG: Final[str] = "Solo Ley Argentina"
 
 BOND_LAW_FILTER_OPTIONS: Final[tuple[str, ...]] = (
     BOND_FILTER_LAW_ALL,
@@ -338,9 +338,9 @@ BOND_PRICE_CONVENTION_OPTIONS: Final[tuple[str, ...]] = (
 # dispararía igual la descarga de precios de ONs. Con el selector, cada
 # sección consulta sus fuentes recién cuando se la elige.
 # ----------------------------------------------------------------------
-SECTION_STOCKS: Final[str] = "📈 Acciones (Confluencia & Smart Money)"
-SECTION_BONDS: Final[str] = "💵 Bonos Corporativos"
-SECTION_CRYPTO: Final[str] = "🪙 Criptomonedas"
+SECTION_STOCKS: Final[str] = "Acciones"
+SECTION_BONDS: Final[str] = "Bonos corporativos"
+SECTION_CRYPTO: Final[str] = "Criptomonedas"
 
 SECTION_OPTIONS: Final[tuple[str, ...]] = (SECTION_STOCKS, SECTION_BONDS, SECTION_CRYPTO)
 
@@ -374,7 +374,7 @@ STOCK_CHART_OPTIONS: Final[tuple[str, ...]] = (
 
 
 # ----------------------------------------------------------------------
-# País del panel de bonos corporativos (desplegable de la barra lateral).
+# País del panel de bonos corporativos (desplegable de la barra de controles).
 #
 # El país no es una etiqueta cosmética: define la fuente de precios, las
 # convenciones de cálculo y el catálogo de emisiones. Hoy solo Argentina
@@ -387,8 +387,8 @@ STOCK_CHART_OPTIONS: Final[tuple[str, ...]] = (
 # de fondos es la misma aritmética en cualquier mercado); lo que cambia por
 # país es de dónde salen los precios y las condiciones de emisión.
 # ----------------------------------------------------------------------
-BOND_COUNTRY_ARGENTINA: Final[str] = "🇦🇷 Argentina (ONs)"
-BOND_COUNTRY_USA: Final[str] = "🇺🇸 Estados Unidos"
+BOND_COUNTRY_ARGENTINA: Final[str] = "Argentina (ONs)"
+BOND_COUNTRY_USA: Final[str] = "Estados Unidos"
 
 BOND_COUNTRY_OPTIONS: Final[tuple[str, ...]] = (
     BOND_COUNTRY_ARGENTINA,
@@ -431,9 +431,9 @@ BOND_SETTLEMENT_CURRENCY: Final[dict[str, str]] = {
 
 # --- Filtro por especie de liquidación ---
 BOND_FILTER_SETTLEMENT_ALL: Final[str] = "Todas las especies"
-BOND_FILTER_SETTLEMENT_USD: Final[str] = "💵 Solo dólares (MEP + Cable)"
-BOND_FILTER_SETTLEMENT_MEP: Final[str] = "💵 Solo MEP"
-BOND_FILTER_SETTLEMENT_PESOS: Final[str] = "🇦🇷 Solo pesos"
+BOND_FILTER_SETTLEMENT_USD: Final[str] = "Solo dólares (MEP + Cable)"
+BOND_FILTER_SETTLEMENT_MEP: Final[str] = "Solo MEP"
+BOND_FILTER_SETTLEMENT_PESOS: Final[str] = "Solo pesos"
 
 BOND_SETTLEMENT_FILTER_OPTIONS: Final[tuple[str, ...]] = (
     BOND_FILTER_SETTLEMENT_USD,
@@ -479,7 +479,7 @@ BOND_SOURCE_NONE: Final[str] = "—"
 # tipo "más de 1.000.000" sería un número inventado; "las 20 que más
 # operaron hoy" se sostiene sin saber la unidad.
 # ----------------------------------------------------------------------
-BOND_FILTER_LIQUIDITY_TRADED: Final[str] = "💧 Solo las que operaron hoy"
+BOND_FILTER_LIQUIDITY_TRADED: Final[str] = "Solo las que operaron hoy"
 BOND_FILTER_LIQUIDITY_TOP_20: Final[str] = "🔝 Top 20 por volumen"
 BOND_FILTER_LIQUIDITY_TOP_50: Final[str] = "🔝 Top 50 por volumen"
 BOND_FILTER_LIQUIDITY_ALL: Final[str] = "Todas, incluso sin operar"
@@ -836,10 +836,10 @@ CRYPTO_UNIVERSE_OPTIONS: Final[tuple[str, ...]] = (
 
 # --- Filtro por Semáforo ---
 CRYPTO_FILTER_SIGNAL_ALL: Final[str] = "Todas las Criptos"
-CRYPTO_FILTER_SIGNAL_STRONG_BUY: Final[str] = "🌟 Solo Compra Fuerte"
-CRYPTO_FILTER_SIGNAL_BUY: Final[str] = "🟢 Solo Compras (Fuerte + Moderada)"
-CRYPTO_FILTER_SIGNAL_SELL: Final[str] = "🚨 Solo Venta / Rotar (Fuerte + Moderada)"
-CRYPTO_FILTER_SIGNAL_SQUEEZE: Final[str] = "⚡ Solo Squeezes"
+CRYPTO_FILTER_SIGNAL_STRONG_BUY: Final[str] = "Solo Compra Fuerte"
+CRYPTO_FILTER_SIGNAL_BUY: Final[str] = "Solo Compras (Fuerte + Moderada)"
+CRYPTO_FILTER_SIGNAL_SELL: Final[str] = "Solo Venta / Rotar (Fuerte + Moderada)"
+CRYPTO_FILTER_SIGNAL_SQUEEZE: Final[str] = "Solo Squeezes"
 
 CRYPTO_SIGNAL_FILTER_OPTIONS: Final[tuple[str, ...]] = (
     CRYPTO_FILTER_SIGNAL_ALL,
@@ -851,8 +851,8 @@ CRYPTO_SIGNAL_FILTER_OPTIONS: Final[tuple[str, ...]] = (
 
 # --- Filtro por fuerza relativa contra Bitcoin ---
 CRYPTO_FILTER_RS_ALL: Final[str] = "Todas"
-CRYPTO_FILTER_RS_OUTPERFORM: Final[str] = "💪 Solo las que superan a BTC"
-CRYPTO_FILTER_RS_UNDERPERFORM: Final[str] = "🐢 Solo las rezagadas vs BTC"
+CRYPTO_FILTER_RS_OUTPERFORM: Final[str] = "Solo las que superan a BTC"
+CRYPTO_FILTER_RS_UNDERPERFORM: Final[str] = "Solo las rezagadas vs BTC"
 
 CRYPTO_RS_FILTER_OPTIONS: Final[tuple[str, ...]] = (
     CRYPTO_FILTER_RS_ALL,
@@ -1002,9 +1002,9 @@ STOCK_LEVELS_PER_SIDE: Final[int] = 3
 # agrupamiento de 2,5% separa bien niveles diarios y parte en dos el mismo
 # techo cuando se lo mira en meses.
 # ----------------------------------------------------------------------
-CRYPTO_CHART_SCALE_MONTHLY: Final[str] = "🗓️ Mensual (niveles estructurales)"
-CRYPTO_CHART_SCALE_WEEKLY: Final[str] = "📅 Semanal (niveles intermedios)"
-CRYPTO_CHART_SCALE_DAILY: Final[str] = "☀️ Diario (niveles de corto plazo)"
+CRYPTO_CHART_SCALE_MONTHLY: Final[str] = "Mensual (niveles estructurales)"
+CRYPTO_CHART_SCALE_WEEKLY: Final[str] = "Semanal (niveles intermedios)"
+CRYPTO_CHART_SCALE_DAILY: Final[str] = "Diario (niveles de corto plazo)"
 
 CRYPTO_CHART_SCALE_OPTIONS: Final[tuple[str, ...]] = (
     CRYPTO_CHART_SCALE_MONTHLY,

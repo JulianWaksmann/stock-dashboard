@@ -26,6 +26,7 @@ from theme import (
     COLOR_BOLLINGER_BAND,
     COLOR_BOLLINGER_FILL,
     COLOR_BOLLINGER_MID,
+    COLOR_CHART_GRID,
     COLOR_MACD_LINE,
     COLOR_MACD_SIGNAL,
     COLOR_MACD_ZERO_LINE,
@@ -44,6 +45,11 @@ from theme import (
     COLOR_SMA_200,
     COLOR_STOCH_D,
     COLOR_STOCH_K,
+    COLOR_SURFACE,
+    COLOR_TEXT,
+    COLOR_TEXT_MUTED,
+    FONT_FAMILY,
+    PLOTLY_TEMPLATE,
 )
 
 
@@ -158,6 +164,41 @@ def _add_price_panel(fig: go.Figure, df: pd.DataFrame, indicators: ChartIndicato
     )
 
 
+def _aplicar_estilo(fig: go.Figure) -> None:
+    """
+    Deja todos los gráficos hablando el idioma del tablero.
+
+    Tipografía y color de texto de la carcasa, fondo del lienzo y una grilla
+    con el tinte lavanda en vez del gris de `plotly_white`. Está acá y no
+    repetido en cada `update_layout` porque la coherencia entre gráficos es
+    justamente lo que se pierde cuando cada uno la declara por su cuenta.
+
+    No toca `title_font`: fijarlo en una figura sin título hace que Plotly
+    dibuje la palabra "undefined" arriba a la izquierda. Estos gráficos no
+    llevan título propio — el encabezado de la sección ya dice qué son.
+    """
+    fig.update_layout(
+        font=dict(family=FONT_FAMILY, size=11.5, color=COLOR_TEXT),
+        paper_bgcolor=COLOR_SURFACE,
+        plot_bgcolor=COLOR_SURFACE,
+        hoverlabel=dict(font=dict(family=FONT_FAMILY, size=12)),
+    )
+    fig.update_xaxes(
+        gridcolor=COLOR_CHART_GRID,
+        showline=False,
+        zeroline=False,
+        ticks="",
+        title_font=dict(size=11, color=COLOR_TEXT_MUTED),
+    )
+    fig.update_yaxes(
+        gridcolor=COLOR_CHART_GRID,
+        showline=False,
+        zeroline=False,
+        ticks="",
+        title_font=dict(size=11, color=COLOR_TEXT_MUTED),
+    )
+
+
 def _add_levels(fig: go.Figure, df: pd.DataFrame) -> None:
     """
     Soportes y resistencias sobre el panel de precio.
@@ -182,14 +223,16 @@ def _add_levels(fig: go.Figure, df: pd.DataFrame) -> None:
     )
 
     def _dibujar(nivel: PriceLevel, color: str, etiqueta: str) -> None:
-        toques = "toque" if nivel.touches == 1 else "toques"
+        # "×3" y no "(3 toques)": la etiqueta se dibuja fuera del área de
+        # trazado, y la versión larga no entraba en el margen derecho sin
+        # comerle ancho al gráfico.
         fig.add_hline(
             y=nivel.price,
             line_dash="solid" if nivel.is_strong else "dot",
             line_width=1.6 if nivel.is_strong else 1.0,
             line_color=color,
             opacity=0.75,
-            annotation_text=f"{etiqueta} {nivel.price:,.2f} ({nivel.touches} {toques})",
+            annotation_text=f"{etiqueta} {nivel.price:,.2f} ×{nivel.touches}",
             annotation_position="right",
             annotation_font_size=10,
             annotation_font_color=color,
@@ -280,9 +323,13 @@ def _add_rsi_stochastic_panel(fig: go.Figure, df: pd.DataFrame, indicators: Char
         row=4, col=1
     )
 
-    fig.add_hline(y=70, line_dash="dash", line_color=COLOR_NEGATIVE, row=4, col=1, annotation_text="70 (Sobrecompra)", annotation_position="top right")
-    fig.add_hline(y=50, line_dash="dot", line_color=COLOR_REFERENCE_LINE, row=4, col=1)
-    fig.add_hline(y=30, line_dash="dash", line_color=COLOR_POSITIVE, row=4, col=1, annotation_text="30 (Sobreventa)", annotation_position="bottom right")
+    # Sin etiquetas sobre las líneas: en un panel de 150 px de alto, "70
+    # (Sobrecompra)" se apoya justo donde pasa el estocástico, que llega a 100
+    # casi todos los días. Los umbrales se leen en las marcas del eje, que
+    # `plot_stock_detail` fija en 0 / 30 / 50 / 70 / 100.
+    fig.add_hline(y=70, line_dash="dash", line_color=COLOR_NEGATIVE, line_width=1, row=4, col=1)
+    fig.add_hline(y=50, line_dash="dot", line_color=COLOR_REFERENCE_LINE, line_width=1, row=4, col=1)
+    fig.add_hline(y=30, line_dash="dash", line_color=COLOR_POSITIVE, line_width=1, row=4, col=1)
 
 
 def plot_stock_detail(
@@ -311,17 +358,17 @@ def plot_stock_detail(
     is_weekly = "sem" in str(timeframe_label).lower()
     suffix = "Sem" if is_weekly else "Días"
 
+    # Sin `subplot_titles`. Plotly los dibuja como anotaciones pegadas al borde
+    # superior de cada panel, así que con cuatro paneles apilados cada título
+    # caía dentro del gráfico de arriba, encima de las velas o del MACD. El
+    # nombre de cada panel va en el título de su eje Y, que es donde no se
+    # superpone con nada; la identificación del papel ya está en la ficha, que
+    # es lo que hay inmediatamente arriba de este gráfico.
     fig = make_subplots(
         rows=4, cols=1,
         shared_xaxes=True,
-        vertical_spacing=0.03,
-        row_heights=[0.50, 0.12, 0.19, 0.19],
-        subplot_titles=(
-            f"{ticker} - {company_name} | {timeframe_label}: Velas, SMAs (50, 200) y Bollinger",
-            "Volumen",
-            "MACD (12, 26, 9)",
-            f"RSI 14 y Estocástico (%K, %D) [{suffix}]"
-        )
+        vertical_spacing=0.045,
+        row_heights=[0.52, 0.12, 0.18, 0.18],
     )
 
     _add_price_panel(fig, df, indicators, timeframe_label, suffix)
@@ -331,22 +378,40 @@ def plot_stock_detail(
     _add_rsi_stochastic_panel(fig, df, indicators, suffix)
 
     fig.update_layout(
-        template="plotly_dark",
+        template=PLOTLY_TEMPLATE,
         xaxis_rangeslider_visible=False,
-        height=900,
-        margin=dict(l=40, r=40, t=50, b=30),
+        height=860,
+        # El izquierdo entra el título del eje (con 40 px, "Precio ($)" salía
+        # cortado en "Pr"); el derecho, las etiquetas de los niveles, que se
+        # dibujan fuera del área de trazado y decían "Soporte 321,4…"; el
+        # inferior, la leyenda.
+        margin=dict(l=66, r=128, t=28, b=86),
+        # La leyenda va abajo: son once series y arriba ocupaba tres renglones
+        # que empujaban los cuatro paneles hacia el fondo de la figura.
         legend=dict(
             orientation="h",
-            yanchor="bottom",
-            y=1.01,
-            xanchor="right",
-            x=1
-        )
+            yanchor="top",
+            y=-0.06,
+            xanchor="left",
+            x=0,
+            font=dict(size=10.5),
+            bgcolor="rgba(0,0,0,0)",
+        ),
     )
+
+    _aplicar_estilo(fig)
+    # En el panel de precio la grilla vertical compite con las velas.
+    fig.update_xaxes(showgrid=False)
+
     fig.update_yaxes(title_text="Precio ($)", row=1, col=1)
     fig.update_yaxes(title_text="Volumen", row=2, col=1)
     fig.update_yaxes(title_text="MACD", row=3, col=1)
-    fig.update_yaxes(title_text="RSI / Stoch", range=[0, 100], row=4, col=1)
+    fig.update_yaxes(
+        title_text="RSI / Stoch",
+        range=[0, 100],
+        tickvals=[0, 30, 50, 70, 100],
+        row=4, col=1,
+    )
 
     return fig
 
@@ -401,13 +466,13 @@ def plot_valuation_vs_technicals(df: pd.DataFrame, timeframe_label: str = "Diari
     fig.add_vline(x=median_fpe, line_dash="dash", line_color=COLOR_SCATTER_REFERENCE_LINE)
 
     fig.update_layout(
-        template="plotly_dark",
-        title=f"<b>Valuación vs Momentum Macro ({timeframe_label})</b> (Forward P/E vs % Distancia a SMA 200)",
-        xaxis_title="PER Futuro (Forward P/E) — Menor = Valuación más atractiva",
-        yaxis_title=f"% Distancia a Media 200 ({timeframe_label}) — Mayor = Mayor Momentum",
+        template=PLOTLY_TEMPLATE,
+        xaxis_title="PER futuro — menor es más barato",
+        yaxis_title=f"% vs media de 200 ({timeframe_label.lower()}) — mayor es más impulso",
         height=580,
-        margin=dict(l=40, r=40, t=60, b=40)
+        margin=dict(l=56, r=40, t=24, b=46)
     )
+    _aplicar_estilo(fig)
     return fig
 
 
@@ -451,15 +516,18 @@ def plot_pe_comparison_bar(df: pd.DataFrame, max_items: int = 25) -> go.Figure:
         )
 
     fig.update_layout(
-        template="plotly_dark",
+        template=PLOTLY_TEMPLATE,
         barmode='group',
-        title="<b>Comparativa PER: Pasado vs Futuro vs Promedio Histórico (5 Años)</b>",
-        xaxis_title="Acción (Ticker)",
-        yaxis_title="Ratio P/E (Veces)",
+        xaxis_title="",
+        yaxis_title="PER (veces)",
         height=480,
-        margin=dict(l=40, r=40, t=50, b=40),
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+        margin=dict(l=56, r=40, t=36, b=40),
+        legend=dict(
+            orientation="h", yanchor="bottom", y=1.01, xanchor="right", x=1,
+            font=dict(size=10.5), bgcolor="rgba(0,0,0,0)",
+        )
     )
+    _aplicar_estilo(fig)
     return fig
 
 
@@ -487,11 +555,11 @@ def plot_sma_distances_bar(df: pd.DataFrame, timeframe_label: str = "Diario") ->
     )
 
     fig.update_layout(
-        template="plotly_dark",
-        title=f"<b>Ranking: % Distancia respecto a Media Móvil de 200 ({timeframe_label})</b>",
-        xaxis_title=f"% Desviación de SMA 200 ({timeframe_label})",
-        yaxis_title="Ticker",
+        template=PLOTLY_TEMPLATE,
+        xaxis_title=f"% vs media de 200 ({timeframe_label.lower()})",
+        yaxis_title="",
         height=max(500, len(df_clean) * 20),
-        margin=dict(l=60, r=60, t=50, b=40)
+        margin=dict(l=60, r=64, t=24, b=44)
     )
+    _aplicar_estilo(fig)
     return fig

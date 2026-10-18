@@ -32,14 +32,17 @@ def render_ticker_detail_view(ticker: str, df_summary: pd.DataFrame, dict_histor
 
     col_title, col_sig = st.columns([3, 1])
     with col_title:
-        st.markdown(f"### 🏢 {row.get('Empresa', ticker)} (`{ticker}`)")
-        st.caption(f"Sector: **{row.get('Sector', 'Desconocido')}** | Temporalidad activa: **{timeframe_label}**")
+        st.markdown(f"### {row.get('Empresa', ticker)}")
+        st.caption(
+            f"**{ticker}** · {row.get('Sector', 'Sector desconocido')} · "
+            f"temporalidad {timeframe_label.lower()}"
+        )
     with col_sig:
         st.markdown(f"<div style='text-align:right; padding-top:10px; font-size:16px; font-weight:700;'>{confluence}</div>", unsafe_allow_html=True)
 
     # 1. Métricas de Valuación y Momentum
     c1, c2, c3, c4, c5 = st.columns(5)
-    c1.metric("Precio Actual", f"${row['Precio Actual']:.2f}", format_signed_pct(row['Var. Período (%)']))
+    c1.metric("Precio", f"${row['Precio Actual']:.2f}", format_signed_pct(row['Var. Período (%)']))
 
     t_pe = f"{row['PER Pasado (Trailing)']:.1f}x" if pd.notna(row['PER Pasado (Trailing)']) else "N/A"
     c2.metric("PER Pasado", t_pe)
@@ -48,10 +51,10 @@ def render_ticker_detail_view(ticker: str, df_summary: pd.DataFrame, dict_histor
     c3.metric("PER Futuro", f_pe)
 
     h_pe = f"{row['PER Prom. Hist. (5A)']:.1f}x" if ('PER Prom. Hist. (5A)' in row and pd.notna(row['PER Prom. Hist. (5A)'])) else "N/A"
-    c4.metric("PER Hist. (5A)", h_pe)
+    c4.metric("PER hist. 5A", h_pe)
 
     rsi_val = f"{row['RSI_VAL']:.1f}" if pd.notna(row['RSI_VAL']) else "N/A"
-    c5.metric(f"RSI 14 ({timeframe_label})", rsi_val)
+    c5.metric(f"RSI 14 · {timeframe_label.lower()}", rsi_val)
 
     st.divider()
 
@@ -69,15 +72,21 @@ def render_ticker_detail_view(ticker: str, df_summary: pd.DataFrame, dict_histor
     )
 
     bw_val = f"{row.get('BB_BANDWIDTH', 0):.1f}%" if pd.notna(row.get('BB_BANDWIDTH')) else "N/A"
-    m3.metric("Bollinger Bandwidth", bw_val, help="Ancho porcentual de las Bandas de Bollinger (detección de Squeeze)")
+    m3.metric("Ancho Bollinger", bw_val, help="Ancho porcentual de las Bandas de Bollinger (detección de squeeze)")
 
     stoch_str = f"{row.get('STOCH_K', 0):.1f} / {row.get('STOCH_D', 0):.1f}" if pd.notna(row.get('STOCH_K')) else "N/A"
-    m4.metric("Estocástico %K/%D", stoch_str, help="%K (14) y %D (SMA 3)")
+    m4.metric("Estocástico", stoch_str, help="%K (14) y %D (SMA 3)")
 
     dist_52w = format_signed_pct(row.get('DIST_52W_HIGH_PCT'))
-    m5.metric("Distancia Máx 52S", dist_52w, help="Distancia porcentual al Máximo de 52 Semanas")
+    m5.metric("Dist. máx. 52 s", dist_52w, help="Distancia porcentual al máximo de 52 semanas")
 
-    st.markdown("#### 📊 Gráfico Avanzado (4 Paneles: Velas+SMAs+Bollinger | Volumen | MACD | RSI+Estocástico)")
+    # El título enumeraba los cuatro paneles y medía más que el gráfico. Lo
+    # que contiene cada panel lo dice el título de su propio eje.
+    st.markdown("#### Gráfico técnico")
+    st.caption(
+        "Velas con medias de 50 y 200, bandas de Bollinger y niveles · volumen · "
+        "MACD · RSI con estocástico."
+    )
     if not df_hist.empty:
         indicators = compute_chart_indicators(df_hist)
         fig = plot_stock_detail(df_hist, indicators, ticker, row.get('Empresa', ''), timeframe_label)

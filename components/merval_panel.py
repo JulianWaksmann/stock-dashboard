@@ -136,8 +136,8 @@ def render_merval_panel(timeframe: str, timeframe_label: str, filtros: StockFilt
     Dibuja la sección de acciones argentinas de punta a punta.
 
     La llama `app.py` cuando el selector de mercado elige Argentina, con los
-    mismos filtros de la barra lateral que usa el panel estadounidense: el
-    tamiz es el mismo (`stock_screener.apply_stock_filters`).
+    mismos filtros que usa el panel estadounidense: el tamiz es el mismo
+    (`stock_screener.apply_stock_filters`).
     """
     col_texto, col_boton = st.columns([4, 1])
     with col_texto:

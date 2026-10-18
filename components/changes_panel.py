@@ -75,7 +75,7 @@ def render_changes(
     activo y por mercado, porque comparar acciones argentinas contra las
     estadounidenses no significaría nada.
     """
-    with st.expander("🗓️ Qué cambió desde la última vez"):
+    with st.expander("Qué cambió desde la última vez"):
         if df is None or df.empty:
             st.info("No hay panel que registrar.")
             return

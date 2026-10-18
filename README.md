@@ -25,12 +25,12 @@ Evalúa cada ticker contra un conjunto chico de condiciones obligatorias y opcio
 * 🚨 **SQUEEZE:** el ancho de las Bandas de Bollinger está en su mínimo de 6 meses (126 ruedas) o hasta 8% por encima — señal de compresión de volatilidad y expansión direccional inminente.
 * 🟡 **NEUTRAL:** modo de seguimiento cuando no se alcanza ningún umbral de confluencia.
 
-Cada etiqueta de señal y cada umbral numérico vive en `constants.py`, que es la única fuente de verdad compartida entre el algoritmo (`indicators.py`) y los filtros de la barra lateral (`app.py`) — las reglas se ajustan ahí, no en el código que las consume.
+Cada etiqueta de señal y cada umbral numérico vive en `constants.py`, que es la única fuente de verdad compartida entre el algoritmo (`indicators.py`) y los filtros del cuadro (`app.py`) — las reglas se ajustan ahí, no en el código que las consume.
 
 ---
 
 ### 2. Flujo institucional (OBV / Smart Money)
-* Compara el On-Balance Volume contra su propia SMA de 20 períodos para marcar cada ticker como 🐳 **Acumulación** o 📉 **Distribución**. Alimenta tanto el puntaje de confluencia como su propia columna "Flujo Institucional" y su filtro en la barra lateral.
+* Compara el On-Balance Volume contra su propia SMA de 20 períodos para marcar cada ticker como 🐳 **Acumulación** o 📉 **Distribución**. Alimenta tanto el puntaje de confluencia como su propia columna "Flujo Institucional" y su filtro en la barra de controles.
 
 ---
 
@@ -53,7 +53,7 @@ Cada etiqueta de señal y cada umbral numérico vive en `constants.py`, que es l
 
 ### 5. Arquitectura y usabilidad
 * **Doble temporalidad:** alterna entre cálculos **diarios (1D)** y **semanales (1W)**.
-* **Selector de mercado:** la barra lateral permite elegir mercado; **Acciones USA (S&P 500)** es el default implementado, mientras que Cripto y Acciones Argentinas (Merval) figuran como "próximamente".
+* **Selector de mercado:** la barra de controles permite elegir mercado; **Acciones USA (S&P 500)** es el default implementado, mientras que Cripto y Acciones Argentinas (Merval) figuran como "próximamente".
 * **Filtros rápidos:** por grado de señal, flujo institucional (OBV), rango de RSI (14) y tendencia contra la SMA 200.
 * **Panel de alertas:** categorización inmediata de los tickers que activan setups de compra, venta o squeeze.
 * **Descarga en paralelo:** ingesta multihilo con `concurrent.futures` y caché vía `st.cache_data`.
@@ -262,7 +262,7 @@ que se les quita es la influencia sobre la calificación.
 ## 🪙 Criptomonedas
 
 La tercera sección aplica el mismo semáforo de confluencia del tablero de acciones a un universo de
-criptomonedas, agrupado en cuatro conjuntos que se eligen desde la barra lateral: principales por
+criptomonedas, agrupado en cuatro conjuntos que se eligen desde la barra de controles: principales por
 capitalización, capa 1, DeFi e infraestructura, y memecoins.
 
 ### Qué comparte con la sección de acciones
@@ -398,7 +398,7 @@ normal. Por eso se marcan en el gráfico y no entran al semáforo.
 
 ```
 stock-dashboard/
-├── app.py                          # Punto de entrada Streamlit: selector de secciones, filtros de la barra lateral
+├── app.py                          # Punto de entrada Streamlit: selector de secciones, barra de controles
 ├── constants.py                    # Única fuente de verdad de etiquetas y umbrales de ambos motores
 ├── theme.py                        # Paleta de colores centralizada, compartida por el cuadro y los gráficos
 ├── data_loader.py                  # Descarga paralela de precios y fundamentales de acciones, caché y agregación

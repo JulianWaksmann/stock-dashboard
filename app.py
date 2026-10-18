@@ -41,7 +41,7 @@ st.set_page_config(
     page_title="Tablero Cuantitativo | Confluencia & Smart Money",
     page_icon="📊",
     layout="wide",
-    initial_sidebar_state="expanded"
+    initial_sidebar_state="collapsed"
 )
 
 
@@ -70,32 +70,67 @@ def _render_market_header(titulo: str, subtitulo: str):
             st.rerun()
 
 
-def _render_sidebar_filters(timeframe_label: str) -> StockFilters:
+def _render_tamiz(timeframe_label: str) -> StockFilters:
     """
-    Filtros del panel de acciones, en la barra lateral.
+    El tamiz del cuadro de acciones: recorta un panel que ya está descargado.
 
-    Los widgets viven acá porque la barra lateral es única para toda la
-    aplicación; lo que hacen con el panel vive en `stock_screener.py`, que es
-    puro y está testeado. Esta función solo traduce widgets a intenciones.
+    Lo que hacen con el panel vive en `stock_screener.py`, que es puro y está
+    testeado. Esta función solo traduce widgets a intenciones.
     """
-    st.sidebar.markdown("---")
-    st.sidebar.header("🔍 Filtros Rápidos")
+    columnas = st.columns(4)
 
-    return StockFilters(
-        signal=st.sidebar.selectbox("Filtrar por Semáforo:", SIGNAL_FILTER_OPTIONS),
-        flow=st.sidebar.selectbox("Filtrar por Smart Money (OBV):", FLOW_FILTER_OPTIONS),
-        rsi_range=st.sidebar.slider(
-            f"Rango de RSI 14 ({timeframe_label}):",
+    with columnas[0]:
+        signal = st.selectbox("Semáforo", SIGNAL_FILTER_OPTIONS)
+    with columnas[1]:
+        flow = st.selectbox("Flujo de volumen (OBV)", FLOW_FILTER_OPTIONS)
+    with columnas[2]:
+        sma200 = st.selectbox(
+            f"Tendencia vs SMA 200 ({timeframe_label})",
+            SMA200_FILTER_OPTIONS,
+        )
+    with columnas[3]:
+        rsi_range = st.slider(
+            f"Rango de RSI 14 ({timeframe_label})",
             min_value=0.0,
             max_value=100.0,
             value=(0.0, 100.0),
             step=1.0,
-        ),
-        sma200=st.sidebar.radio(
-            f"Tendencia vs SMA 200 ({timeframe_label}):",
-            SMA200_FILTER_OPTIONS,
-        ),
-    )
+        )
+
+    return StockFilters(signal=signal, flow=flow, rsi_range=rsi_range, sma200=sma200)
+
+
+def _render_controles_acciones() -> tuple[str, str, str, StockFilters]:
+    """
+    Todos los controles de la sección, en una tarjeta arriba del contenido.
+
+    La tarjeta separa dos clases de control que antes convivían en la barra
+    lateral sin distinguirse: arriba, lo que decide **qué se descarga**
+    (mercado y temporalidad), que dispara tráfico de red al cambiar; abajo, el
+    tamiz, que solo recorta lo que ya está en memoria. Devuelve las dos cosas
+    juntas porque la temporalidad etiqueta las columnas que el tamiz filtra.
+    """
+    with st.container(border=True):
+        fuente = st.columns([1.6, 2])
+
+        with fuente[0]:
+            market_option = st.selectbox("Mercado", MARKET_OPTIONS)
+        with fuente[1]:
+            timeframe_choice = st.radio(
+                "Temporalidad técnica (RSI, medias, OBV)",
+                TIMEFRAME_CHOICE_OPTIONS,
+                horizontal=True,
+                help="Elegí si los indicadores se calculan en velas diarias o semanales",
+            )
+
+        is_weekly = timeframe_choice == TIMEFRAME_CHOICE_WEEKLY
+        timeframe = "1wk" if is_weekly else "1d"
+        timeframe_label = "Semanal" if is_weekly else "Diario"
+
+        st.markdown("---")
+        filtros = _render_tamiz(timeframe_label)
+
+    return market_option, timeframe, timeframe_label, filtros
 
 
 def _render_usa_stocks(timeframe: str, timeframe_label: str, filtros: StockFilters):
@@ -131,31 +166,15 @@ def _render_stocks_tab():
     """
     Sección de acciones: el tablero de confluencia técnica + Smart Money.
 
-    Vive en `app.py` y no en `components/` porque es la que orquesta los
-    controles de la barra lateral, que son globales a la aplicación. Lo que se
-    dibuja debajo es el mismo para todos los mercados y está en
-    `components/stocks_body.py`; lo que cambia por mercado es la descarga.
+    Vive en `app.py` y no en `components/` porque es la que orquesta el
+    selector de mercado. Lo que se dibuja debajo es el mismo para todos los
+    mercados y está en `components/stocks_body.py`; lo que cambia por mercado
+    es la descarga.
+
+    Los controles van arriba del título y no debajo porque el mercado elegido
+    es el que decide qué título se dibuja.
     """
-    # La barra lateral se dibuja primero porque elige el mercado, y el mercado
-    # decide el título. No ocupa lugar en el cuerpo, así que el orden en
-    # pantalla no cambia.
-    st.sidebar.header("🌐 Mercados")
-    st.sidebar.caption(
-        "Estos controles aplican a la sección **Acciones**. Bonos y Cripto tienen sus propios filtros."
-    )
-
-    market_option = st.sidebar.selectbox("Seleccionar Mercado (Dashboard):", MARKET_OPTIONS)
-
-    timeframe_choice = st.sidebar.radio(
-        "⏱️ Temporalidad Técnica (RSI, Medias, OBV):",
-        TIMEFRAME_CHOICE_OPTIONS,
-        help="Elige si deseas calcular los indicadores en velas diarias o semanales",
-    )
-    is_weekly = timeframe_choice == TIMEFRAME_CHOICE_WEEKLY
-    timeframe = "1wk" if is_weekly else "1d"
-    timeframe_label = "Semanal" if is_weekly else "Diario"
-
-    filtros = _render_sidebar_filters(timeframe_label)
+    market_option, timeframe, timeframe_label, filtros = _render_controles_acciones()
 
     if market_option == MARKET_USA_STOCKS:
         _render_usa_stocks(timeframe, timeframe_label, filtros)

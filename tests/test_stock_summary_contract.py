@@ -13,6 +13,8 @@ Ya pasó una vez: `components/charts.py` y `components/ticker_detail.py` pedían
 `"Señal Confluencia"` y `"Empresa"`, columnas que `df_summary` no tenía.
 """
 
+import re
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -196,6 +198,10 @@ class TestGraficoDeDetalle:
         parámetros medidos sobre acciones: lo que se fija acá es que lleguen al
         gráfico y que la etiqueta diga cuántos toques tiene cada zona, que es
         lo que distingue un nivel fuerte de una línea sobre un máximo casual.
+
+        La cuenta se escribe "×3" y no "(3 toques)" porque la etiqueta se
+        dibuja fuera del área de trazado y la versión larga quedaba cortada;
+        lo que el test fija es que el número esté, no cómo se escribe.
         """
         indicadores = compute_chart_indicators(random_ohlcv_df)
         fig = plot_stock_detail(random_ohlcv_df, indicadores, "TKR0", "Empresa 0", "Diario")
@@ -205,7 +211,7 @@ class TestGraficoDeDetalle:
             if a.text and ("Soporte" in a.text or "Resistencia" in a.text)
         ]
         assert etiquetas, "el gráfico no dibujó ningún nivel"
-        assert all("toque" in texto for texto in etiquetas)
+        assert all(re.search(r"×\d+$", texto) for texto in etiquetas)
 
     def test_sin_historial_devuelve_figura_con_aviso(self):
         fig = plot_stock_detail(pd.DataFrame(), None, "TKR0")

@@ -36,6 +36,7 @@ from theme import (
     COLOR_RSI_LINE,
     COLOR_SMA_50,
     COLOR_SMA_200,
+    PLOTLY_TEMPLATE,
 )
 
 # Transparencias de las zonas de nivel. La zona fuerte se ve; la débil
@@ -363,7 +364,7 @@ def build_crypto_chart(
     )
 
     fig.update_layout(
-        template="plotly_dark",
+        template=PLOTLY_TEMPLATE,
         height=700,
         # Margen derecho amplio: las etiquetas de las zonas se escriben fuera
         # del área de las velas para no taparlas.
@@ -451,7 +452,7 @@ def build_dominance_chart(serie: pd.Series, window_bars: int) -> go.Figure | Non
     margen = max((techo - piso) * 0.25, 0.5)
 
     fig.update_layout(
-        template="plotly_dark",
+        template=PLOTLY_TEMPLATE,
         height=220,
         margin=dict(l=10, r=10, t=10, b=10),
         paper_bgcolor="rgba(0,0,0,0)",

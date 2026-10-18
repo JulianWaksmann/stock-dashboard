@@ -44,6 +44,7 @@ from theme import (
     COLOR_REFERENCE_LINE,
     COLOR_SCATTER_LABEL_TEXT,
     COLOR_SCATTER_MARKER_BORDER,
+    PLOTLY_TEMPLATE,
 )
 
 # Tamaños de marcador, en px: el mínimo tiene que seguir siendo clickeable y
@@ -87,7 +88,7 @@ def build_curve_chart(df: pd.DataFrame, ajuste: CurveFit | None, moneda: str) ->
             text="Ninguna especie de este panel tiene TIR y duration calculables",
             showarrow=False,
         )
-        fig.update_layout(template="plotly_dark", height=420)
+        fig.update_layout(template=PLOTLY_TEMPLATE, height=420)
         return fig
 
     columnas_hover = [
@@ -154,7 +155,7 @@ def build_curve_chart(df: pd.DataFrame, ajuste: CurveFit | None, moneda: str) ->
         )
 
     fig.update_layout(
-        template="plotly_dark",
+        template=PLOTLY_TEMPLATE,
         title=f"<b>Curva de rendimientos del panel — {moneda}</b><br><sup>{subtitulo}</sup>",
         xaxis_title="Duration modificada (años) — riesgo de tasa",
         yaxis_title="TIR (%)",

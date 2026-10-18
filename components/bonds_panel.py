@@ -6,12 +6,11 @@ de repartirla en `app.py`: la pestaña de acciones y la de bonos no comparten
 estado ni filtros, y tenerlas mezcladas en un único `main()` haría que agregar
 un filtro de un lado obligue a releer el otro.
 
-Reparto entre barra lateral y cuerpo de la pestaña: la barra lateral es única
-para toda la app y la dibuja la sección activa, así que ahí va lo que elige
-**qué panel se carga** (el país, que determina fuente de precios, catálogo y
-convenciones). Los filtros del cuadro se quedan en el cuerpo porque recortan un
-panel ya descargado y son muchos: en el sidebar competirían por el espacio con
-lo único que hay que decidir antes de bajar datos.
+Reparto entre la barra de controles de arriba y el cuerpo: arriba va lo que
+elige **qué panel se carga** (el país, que determina fuente de precios,
+catálogo y convenciones), porque cambiarlo dispara una descarga. Los filtros
+del cuadro se quedan abajo, al lado del cuadro que recortan, porque trabajan
+sobre un panel que ya está en memoria.
 """
 
 from datetime import date
@@ -76,33 +75,36 @@ _EXPLICACION_DIMENSION = {
 _MAX_DURATION_FILTER_YEARS = 15.0
 
 
-def _render_sidebar() -> str:
+def _render_controles() -> str:
     """
-    Barra lateral de la sección de bonos: el desplegable de país.
+    Controles de la sección de bonos: el desplegable de país y la recarga.
 
-    La barra lateral es única para toda la app y la dibuja la sección que esté
-    activa, así que lo que se ponga acá solo aparece mientras se miran bonos.
-    Por eso el país va acá y los filtros del cuadro siguen dentro de la
-    pestaña: el país elige **qué panel se carga** (fuente de precios, catálogo,
-    convenciones), mientras que los filtros recortan un panel ya descargado.
+    Van en una tarjeta arriba del contenido y no en una barra lateral (que ya
+    no existe: ver `components/branding.py`). Acá solo está el país, porque es
+    lo que elige **qué panel se carga** — fuente de precios, catálogo,
+    convenciones —; los filtros del cuadro siguen abajo, junto al cuadro,
+    porque recortan un panel ya descargado.
     """
-    st.sidebar.header("🌐 Mercado de bonos")
+    with st.container(border=True):
+        columnas = st.columns([2, 1])
 
-    country = st.sidebar.selectbox(
-        "País:",
-        BOND_COUNTRY_OPTIONS,
-        help="Cada país tiene su propia fuente de precios y sus propias convenciones de cálculo. Hoy solo Argentina está implementada.",
-    )
+        with columnas[0]:
+            country = st.selectbox(
+                "País",
+                BOND_COUNTRY_OPTIONS,
+                help="Cada país tiene su propia fuente de precios y sus propias convenciones de cálculo. Hoy solo Argentina está implementada.",
+            )
 
-    st.sidebar.markdown("---")
-    if st.sidebar.button(
-        "🔄 Refrescar ONs",
-        use_container_width=True,
-        type="primary",
-        help="Limpia la caché y vuelve a consultar precios",
-    ):
-        st.cache_data.clear()
-        st.rerun()
+        with columnas[1]:
+            st.markdown("<div style='padding-top: 1.75rem;'></div>", unsafe_allow_html=True)
+            if st.button(
+                "Refrescar ONs",
+                use_container_width=True,
+                type="primary",
+                help="Limpia la caché y vuelve a consultar precios",
+            ):
+                st.cache_data.clear()
+                st.rerun()
 
     return country
 
@@ -427,7 +429,7 @@ def _render_curve(df: pd.DataFrame):
     precios del mismo riesgo, así que mezclarlos en el mismo par de ejes
     dibujaría dos curvas como si fueran una.
     """
-    st.markdown("### 📈 Curva de Rendimientos del Panel")
+    st.markdown("### Curva de rendimientos del panel")
 
     graficables = df.dropna(subset=[COL_YTM, COL_DURATION]) if not df.empty else df
     if graficables.empty:
@@ -483,11 +485,11 @@ def _render_curve(df: pd.DataFrame):
 
 def render_bonds_panel():
     """Dibuja la sección completa de Bonos Corporativos."""
-    country = _render_sidebar()
+    country = _render_controles()
 
     if country != BOND_COUNTRY_ARGENTINA:
         st.markdown(
-            f'<div class="main-title">💵 Bonos Corporativos — {country}</div>',
+            f'<div class="main-title">Bonos corporativos — {country}</div>',
             unsafe_allow_html=True,
         )
         render_coming_soon(
@@ -500,12 +502,13 @@ def render_bonds_panel():
         return
 
     st.markdown(
-        '<div class="main-title">💵 Bonos Corporativos Argentinos (Obligaciones Negociables)</div>',
+        '<div class="main-title">Bonos corporativos argentinos</div>',
         unsafe_allow_html=True,
     )
     st.markdown(
-        '<div class="sub-title">Rendimiento (TIR), riesgo (duration, paridad) y liquidez de las ONs en dólares, '
-        'calculados sobre el flujo de fondos contractual de cada emisión.</div>',
+        '<div class="sub-title">Obligaciones negociables en dólares: rendimiento (TIR), riesgo '
+        '(duration, paridad) y liquidez, calculados sobre el flujo de fondos contractual '
+        'de cada emisión.</div>',
         unsafe_allow_html=True,
     )
 
@@ -566,7 +569,7 @@ def render_bonds_panel():
     _render_kpis(df_bonds)
     st.markdown("---")
 
-    st.markdown("#### 🔍 Filtros")
+    st.markdown("#### Filtros")
     df_filtered = _render_filters(df_bonds)
     st.markdown("---")
 
@@ -574,10 +577,11 @@ def render_bonds_panel():
     with header_col:
         median_ytm = df_bonds.attrs.get("median_ytm_pct", np.nan)
         median_text = f" | Mediana TIR del panel: **{median_ytm:.2f}%**" if np.isfinite(median_ytm) else ""
-        st.markdown(f"### 📋 Cuadro Comparativo ({len(df_filtered)} de {len(df_bonds)} ONs){median_text}")
+        st.markdown("### Cuadro comparativo")
+        st.caption(f"{len(df_filtered)} de {len(df_bonds)} ONs{median_text}")
     with download_col:
         st.download_button(
-            label="📥 Exportar a CSV",
+            label="Exportar CSV",
             data=df_filtered.to_csv(index=False).encode("utf-8"),
             file_name=f"ons_argentinas_{settlement:%Y%m%d}.csv",
             mime="text/csv",

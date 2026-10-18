@@ -115,7 +115,7 @@ def render_signal_stats(
     que usó el panel que se está mirando: medir con la calibración de acciones
     un panel de cripto daría el número de otro sistema.
     """
-    with st.expander("🧪 ¿Funcionó el semáforo? (medición sobre el historial descargado)"):
+    with st.expander("¿Funcionó el semáforo? Medición sobre el historial descargado"):
         st.markdown(
             "El semáforo afirma algo verificable: que cuando varias señales coinciden, lo que "
             "sigue es distinto de un día cualquiera. Acá se replaya el semáforo barra por barra "

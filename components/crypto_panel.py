@@ -6,9 +6,9 @@ su cuadro y su documentación viven acá y no en `app.py`. Las tres secciones
 del tablero no comparten estado ni filtros, y tenerlas mezcladas en un único
 `main()` haría que tocar un filtro de una obligue a releer las otras dos.
 
-Reparto entre barra lateral y cuerpo: en la barra lateral va lo que decide
-**qué se descarga** (el universo y la temporalidad); los filtros, que recortan
-un panel ya bajado, van en el cuerpo, al lado del cuadro que recortan.
+Reparto entre la barra de controles de arriba y el cuerpo: arriba va lo que
+decide **qué se descarga** (el universo y la temporalidad); los filtros, que
+recortan un panel ya bajado, van abajo, al lado del cuadro que recortan.
 """
 
 from datetime import datetime
@@ -16,13 +16,13 @@ from datetime import datetime
 import pandas as pd
 import streamlit as st
 
+from components.alerts_panel import render_alerts_panel
 from components.changes_panel import render_changes
 from components.crypto_chart import build_crypto_chart, build_dominance_chart
 from components.crypto_table import render_crypto_table
 from components.formatting import (
     format_crypto_price,
     format_month_year,
-    format_signed_pct,
     format_usd_compact,
 )
 from components.signal_stats_panel import render_signal_stats
@@ -40,11 +40,6 @@ from constants import (
     CRYPTO_STRETCH_SIGMAS,
     CRYPTO_TREND_FILTER_OPTIONS,
     CRYPTO_UNIVERSE_OPTIONS,
-    SIGNAL_MODERATE_BUY,
-    SIGNAL_MODERATE_SELL,
-    SIGNAL_SQUEEZE,
-    SIGNAL_STRONG_BUY,
-    SIGNAL_STRONG_SELL,
     TIMEFRAME_CHOICE_OPTIONS,
     TIMEFRAME_CHOICE_WEEKLY,
 )
@@ -55,40 +50,45 @@ from indicators import compute_rsi
 from levels import detect_support_resistance, scale_params
 
 
-def _render_sidebar() -> tuple[str, str]:
+def _render_controles() -> tuple[str, str]:
     """
-    Barra lateral de la sección: universo y temporalidad.
+    Controles de la sección: universo, temporalidad y recarga.
 
-    Las dos cosas que van acá son las que cambian **qué se descarga**. Los
-    filtros del cuadro se quedan en el cuerpo porque recortan un panel ya
-    bajado y no disparan tráfico.
+    Van en una tarjeta arriba del contenido y no en una barra lateral (que ya
+    no existe: ver `components/branding.py`). Las dos cosas que están acá son
+    las que cambian **qué se descarga**. Los filtros del cuadro se quedan
+    abajo porque recortan un panel ya bajado y no disparan tráfico.
     """
-    st.sidebar.header("🪙 Universo cripto")
-    st.sidebar.caption("Estos controles aplican a la sección **Criptomonedas**.")
+    with st.container(border=True):
+        columnas = st.columns([1.4, 2, 1])
 
-    universe = st.sidebar.selectbox(
-        "Grupo:",
-        CRYPTO_UNIVERSE_OPTIONS,
-        help="Qué conjunto de criptomonedas se descarga y se analiza.",
-    )
+        with columnas[0]:
+            universe = st.selectbox(
+                "Grupo",
+                CRYPTO_UNIVERSE_OPTIONS,
+                help="Qué conjunto de criptomonedas se descarga y se analiza.",
+            )
 
-    timeframe_choice = st.sidebar.radio(
-        "⏱️ Temporalidad Técnica (RSI, Medias, OBV):",
-        TIMEFRAME_CHOICE_OPTIONS,
-        help="Velas diarias para operar el corto plazo; semanales para leer la tendencia de fondo.",
-    )
+        with columnas[1]:
+            timeframe_choice = st.radio(
+                "Temporalidad técnica (RSI, medias, OBV)",
+                TIMEFRAME_CHOICE_OPTIONS,
+                horizontal=True,
+                help="Velas diarias para operar el corto plazo; semanales para leer la tendencia de fondo.",
+            )
+
+        with columnas[2]:
+            st.markdown("<div style='padding-top: 1.75rem;'></div>", unsafe_allow_html=True)
+            if st.button(
+                "Refrescar cripto",
+                use_container_width=True,
+                type="primary",
+                help="Limpia la caché y vuelve a consultar las cotizaciones",
+            ):
+                st.cache_data.clear()
+                st.rerun()
+
     timeframe = "1wk" if timeframe_choice == TIMEFRAME_CHOICE_WEEKLY else "1d"
-
-    st.sidebar.markdown("---")
-    if st.sidebar.button(
-        "🔄 Refrescar Cripto",
-        use_container_width=True,
-        type="primary",
-        help="Limpia la caché y vuelve a consultar las cotizaciones",
-    ):
-        st.cache_data.clear()
-        st.rerun()
-
     return universe, timeframe
 
 
@@ -174,7 +174,7 @@ def _render_rotation(rotacion, timeframe_label: str, ventana: int, unidad: str):
     las alts es angosta: unas pocas tirando, el resto quedándose. Con un solo
     número esa lectura no aparece.
     """
-    st.markdown("### 🔀 Rotación: Bitcoin o altcoins")
+    st.markdown("### Rotación: Bitcoin o altcoins")
 
     columnas = st.columns([1, 1, 1, 2.4])
 
@@ -240,50 +240,6 @@ def _render_rotation(rotacion, timeframe_label: str, ventana: int, unidad: str):
             f"Capitalización total del mercado cripto: **{format_usd_compact(rotacion.total_market_cap_usd)}**. "
             f"La franja sombreada del gráfico es la ventana de {ventana}{unidad} sobre la que se mide el cambio de dominancia."
         )
-
-
-def _render_alerts(df: pd.DataFrame):
-    """Tres columnas con las criptos que el semáforo destaca hoy."""
-    if df.empty or "Semáforo" not in df.columns:
-        return
-
-    ventas = df[df["Semáforo"].isin([SIGNAL_STRONG_SELL, SIGNAL_MODERATE_SELL])]
-    compras = df[df["Semáforo"].isin([SIGNAL_STRONG_BUY, SIGNAL_MODERATE_BUY])]
-    squeezes = df[df["Semáforo"] == SIGNAL_SQUEEZE]
-
-    col1, col2, col3 = st.columns(3)
-
-    with col1:
-        st.markdown("#### 🔴 Venta / Rotación")
-        if ventas.empty:
-            st.caption("Ninguna hoy *(Sin sobrecompras extremas)*")
-        for _, r in ventas.iterrows():
-            tag = "🚨 Fuerte" if r["Semáforo"] == SIGNAL_STRONG_SELL else "🟠 Moderada"
-            st.markdown(
-                f"- **`{r['Cripto']}`** [{tag}] — {format_crypto_price(r['PRECIO_VAL'])} "
-                f"*(RSI: {r['RSI_VAL']:.1f}, Máx 52S: {format_signed_pct(r['DIST_52W_HIGH_PCT'], decimals=1)})*"
-            )
-
-    with col2:
-        st.markdown("#### 🟢 Compra / Swing")
-        if compras.empty:
-            st.caption("Ninguna hoy *(Esperando retrocesos a soporte)*")
-        for _, r in compras.iterrows():
-            tag = "🌟 Fuerte" if r["Semáforo"] == SIGNAL_STRONG_BUY else "🟢 Moderada"
-            st.markdown(
-                f"- **`{r['Cripto']}`** [{tag}] — {format_crypto_price(r['PRECIO_VAL'])} "
-                f"*(RSI: {r['RSI_VAL']:.1f}, vs SMA50: {format_signed_pct(r['DIFF_SMA_50_VAL'], decimals=1)})*"
-            )
-
-    with col3:
-        st.markdown("#### 🚨 Squeezes (Compresión)")
-        if squeezes.empty:
-            st.caption("Ninguna hoy *(Volatilidad en rango habitual)*")
-        for _, r in squeezes.iterrows():
-            st.markdown(
-                f"- **`{r['Cripto']}`** — {format_crypto_price(r['PRECIO_VAL'])} "
-                f"*(Bandwidth: {r['BB_BANDWIDTH']:.1f}%)*"
-            )
 
 
 def _render_filters(df: pd.DataFrame) -> pd.DataFrame:
@@ -362,7 +318,7 @@ def _render_chart(df: pd.DataFrame, historiales: dict[str, pd.DataFrame]):
     demás, pero se puede cambiar: los niveles de la moneda que uno está por
     comprar importan más que los de Bitcoin.
     """
-    st.markdown("### 📈 Gráfico con soportes y resistencias")
+    st.markdown("### Gráfico con soportes y resistencias")
 
     disponibles = [t for t in df["Ticker"] if t in historiales] if "Ticker" in df.columns else []
     if not disponibles:
@@ -440,15 +396,15 @@ def render_crypto_panel():
     Es el equivalente de `render_bonds_panel()` para esta clase de activo: la
     llama `app.main()` y desde acá para abajo la sección se maneja sola.
     """
-    universe, timeframe = _render_sidebar()
+    universe, timeframe = _render_controles()
     spec = spec_for_timeframe(timeframe)
     timeframe_label = "Semanal" if timeframe == "1wk" else "Diario"
 
-    st.markdown('<div class="main-title">🪙 Criptomonedas</div>', unsafe_allow_html=True)
+    st.markdown('<div class="main-title">Criptomonedas</div>', unsafe_allow_html=True)
     st.markdown(
         f'<div class="sub-title">Mismo semáforo de confluencia que el tablero de acciones, '
-        f'con las ventanas ajustadas a un mercado que opera los siete días | '
-        f'🕒 <i>Última recarga: {datetime.now().strftime("%H:%M:%S")}</i></div>',
+        f'con las ventanas ajustadas a un mercado que opera los siete días. '
+        f'<span style="opacity:0.7;">Última recarga: {datetime.now().strftime("%H:%M:%S")}</span></div>',
         unsafe_allow_html=True,
     )
 
@@ -459,7 +415,7 @@ def render_crypto_panel():
         st.error(
             "No se pudieron cargar las cotizaciones de criptomonedas. "
             "Suele ser un problema de conexión o un límite de consultas del proveedor: "
-            "probá de nuevo con **🔄 Refrescar Cripto**."
+            "probá de nuevo con **Refrescar cripto**."
         )
         return
 
@@ -479,8 +435,16 @@ def render_crypto_panel():
             "relativa queda sin datos. El resto del cuadro no se ve afectado."
         )
 
-    st.subheader("⚡ Alertas de Confluencia del Día")
-    _render_alerts(df)
+    st.subheader("Alertas del día")
+    # El mismo panel que usan las acciones: lo que cambia es de dónde salen el
+    # símbolo y el precio, y que el precio de una cripto no se puede mostrar
+    # con dos decimales fijos (ver CLAUDE.md).
+    render_alerts_panel(
+        df,
+        columna_simbolo="Cripto",
+        columna_precio="PRECIO_VAL",
+        formatear_precio=format_crypto_price,
+    )
     st.markdown("---")
 
     _render_kpis(df, timeframe_label)
@@ -489,17 +453,18 @@ def render_crypto_panel():
     _render_rotation(rotacion, timeframe_label, spec.ventana_dominancia, spec.unidad)
     st.markdown("---")
 
-    st.markdown("### 🔍 Filtros")
+    st.markdown("### Filtros")
     df_filtrado = _render_filters(df)
 
     col_t1, col_t2 = st.columns([3, 1])
     with col_t1:
-        st.markdown(
-            f"### 📋 Matriz Cripto ({len(df_filtrado)} de {len(df)} monedas | Base: **{timeframe_label}**)"
+        st.markdown("### Matriz cripto")
+        st.caption(
+            f"{len(df_filtrado)} de {len(df)} monedas · base {timeframe_label.lower()}"
         )
     with col_t2:
         st.download_button(
-            label="📥 Exportar a CSV",
+            label="Exportar CSV",
             data=df_filtrado.to_csv(index=False).encode("utf-8"),
             file_name=f"screener_cripto_{timeframe}.csv",
             mime="text/csv",
