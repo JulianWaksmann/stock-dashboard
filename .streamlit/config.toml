@@ -1,0 +1,18 @@
+# Tema base de Streamlit.
+#
+# Existe para fijar el modo oscuro: sin este archivo, Streamlit sigue el tema
+# del navegador, y en claro el lienzo sale blanco mientras los fondos de celda
+# resaltada de las tablas y el `template="plotly_dark"` de los gráficos siguen
+# siendo oscuros. El tablero está diseñado sobre fondo oscuro; esto lo vuelve
+# explícito en vez de dejarlo librado al sistema de quien mira.
+#
+# Los valores duplican tokens de `theme.py` porque Streamlit lee este archivo
+# antes de importar el código: no hay forma de que los tome de ahí. Si cambiás
+# uno, cambiá el otro.
+[theme]
+base = "dark"
+primaryColor = "#34d399"
+backgroundColor = "#0b0f14"
+secondaryBackgroundColor = "#121820"
+textColor = "#e8edf3"
+font = "sans serif"

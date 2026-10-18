@@ -279,6 +279,16 @@ SECTION_CRYPTO: Final[str] = "🪙 Criptomonedas"
 
 SECTION_OPTIONS: Final[tuple[str, ...]] = (SECTION_STOCKS, SECTION_BONDS, SECTION_CRYPTO)
 
+# Nombre corto de cada sección, para la firma de marca de la cabecera. El
+# texto del selector lleva emoji y aclaración entre paréntesis: sirve para
+# elegir, no para rotular. Vive acá por la misma razón que el resto: si se
+# escribe suelto en el panel, el día que cambie una opción queda desfasado.
+SECTION_SHORT_LABELS: Final[dict[str, str]] = {
+    SECTION_STOCKS: "Acciones",
+    SECTION_BONDS: "Bonos",
+    SECTION_CRYPTO: "Cripto",
+}
+
 # ----------------------------------------------------------------------
 # País del panel de bonos corporativos (desplegable de la barra lateral).
 #

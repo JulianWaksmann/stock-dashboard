@@ -8,6 +8,11 @@ import streamlit as st
 
 from components.alerts_panel import render_alerts_panel
 from components.bonds_panel import render_bonds_panel
+from components.branding import (
+    inject_global_styles,
+    render_brand_bar,
+    render_nav_anchor,
+)
 from components.coming_soon import render_coming_soon
 from components.crypto_panel import render_crypto_panel
 from components.kpi_cards import render_kpi_cards
@@ -29,6 +34,7 @@ from constants import (
     MARKET_USA_STOCKS,
     SECTION_BONDS,
     SECTION_OPTIONS,
+    SECTION_SHORT_LABELS,
     SECTION_STOCKS,
     SELL_SIGNALS,
     SIGNAL_FILTER_OPTIONS,
@@ -45,30 +51,11 @@ from data_loader import (
 # 1. Configuración de página
 st.set_page_config(
     page_title="Tablero Cuantitativo | Confluencia & Smart Money",
-    page_icon="🚦",
+    page_icon="📊",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-# Estilos CSS
-st.markdown("""
-<style>
-    .main-title {
-        font-size: 2.1rem;
-        font-weight: 700;
-        margin-bottom: 0.1rem;
-    }
-    .sub-title {
-        font-size: 0.95rem;
-        color: #9ca3af;
-        margin-bottom: 0.8rem;
-    }
-    div[data-testid="stMetricValue"] {
-        font-size: 1.5rem;
-        font-weight: 600;
-    }
-</style>
-""", unsafe_allow_html=True)
 
 
 def _render_stocks_tab():
@@ -85,13 +72,18 @@ def _render_stocks_tab():
     header_col1, header_col2 = st.columns([4, 1])
 
     with header_col1:
-        st.markdown('<div class="main-title">🚦 Tablero Cuantitativo: Confluencia & Smart Money</div>', unsafe_allow_html=True)
+        st.markdown('<div class="main-title">Confluencia &amp; Smart Money</div>', unsafe_allow_html=True)
         current_time_str = datetime.now().strftime("%H:%M:%S")
-        st.markdown(f'<div class="sub-title">Algoritmo de Confluencia por Sistema de Grados (Fuerte vs Moderada) + Smart Money (OBV) | 🕒 <i>Última recarga: {current_time_str}</i></div>', unsafe_allow_html=True)
+        st.markdown(
+            f'<div class="sub-title">Semáforo de confluencia por grados (fuerte vs moderada) y lectura de '
+            f'flujo institucional (OBV) sobre las 50 acciones líderes. '
+            f'<span style="opacity:0.7;">Última recarga: {current_time_str}</span></div>',
+            unsafe_allow_html=True,
+        )
 
     with header_col2:
         st.markdown("<div style='padding-top: 10px;'></div>", unsafe_allow_html=True)
-        if st.button("🔄 Refrescar Todo", use_container_width=True, type="primary", help="Limpia la memoria caché y consulta las cotizaciones más recientes de Yahoo Finance"):
+        if st.button("Refrescar datos", use_container_width=True, type="primary", help="Limpia la memoria caché y consulta las cotizaciones más recientes de Yahoo Finance"):
             st.cache_data.clear()
             st.rerun()
 
@@ -296,12 +288,23 @@ def main():
     entrado a esas secciones. Un selector dibuja únicamente la sección elegida,
     así que cada fuente de datos se consulta recién cuando se la mira.
     """
+    inject_global_styles()
+
+    # La firma de marca nombra la sección elegida, que recién se conoce
+    # después de dibujar el selector: se reserva el lugar antes y se llena
+    # después, para que en pantalla quede arriba.
+    encabezado = st.container()
+
+    render_nav_anchor()
     section = st.radio(
         "Sección",
         SECTION_OPTIONS,
         horizontal=True,
         label_visibility="collapsed",
     )
+
+    with encabezado:
+        render_brand_bar(SECTION_SHORT_LABELS[section])
 
     if section == SECTION_STOCKS:
         _render_stocks_tab()

@@ -61,6 +61,8 @@ Etiquetas de señal, umbrales numéricos y **textos de las opciones de cada sele
 
 `theme.py` cumple el mismo rol para los colores (el par positivo/negativo es `#26a69a` / `#ef5350`, unificado entre tabla y gráficos).
 
+`theme.py` también tiene los tokens de **marca** (`COLOR_BRAND*`, superficies, radios, tipografía) y `components/branding.py` es la única hoja de estilos global: la inyecta `app.main()` una vez por corrida y de ahí salen la cabecera, el selector de secciones como control segmentado y las métricas en tarjeta. Dos reglas: el verde de marca (`COLOR_BRAND`) es de la carcasa y nunca representa el signo de un número —para eso está `COLOR_POSITIVE`, más apagado a propósito—, y el CSS suelto no vuelve a `app.py` ni a los paneles. `.streamlit/config.toml` fija el modo oscuro, que el resto del diseño da por sentado (fondos de celda y `plotly_dark`); sus valores duplican tokens de `theme.py` porque Streamlit lee ese archivo antes de importar el código.
+
 ### Acciones
 
 `data_loader.load_all_stocks_data(tickers, timeframe)` → `(df_summary, dict_history)`, cacheado 5 min. Descarga precios en bloque con `yf.download` y fundamentales en paralelo con `ThreadPoolExecutor`; los tickers que fallan no cortan la carga, se acumulan en `df_summary.attrs["failed_tickers"]`.

@@ -63,3 +63,32 @@ COLOR_PE_HISTORICAL_AVG: Final[str] = "#FFA726"
 COLOR_SCATTER_LABEL_TEXT: Final[str] = "#FFFFFF"
 COLOR_SCATTER_MARKER_BORDER: Final[str] = "#333333"
 COLOR_SCATTER_REFERENCE_LINE: Final[str] = "#777777"
+
+
+# ----------------------------------------------------------------------
+# Identidad visual del tablero (chrome: cabecera, tarjetas, navegación)
+# ----------------------------------------------------------------------
+# El verde de marca es deliberadamente distinto del verde de dato
+# (`COLOR_POSITIVE`): si fueran el mismo, un botón o una pestaña activa se
+# leerían como "suba". La marca es más clara y saturada; el dato, más apagado.
+# Regla: `COLOR_BRAND*` solo en la carcasa (cabecera, botones, navegación,
+# bordes); nunca para representar el signo de un número.
+COLOR_BRAND: Final[str] = "#34d399"
+COLOR_BRAND_STRONG: Final[str] = "#10b981"
+COLOR_BRAND_SOFT: Final[str] = "rgba(52, 211, 153, 0.12)"
+COLOR_BRAND_BORDER: Final[str] = "rgba(52, 211, 153, 0.30)"
+
+# Superficies y texto. El tablero se diseña sobre fondo oscuro: los fondos de
+# celda resaltada y el `template="plotly_dark"` de los gráficos ya asumen eso.
+COLOR_BACKGROUND: Final[str] = "#0b0f14"
+COLOR_SURFACE: Final[str] = "#121820"
+COLOR_SURFACE_ALT: Final[str] = "#171f29"
+COLOR_BORDER: Final[str] = "rgba(148, 163, 184, 0.16)"
+COLOR_TEXT: Final[str] = "#e8edf3"
+COLOR_TEXT_MUTED: Final[str] = "#93a1b3"
+
+# Radio de esquina y tipografía, para que tarjetas, botones y controles no
+# redondeen cada uno por su cuenta.
+RADIUS_CARD: Final[str] = "14px"
+RADIUS_CONTROL: Final[str] = "10px"
+FONT_FAMILY: Final[str] = "'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif"
