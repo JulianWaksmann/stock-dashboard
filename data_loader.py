@@ -160,6 +160,73 @@ def fetch_single_ticker_info(ticker: str) -> dict:
         return {**_empty_fundamentals(ticker), "_fetch_ok": False}
 
 
+def build_summary_row(
+    ticker: str,
+    fund: dict,
+    tech: dict,
+    tf_suffix: str,
+    timeframe: str = "1d",
+) -> dict:
+    """
+    Arma la fila de `df_summary` de un ticker a partir de sus fundamentales y
+    sus indicadores técnicos ya calculados.
+
+    Es pura —sin red y sin Streamlit— a propósito: esta fila es el **contrato**
+    entre la descarga y todo lo que dibuja (tabla, KPIs, alertas, ficha de
+    detalle y gráficos). Separada de la descarga, los tests pueden verificar
+    que las claves que esos componentes indexan por nombre siguen existiendo,
+    sin mocks de red. Un nombre que cambia y nadie actualiza no falla en el
+    cálculo: falla en pantalla, con un `KeyError` o con un valor por defecto
+    que parece un dato.
+
+    Las columnas van duplicadas a propósito (ver CLAUDE.md): nombre en
+    castellano con sufijo de temporalidad para mostrar, y nombre estable en
+    mayúsculas para filtros, KPIs y gráficos, que no pueden reconstruir el
+    sufijo según la temporalidad elegida.
+    """
+    return {
+        "Semáforo": tech.get("confluence_signal", SIGNAL_NEUTRAL),
+        "Ticker": ticker,
+        # La tabla principal no muestra el nombre de la empresa (es ruido en un
+        # cuadro de 14 columnas), pero la ficha de detalle lo titula y el
+        # scatter de valuación lo pone en el tooltip.
+        "Empresa": fund.get("name") or ticker,
+        "Flujo Institucional": tech.get("institutional_flow", FLOW_NOT_AVAILABLE),
+        "Precio Actual": tech.get("close", np.nan),
+        "Var. Período (%)": tech.get("day_change_pct", np.nan),
+        "PER Pasado (Trailing)": fund.get("trailing_pe", np.nan),
+        "PER Futuro (Forward)": fund.get("forward_pe", np.nan),
+        "PER Prom. Hist. (5A)": fund.get("hist_avg_pe", np.nan),
+        f"RSI (14){tf_suffix}": tech.get("rsi_14", np.nan),
+        f"Dif. % SMA 20{tf_suffix}": tech.get("diff_sma_20_pct", np.nan),
+        f"Dif. % SMA 50{tf_suffix}": tech.get("diff_sma_50_pct", np.nan),
+        f"Dif. % SMA 200{tf_suffix}": tech.get("diff_sma_200_pct", np.nan),
+        "Dif. % Máx 52S": tech.get("dist_52w_high_pct", np.nan),
+        "Bollinger BW (%)": tech.get("bb_bandwidth", np.nan),
+        "MACD Hist": tech.get("macd_hist", np.nan),
+        "Estocástico %K": tech.get("stoch_k", np.nan),
+        "Estocástico %D": tech.get("stoch_d", np.nan),
+        # Claves genéricas para filtros, KPIs y gráficos
+        "RSI_VAL": tech.get("rsi_14", np.nan),
+        "SMA_20_VAL": tech.get("sma_20", np.nan),
+        "SMA_50_VAL": tech.get("sma_50", np.nan),
+        "SMA_200_VAL": tech.get("sma_200", np.nan),
+        "DIFF_SMA_20_VAL": tech.get("diff_sma_20_pct", np.nan),
+        "DIFF_SMA_50_VAL": tech.get("diff_sma_50_pct", np.nan),
+        "DIFF_SMA_200_VAL": tech.get("diff_sma_200_pct", np.nan),
+        "DIST_52W_HIGH_PCT": tech.get("dist_52w_high_pct", np.nan),
+        "BB_BANDWIDTH": tech.get("bb_bandwidth", np.nan),
+        "STOCH_K": tech.get("stoch_k", np.nan),
+        "STOCH_D": tech.get("stoch_d", np.nan),
+        "MACD_HIST_VAL": tech.get("macd_hist", np.nan),
+        "HIGH_52W_VAL": tech.get("high_52w", np.nan),
+        "LOW_52W_VAL": tech.get("low_52w", np.nan),
+        "Sector": fund.get("sector", "Desconocido"),
+        "Market Cap ($B)": (fund.get("market_cap") / 1e9) if fund.get("market_cap") else np.nan,
+        "Timeframe": timeframe,
+    }
+
+
 @st.cache_data(ttl=300, show_spinner=False)
 def load_all_stocks_data(tickers: list[str], timeframe: str = "1d") -> tuple[pd.DataFrame, dict[str, pd.DataFrame]]:
     """
@@ -248,44 +315,16 @@ def load_all_stocks_data(tickers: list[str], timeframe: str = "1d") -> tuple[pd.
 
     # 3. Consolidar en un solo DataFrame con 'Semáforo' al inicio y 'Flujo Institucional'
     tf_suffix = " (Sem)" if timeframe == "1wk" else " (Día)"
-    rows = []
-    for ticker in tickers:
-        fund = fundamentals_map.get(ticker, {})
-        tech = technicals_map.get(ticker, {})
-        
-        row = {
-            "Semáforo": tech.get("confluence_signal", SIGNAL_NEUTRAL),
-            "Ticker": ticker,
-            "Flujo Institucional": tech.get("institutional_flow", FLOW_NOT_AVAILABLE),
-            "Precio Actual": tech.get("close", np.nan),
-            "Var. Período (%)": tech.get("day_change_pct", np.nan),
-            "PER Pasado (Trailing)": fund.get("trailing_pe", np.nan),
-            "PER Futuro (Forward)": fund.get("forward_pe", np.nan),
-            "PER Prom. Hist. (5A)": fund.get("hist_avg_pe", np.nan),
-            f"RSI (14){tf_suffix}": tech.get("rsi_14", np.nan),
-            f"Dif. % SMA 20{tf_suffix}": tech.get("diff_sma_20_pct", np.nan),
-            f"Dif. % SMA 50{tf_suffix}": tech.get("diff_sma_50_pct", np.nan),
-            f"Dif. % SMA 200{tf_suffix}": tech.get("diff_sma_200_pct", np.nan),
-            "Dif. % Máx 52S": tech.get("dist_52w_high_pct", np.nan),
-            "Bollinger BW (%)": tech.get("bb_bandwidth", np.nan),
-            "MACD Hist": tech.get("macd_hist", np.nan),
-            "Estocástico %K": tech.get("stoch_k", np.nan),
-            "Estocástico %D": tech.get("stoch_d", np.nan),
-            # Claves genéricas para filtros y KPIs
-            "RSI_VAL": tech.get("rsi_14", np.nan),
-            "SMA_20_VAL": tech.get("sma_20", np.nan),
-            "SMA_50_VAL": tech.get("sma_50", np.nan),
-            "SMA_200_VAL": tech.get("sma_200", np.nan),
-            "DIFF_SMA_20_VAL": tech.get("diff_sma_20_pct", np.nan),
-            "DIFF_SMA_50_VAL": tech.get("diff_sma_50_pct", np.nan),
-            "DIFF_SMA_200_VAL": tech.get("diff_sma_200_pct", np.nan),
-            "DIST_52W_HIGH_PCT": tech.get("dist_52w_high_pct", np.nan),
-            "BB_BANDWIDTH": tech.get("bb_bandwidth", np.nan),
-            "Sector": fund.get("sector", "Desconocido"),
-            "Market Cap ($B)": (fund.get("market_cap") / 1e9) if fund.get("market_cap") else np.nan,
-            "Timeframe": timeframe
-        }
-        rows.append(row)
+    rows = [
+        build_summary_row(
+            ticker,
+            fundamentals_map.get(ticker, {}),
+            technicals_map.get(ticker, {}),
+            tf_suffix,
+            timeframe,
+        )
+        for ticker in tickers
+    ]
 
     df_summary = pd.DataFrame(rows)
     df_summary.attrs["failed_tickers"] = sorted(failed_tickers)

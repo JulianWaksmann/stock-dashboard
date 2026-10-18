@@ -290,6 +290,25 @@ SECTION_SHORT_LABELS: Final[dict[str, str]] = {
 }
 
 # ----------------------------------------------------------------------
+# Vistas agregadas del panel de acciones (selector horizontal del cuerpo).
+#
+# Son tres gráficos sobre el mismo panel ya descargado, y se eligen de a uno
+# en vez de apilarse: los tres juntos miden más de 1500 px de alto y dejan de
+# poder compararse entre sí de un vistazo. Los textos viven acá por la razón
+# de siempre: el `if/elif` del panel compara contra ellos.
+# ----------------------------------------------------------------------
+STOCK_CHART_VALUATION: Final[str] = "Valuación vs Momentum"
+STOCK_CHART_PE: Final[str] = "Comparativa de PER"
+STOCK_CHART_SMA: Final[str] = "Ranking vs SMA 200"
+
+STOCK_CHART_OPTIONS: Final[tuple[str, ...]] = (
+    STOCK_CHART_VALUATION,
+    STOCK_CHART_PE,
+    STOCK_CHART_SMA,
+)
+
+
+# ----------------------------------------------------------------------
 # País del panel de bonos corporativos (desplegable de la barra lateral).
 #
 # El país no es una etiqueta cosmética: define la fuente de precios, las

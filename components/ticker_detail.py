@@ -1,5 +1,11 @@
 """
-components/ticker_detail.py - Vista detallada y ficha técnica de una acción individual
+components/ticker_detail.py - Vista detallada y ficha técnica de una acción individual.
+
+Lee `df_summary` por nombre de columna, así que depende del contrato que arma
+`data_loader.build_summary_row`: el semáforo está en la columna `"Semáforo"` y
+el nombre de la empresa en `"Empresa"`. Un nombre que no existe no rompe acá,
+devuelve el valor por defecto y queda una ficha que parece cargada y no lo
+está; por eso el contrato tiene su propio test.
 """
 
 import pandas as pd
@@ -7,6 +13,7 @@ import streamlit as st
 
 from components.charts import compute_chart_indicators, plot_stock_detail
 from components.formatting import format_signed_pct
+from constants import SIGNAL_NEUTRAL
 
 
 def render_ticker_detail_view(ticker: str, df_summary: pd.DataFrame, dict_history: dict[str, pd.DataFrame], timeframe_label: str = "Diario"):
@@ -21,19 +28,19 @@ def render_ticker_detail_view(ticker: str, df_summary: pd.DataFrame, dict_histor
     df_hist = dict_history.get(ticker, pd.DataFrame())
 
     tf_suffix = " (Sem)" if "sem" in timeframe_label.lower() else " (Día)"
-    confluence = row.get('Señal Confluencia', '🟡 NEUTRAL')
+    confluence = row.get('Semáforo', SIGNAL_NEUTRAL)
 
     col_title, col_sig = st.columns([3, 1])
     with col_title:
-        st.markdown(f"### 🏢 {row['Empresa']} (`{ticker}`)")
-        st.caption(f"Sector: **{row['Sector']}** | Temporalidad activa: **{timeframe_label}**")
+        st.markdown(f"### 🏢 {row.get('Empresa', ticker)} (`{ticker}`)")
+        st.caption(f"Sector: **{row.get('Sector', 'Desconocido')}** | Temporalidad activa: **{timeframe_label}**")
     with col_sig:
         st.markdown(f"<div style='text-align:right; padding-top:10px; font-size:16px; font-weight:700;'>{confluence}</div>", unsafe_allow_html=True)
 
     # 1. Métricas de Valuación y Momentum
     c1, c2, c3, c4, c5 = st.columns(5)
     c1.metric("Precio Actual", f"${row['Precio Actual']:.2f}", format_signed_pct(row['Var. Período (%)']))
-    
+
     t_pe = f"{row['PER Pasado (Trailing)']:.1f}x" if pd.notna(row['PER Pasado (Trailing)']) else "N/A"
     c2.metric("PER Pasado", t_pe)
 
@@ -60,7 +67,7 @@ def render_ticker_detail_view(ticker: str, df_summary: pd.DataFrame, dict_histor
         f"${row['SMA_200_VAL']:.2f}" if pd.notna(row['SMA_200_VAL']) else "N/A",
         format_signed_pct(row['DIFF_SMA_200_VAL']) if pd.notna(row['DIFF_SMA_200_VAL']) else None
     )
-    
+
     bw_val = f"{row.get('BB_BANDWIDTH', 0):.1f}%" if pd.notna(row.get('BB_BANDWIDTH')) else "N/A"
     m3.metric("Bollinger Bandwidth", bw_val, help="Ancho porcentual de las Bandas de Bollinger (detección de Squeeze)")
 
@@ -73,7 +80,7 @@ def render_ticker_detail_view(ticker: str, df_summary: pd.DataFrame, dict_histor
     st.markdown("#### 📊 Gráfico Avanzado (4 Paneles: Velas+SMAs+Bollinger | Volumen | MACD | RSI+Estocástico)")
     if not df_hist.empty:
         indicators = compute_chart_indicators(df_hist)
-        fig = plot_stock_detail(df_hist, indicators, ticker, row['Empresa'], timeframe_label)
+        fig = plot_stock_detail(df_hist, indicators, ticker, row.get('Empresa', ''), timeframe_label)
         st.plotly_chart(fig, use_container_width=True)
     else:
         st.info("Cargando historial para el gráfico...")

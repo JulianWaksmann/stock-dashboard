@@ -13,10 +13,16 @@ from components.branding import (
     render_brand_bar,
     render_nav_anchor,
 )
+from components.charts import (
+    plot_pe_comparison_bar,
+    plot_sma_distances_bar,
+    plot_valuation_vs_technicals,
+)
 from components.coming_soon import render_coming_soon
 from components.crypto_panel import render_crypto_panel
 from components.kpi_cards import render_kpi_cards
 from components.screener_table import render_screener_table
+from components.ticker_detail import render_ticker_detail_view
 from constants import (
     BUY_SIGNALS,
     FILTER_FLOW_ACCUMULATION,
@@ -40,6 +46,9 @@ from constants import (
     SIGNAL_FILTER_OPTIONS,
     SIGNAL_STRONG_BUY,
     SMA200_FILTER_OPTIONS,
+    STOCK_CHART_OPTIONS,
+    STOCK_CHART_PE,
+    STOCK_CHART_VALUATION,
     TIMEFRAME_CHOICE_OPTIONS,
     TIMEFRAME_CHOICE_WEEKLY,
 )
@@ -122,7 +131,7 @@ def _render_stocks_tab():
 
     # Cargar datos
     with st.spinner(f"⏳ Extrayendo datos en vivo ({timeframe_label}) y evaluando grados de confluencia..."):
-        df_summary, _ = load_all_stocks_data(tickers_list, timeframe=timeframe)
+        df_summary, dict_history = load_all_stocks_data(tickers_list, timeframe=timeframe)
 
     if df_summary.empty:
         st.error("No se pudieron cargar los datos de las acciones. Verifica tu conexión a internet.")
@@ -239,6 +248,76 @@ def _render_stocks_tab():
         )
 
     render_screener_table(df_filtered, timeframe_label=timeframe_label)
+
+    # ----------------------------------------------------
+    # 4. FICHA DE DETALLE DE UNA ACCIÓN
+    # ----------------------------------------------------
+    # La tabla dice *qué* acción mirar; la ficha es la que permite decidir, y
+    # necesita el historial completo (`dict_history`), que la descarga ya
+    # devolvía y acá se tiraba.
+    st.markdown("---")
+    st.markdown("### 🔎 Ficha de detalle")
+
+    tickers_disponibles = df_filtered["Ticker"].tolist()
+    if not tickers_disponibles:
+        st.info("Ninguna acción pasa los filtros actuales, así que no hay ficha para mostrar.")
+    else:
+        ticker_elegido = st.selectbox(
+            "Acción a examinar:",
+            tickers_disponibles,
+            help="La lista respeta los filtros de la barra lateral.",
+        )
+        render_ticker_detail_view(
+            ticker_elegido,
+            df_summary,
+            dict_history,
+            timeframe_label=timeframe_label,
+        )
+
+    # ----------------------------------------------------
+    # 5. VISTAS AGREGADAS DEL PANEL
+    # ----------------------------------------------------
+    # De a una y no las tres apiladas: son tres gráficos de 500 a 900 px y
+    # juntos no se comparan, se scrollean. Ninguna descarga datos nuevos, así
+    # que cambiar de vista no vuelve a consultar al proveedor.
+    st.markdown("---")
+    st.markdown("### 📊 Vistas agregadas del panel")
+
+    vista = st.radio(
+        "Vista agregada",
+        STOCK_CHART_OPTIONS,
+        horizontal=True,
+        label_visibility="collapsed",
+    )
+
+    if vista == STOCK_CHART_VALUATION:
+        st.plotly_chart(
+            plot_valuation_vs_technicals(df_filtered, timeframe_label=timeframe_label),
+            use_container_width=True,
+        )
+        st.caption(
+            "Abajo a la izquierda está lo barato y rezagado; arriba a la derecha, lo caro "
+            "y con impulso. Las líneas punteadas son la mediana de PER futuro del panel y "
+            "el cero de distancia a la media de 200: dividen el cuadrante, no son objetivos."
+        )
+    elif vista == STOCK_CHART_PE:
+        st.plotly_chart(plot_pe_comparison_bar(df_filtered), use_container_width=True)
+        st.caption(
+            "Cuando el PER futuro queda por debajo del pasado, el mercado espera que las "
+            "ganancias crezcan; al revés, que caigan. El promedio de cinco años dice si el "
+            "múltiplo de hoy es alto o bajo **para esa empresa**, que es la única comparación "
+            "que tiene sentido entre sectores distintos."
+        )
+    else:
+        st.plotly_chart(
+            plot_sma_distances_bar(df_filtered, timeframe_label=timeframe_label),
+            use_container_width=True,
+        )
+        st.caption(
+            "Distancia a la media de 200 períodos, ordenada. Los extremos de abajo son "
+            "las más castigadas respecto de su propia tendencia; los de arriba, las más "
+            "estiradas."
+        )
 
     with st.expander("ℹ️ Cómo se lee el semáforo"):
         st.markdown("""

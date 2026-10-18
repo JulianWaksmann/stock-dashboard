@@ -339,7 +339,7 @@ def plot_valuation_vs_technicals(df: pd.DataFrame, timeframe_label: str = "Diari
                 f"Dif. % vs SMA 200 ({timeframe_label}): " + "%{y:+.2f}%<br>" +
                 f"RSI 14 ({timeframe_label}): " + "%{marker.color:.1f}<extra></extra>"
             ),
-            customdata=df_clean[['Empresa', 'Sector', 'Precio Actual', 'Var. Período (%)', 'PER Pasado (Trailing)', 'PER Prom. Hist. (5A)', 'Señal Confluencia']].values
+            customdata=df_clean[['Empresa', 'Sector', 'Precio Actual', 'Var. Período (%)', 'PER Pasado (Trailing)', 'PER Prom. Hist. (5A)', 'Semáforo']].values
         )
     )
 
