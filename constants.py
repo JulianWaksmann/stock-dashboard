@@ -577,6 +577,45 @@ BOND_SCORE_MIN_PANEL_SIZE: Final[int] = 5
 # que es la única forma de que todos se comparen sobre la misma base.
 BOND_SCORE_MIN_DIMENSION_COVERAGE: Final[float] = 0.5
 
+
+# ----------------------------------------------------------------------
+# Curva de rendimientos del panel de bonos (`bonds/curve.py`).
+#
+# Los números de acá definen cuándo hay curva y cuándo no, que es lo que
+# separa una lectura de valor relativo de un dibujo sobre puntos dispersos.
+# ----------------------------------------------------------------------
+# Mínimo de bonos con TIR y duration para intentar un ajuste. Con menos, la
+# recta pasa por los puntos en vez de describirlos.
+BOND_CURVE_MIN_BONDS: Final[int] = 4
+
+# Mínima diferencia entre la duration más corta y la más larga del grupo, en
+# años. Sin dispersión de plazo no hay curva que ajustar: la nube es vertical
+# y la pendiente la decide el ruido.
+BOND_CURVE_MIN_DURATION_SPREAD: Final[float] = 0.5
+
+# Cuántas veces la mediana de TIR del grupo puede rendir una especie antes de
+# quedar afuera del ajuste (igual recibe residuo). Un bono a precio de recupero
+# tiene una TIR contractual de tres dígitos: una sola fila así inclina la recta
+# y vuelve "caro" a todo el resto del panel.
+#
+# Es un múltiplo de la mediana y no un porcentaje fijo por la misma razón que
+# el resto del módulo de bonos es relativo: un tope de "40%" deja afuera la
+# curva entera de un panel en pesos, donde rendir 65% es lo normal.
+BOND_CURVE_FIT_MAX_YTM_MULTIPLE: Final[float] = 3.0
+
+# Cuántos desvíos de residuo hacen falta para llamar barato o caro a un bono.
+BOND_CURVE_RESIDUAL_SIGMAS: Final[float] = 1.0
+
+# Piso del corte, en puntos porcentuales. El corte para llamar barato o caro a
+# un bono es el mayor entre un desvío de residuo y este piso: en un panel muy
+# pegado a su curva, un desvío puede ser medio punto básico y etiquetaría a
+# cualquiera.
+BOND_CURVE_MIN_RESIDUAL_PP: Final[float] = 0.25
+
+BOND_CURVE_CHEAP: Final[str] = "🟢 Sobre la curva"
+BOND_CURVE_RICH: Final[str] = "🔴 Bajo la curva"
+BOND_CURVE_FAIR: Final[str] = "⚪ En la curva"
+
 # Cortes del puntaje a etiqueta del semáforo.
 BOND_SCORE_VERY_ATTRACTIVE_MIN: Final[float] = 70.0
 BOND_SCORE_ATTRACTIVE_MIN: Final[float] = 55.0

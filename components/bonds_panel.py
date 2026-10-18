@@ -21,14 +21,25 @@ import pandas as pd
 import streamlit as st
 
 from bonds.byma_source import BYMA_BASE_URL
+from bonds.curve import (
+    COL_CURRENCY,
+    COL_DURATION,
+    COL_RELATIVE_VALUE,
+    COL_YTM,
+    add_curve_residuals,
+    fit_yield_curves,
+)
 from bonds.data_loader import load_bonds_data
 from bonds.flows_source import COMMUNITY_FLOWS_URL
 from bonds.panel import apply_bond_filters
+from components.bonds_chart import build_curve_chart
 from components.bonds_table import render_bonds_table
 from components.coming_soon import render_coming_soon
 from constants import (
     BOND_COUNTRY_ARGENTINA,
     BOND_COUNTRY_OPTIONS,
+    BOND_CURVE_CHEAP,
+    BOND_CURVE_RICH,
     BOND_FILTER_LIQUIDITY_TRADED,
     BOND_FILTER_SETTLEMENT_USD,
     BOND_FILTER_SIGNAL_ALL,
@@ -403,6 +414,73 @@ Cocos, etc. exponen API con cuenta).
         )
 
 
+def _render_curve(df: pd.DataFrame):
+    """
+    Curva de rendimientos del panel y ubicación de cada especie contra ella.
+
+    Va después del cuadro y sobre las mismas filas filtradas: el cuadro dice
+    cuánto rinde cada bono, la curva dice si ese rendimiento es alto **para su
+    plazo**, que es la única comparación que tiene sentido entre especies que
+    vencen en años distintos.
+
+    Se dibuja una moneda por vez. Un flujo en pesos y uno en dólares no son dos
+    precios del mismo riesgo, así que mezclarlos en el mismo par de ejes
+    dibujaría dos curvas como si fueran una.
+    """
+    st.markdown("### 📈 Curva de Rendimientos del Panel")
+
+    graficables = df.dropna(subset=[COL_YTM, COL_DURATION]) if not df.empty else df
+    if graficables.empty:
+        st.info(
+            "📗 Ninguna de las especies filtradas tiene TIR y duration calculables, así que "
+            "no hay curva que dibujar. Hace falta el cronograma de pagos del bono, y solo una "
+            "fracción de las especies que cotizan lo publica."
+        )
+        return
+
+    curvas = fit_yield_curves(df)
+    con_residuos = add_curve_residuals(df, curvas)
+
+    # Una moneda por vez, la más representada primero.
+    monedas = (
+        graficables[COL_CURRENCY].astype(str).value_counts().index.tolist()
+        if COL_CURRENCY in graficables.columns
+        else [""]
+    )
+    moneda = monedas[0]
+    if len(monedas) > 1:
+        moneda = st.radio(
+            "Moneda de la curva",
+            monedas,
+            horizontal=True,
+            help="Cada moneda tiene su propia curva: no son dos precios del mismo riesgo.",
+        )
+
+    del_grupo = con_residuos[con_residuos[COL_CURRENCY].astype(str) == moneda]
+    st.plotly_chart(
+        build_curve_chart(del_grupo, curvas.get(moneda), moneda),
+        use_container_width=True,
+    )
+
+    baratos = int((del_grupo[COL_RELATIVE_VALUE] == BOND_CURVE_CHEAP).sum())
+    caros = int((del_grupo[COL_RELATIVE_VALUE] == BOND_CURVE_RICH).sum())
+    if moneda in curvas:
+        st.caption(
+            f"🟢 **{baratos} sobre la curva** (rinden más que sus pares de igual plazo) · "
+            f"🔴 **{caros} bajo la curva** · el resto, en línea con sus pares. "
+            "El corte es relativo a la dispersión del panel de hoy, no un umbral fijo: la "
+            "curva argentina se mueve entera con el riesgo país. El tamaño del punto es el "
+            "volumen operado — una TIR atractiva en una especie que casi no opera no es "
+            "ejecutable."
+        )
+    else:
+        st.caption(
+            "Los puntos están, la curva no: este grupo no llega al mínimo de especies con "
+            "TIR y duration, o todas vencen en plazos casi iguales. Sin dispersión de plazo "
+            "la recta la decidiría el ruido, así que no se dibuja."
+        )
+
+
 def render_bonds_panel():
     """Dibuja la sección completa de Bonos Corporativos."""
     country = _render_sidebar()
@@ -521,6 +599,9 @@ def render_bonds_panel():
         )
 
     render_bonds_table(df_filtered, full=vista_completa, breakdown=ver_desglose)
+
+    st.markdown("---")
+    _render_curve(df_filtered)
 
     _render_glossary()
     _render_methodology()
