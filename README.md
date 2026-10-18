@@ -403,8 +403,14 @@ stock-dashboard/
 ├── theme.py                        # Paleta de colores centralizada, compartida por el cuadro y los gráficos
 ├── data_loader.py                  # Descarga paralela de precios y fundamentales de acciones, caché y agregación
 ├── indicators.py                   # Matemática de indicadores (SMA/EMA/RSI/MACD/Bollinger/Estocástico/OBV/52S) y confluencia
+├── stock_screener.py               # Filtros del panel de acciones, puros y compartidos por los dos mercados
+├── signal_stats.py                 # Replay del semáforo barra por barra y su medición contra lo que vino después (puro)
+├── snapshots.py                    # Registro diario de cada panel y comparación contra la foto anterior
+├── levels.py                       # Soportes y resistencias por pivotes agrupados (puro, compartido acciones/cripto)
+├── divergences.py                  # Divergencias precio vs RSI sobre los mismos pivotes (puro)
 ├── bonds/
 │   ├── __init__.py                 # Paquete de renta fija para ONs argentinas
+│   ├── curve.py                    # Curva de rendimientos del panel y valor relativo contra ella (puro)
 │   ├── bond_math.py                # Flujo de fondos, TIR, duration, convexidad, paridad, interés corrido (puro, sin I/O)
 │   ├── byma_source.py              # Precios de BYMA Open Data; el parseo es una función pura
 │   ├── byma_terms.py               # Ficha técnica por especie: emisor, ley, lámina, garantía, default
@@ -413,12 +419,17 @@ stock-dashboard/
 │   ├── panel.py                    # Cruce puro de precios + condiciones + métricas, y los filtros del panel
 │   ├── scoring.py                  # Puntaje de Oportunidad ponderado, relativo al panel del día
 │   └── data_loader.py              # Solo I/O: precios, curva del Tesoro, orquestación cacheada
+├── merval/
+│   ├── __init__.py                 # Paquete del panel argentino, medido en dólares
+│   ├── catalog.py                  # Universo local y pares con ADR, con el ratio de cada programa (puro)
+│   ├── ccl.py                      # Dólar implícito del panel por mediana de pares y conversión a dólares (puro)
+│   ├── splits.py                   # Corrección de splits que el proveedor no ajustó en las series locales (puro)
+│   └── data_loader.py              # Solo I/O: precios locales y de ADR, orquestación cacheada
 ├── crypto/
 │   ├── __init__.py                 # Paquete del motor de criptomonedas
 │   ├── catalog.py                  # Universo de criptos: ticker de Yahoo, símbolo, nombre y categoría (puro)
 │   ├── panel.py                    # Métricas del cuadro: calendario de 365 días, fuerza vs BTC, volatilidad (puro)
 │   ├── dominance.py                # Dominancia reconstruida, rotación y termómetro de temporada (puro)
-│   ├── levels.py                   # Soportes y resistencias por pivotes agrupados (puro)
 │   ├── prices_source.py            # Descarga del OHLCV en Yahoo; toca red, no Streamlit
 │   ├── market_source.py            # Capitalización y oferta (Yahoo) + dominancia global (CoinGecko)
 │   └── data_loader.py              # Solo I/O: orquestación cacheada del panel
@@ -429,18 +440,25 @@ stock-dashboard/
 │   ├── alerts_panel.py             # Tarjetas de alertas rápidas agrupadas por grado de señal
 │   ├── bonds_panel.py              # La sección de Bonos completa: controles, KPIs, filtros, glosario y metodología
 │   ├── bonds_table.py              # Cuadro comparativo de ONs con formato condicional y ayuda por columna
-│   ├── charts.py                   # Gráfico técnico de 4 paneles y dispersión valuación vs momento
+│   ├── bonds_chart.py              # Curva TIR vs duration, con el ajuste del panel y el valor relativo por color
+│   ├── changes_panel.py            # "Qué cambió desde la última vez", sobre el registro diario
+│   ├── charts.py                   # Gráfico técnico de 4 paneles, con soportes/resistencias, y vistas agregadas
+│   ├── merval_panel.py             # La sección argentina: dólar implícito, diagnóstico de pares y cuerpo compartido
+│   ├── signal_stats_panel.py       # "¿Funcionó el semáforo?": medición sobre el historial ya descargado
+│   ├── stocks_body.py              # Cuerpo del panel de acciones, compartido por los dos mercados
 │   ├── crypto_chart.py             # Velas con soportes/resistencias y gráfico de dominancia
 │   ├── crypto_panel.py             # La sección de Cripto completa: controles, alertas, KPIs, filtros y metodología
 │   ├── crypto_table.py             # Cuadro de criptomonedas con formato adaptativo de precio y volumen
 │   ├── formatting.py               # Helpers de formato de texto compartidos
 │   ├── kpi_cards.py                # Tarjetas de KPIs de amplitud de mercado y valuación
 │   ├── screener_table.py           # Tabla interactiva del screener con resaltado condicional
-│   └── ticker_detail.py            # Vista de detalle por ticker; todavía no conectada a app.py
+│   └── ticker_detail.py            # Ficha de detalle por ticker, con el gráfico de 4 paneles
 ├── scripts/
 │   ├── verificar_fuentes.py        # Diagnóstico de las fuentes de datos y comparación entre feeds
 │   ├── panel_ons.py                # El panel de ONs en la terminal, con el mismo motor que la interfaz
-│   └── panel_cripto.py             # El panel de cripto en la terminal, con el mismo motor que la interfaz
+│   ├── panel_cripto.py             # El panel de cripto en la terminal, con el mismo motor que la interfaz
+│   ├── panel_merval.py             # El panel argentino en la terminal; con --ccl, diagnostica los ratios de ADR
+│   └── medir_semaforo.py           # Mide el semáforo contra lo que pasó después, en ambas calibraciones
 ├── tests/
 │   ├── conftest.py                 # Fixtures compartidas (series sintéticas deterministas)
 │   ├── test_52w_high_low.py        # compute_52w_high_low
@@ -458,7 +476,15 @@ stock-dashboard/
 │   ├── test_confluence_signal.py   # evaluate_confluence_signal
 │   ├── test_crypto_catalog.py      # Integridad del universo cripto y de sus grupos
 │   ├── test_crypto_dominance.py    # Reconstrucción de la dominancia, rotación y temporada
-│   ├── test_crypto_levels.py       # Pivotes, agrupamiento de niveles y soportes/resistencias
+│   ├── test_levels.py              # Pivotes, agrupamiento de niveles y soportes/resistencias
+│   ├── test_bond_curve.py          # Ajuste de la curva, residuos y cuándo NO se ajusta
+│   ├── test_merval_catalog.py      # Integridad del universo local y de los pares con ADR
+│   ├── test_merval_ccl.py          # Dólar implícito por mediana y conversión a dólares
+│   ├── test_merval_splits.py       # Detección y corrección de splits no ajustados
+│   ├── test_signal_stats.py        # Paridad del replay con el tablero y ausencia de filtración del futuro
+│   ├── test_snapshots.py           # Registro diario: una foto por día y comparación contra la anterior
+│   ├── test_stock_screener.py      # Filtros del panel de acciones
+│   ├── test_stock_summary_contract.py  # Contrato de columnas entre la descarga y lo que dibuja
 │   ├── test_crypto_panel.py        # Calendario de 365 días, fuerza vs BTC, volatilidad, filtros y formato de precio
 │   ├── test_obv.py                 # compute_obv
 │   ├── test_rsi.py                 # compute_rsi

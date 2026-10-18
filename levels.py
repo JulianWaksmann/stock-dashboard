@@ -1,5 +1,5 @@
 """
-crypto/levels.py - Detección de soportes y resistencias.
+levels.py - Detección de soportes y resistencias.
 
 Capa pura: recibe un OHLCV y devuelve niveles. Sin red, sin Streamlit y sin
 dependencia de cripto, aunque hoy solo lo use esa sección.

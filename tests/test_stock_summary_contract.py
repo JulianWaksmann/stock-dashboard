@@ -190,6 +190,23 @@ class TestGraficoDeDetalle:
         assert len(fig.data) >= 10
         assert fig.layout.yaxis4.range == (0, 100)  # el panel de osciladores
 
+    def test_dibuja_soportes_y_resistencias(self, random_ohlcv_df):
+        """
+        Los niveles salen del mismo detector que el gráfico de cripto, con
+        parámetros medidos sobre acciones: lo que se fija acá es que lleguen al
+        gráfico y que la etiqueta diga cuántos toques tiene cada zona, que es
+        lo que distingue un nivel fuerte de una línea sobre un máximo casual.
+        """
+        indicadores = compute_chart_indicators(random_ohlcv_df)
+        fig = plot_stock_detail(random_ohlcv_df, indicadores, "TKR0", "Empresa 0", "Diario")
+
+        etiquetas = [
+            a.text for a in fig.layout.annotations
+            if a.text and ("Soporte" in a.text or "Resistencia" in a.text)
+        ]
+        assert etiquetas, "el gráfico no dibujó ningún nivel"
+        assert all("toque" in texto for texto in etiquetas)
+
     def test_sin_historial_devuelve_figura_con_aviso(self):
         fig = plot_stock_detail(pd.DataFrame(), None, "TKR0")
         assert fig.data == ()

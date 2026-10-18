@@ -205,6 +205,7 @@ def render_merval_panel(timeframe: str, timeframe_label: str, filtros: StockFilt
         timeframe=timeframe,
         nombre_archivo="merval_en_dolares",
         nombre_activo="acciones argentinas",
+        motor_registro="acciones_merval",
         window_52w=ventana_52w,
         squeeze_lookback=squeeze_lookback,
         key_prefix="merval",

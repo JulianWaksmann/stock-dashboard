@@ -1,5 +1,5 @@
 """
-Tests de soportes y resistencias (`crypto/levels.py`).
+Tests de soportes y resistencias (`levels.py`).
 
 Las series son construidas a mano con los giros en posiciones conocidas, así
 que el nivel esperado se puede escribir en el test sin recalcularlo.
@@ -10,7 +10,7 @@ import pandas as pd
 import pytest
 
 from constants import CRYPTO_LEVEL_STRONG_TOUCHES
-from crypto.levels import (
+from levels import (
     PriceLevel,
     cluster_levels,
     detect_support_resistance,

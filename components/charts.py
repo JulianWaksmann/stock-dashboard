@@ -9,6 +9,11 @@ import pandas as pd
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
+from constants import (
+    STOCK_LEVEL_CLUSTER_PCT,
+    STOCK_LEVELS_PER_SIDE,
+    STOCK_PIVOT_LOOKAROUND_BARS,
+)
 from indicators import (
     compute_bollinger_bands,
     compute_macd,
@@ -16,6 +21,7 @@ from indicators import (
     compute_sma,
     compute_stochastic,
 )
+from levels import PriceLevel, detect_support_resistance
 from theme import (
     COLOR_BOLLINGER_BAND,
     COLOR_BOLLINGER_FILL,
@@ -152,6 +158,51 @@ def _add_price_panel(fig: go.Figure, df: pd.DataFrame, indicators: ChartIndicato
     )
 
 
+def _add_levels(fig: go.Figure, df: pd.DataFrame) -> None:
+    """
+    Soportes y resistencias sobre el panel de precio.
+
+    Usa el mismo detector que el gráfico de cripto (`levels.py`): si un giro
+    merece una línea en un gráfico, merece la misma línea en el otro. Lo que
+    cambia son los parámetros, medidos sobre acciones (ver
+    `STOCK_PIVOT_LOOKAROUND_BARS` en `constants.py`).
+
+    Pocas líneas y cerca del precio, por la razón de siempre: con quince
+    siempre hay una cerca, así que el precio siempre parece estar "en un
+    nivel" y el gráfico deja de decir nada. El grosor es información — llena
+    para las zonas que el precio respetó varias veces, punteada para las de un
+    solo toque — y la cantidad de toques va en la etiqueta, así que no hay que
+    adivinar por qué una es más gruesa que otra.
+    """
+    soportes, resistencias = detect_support_resistance(
+        df,
+        lookaround=STOCK_PIVOT_LOOKAROUND_BARS,
+        cluster_pct=STOCK_LEVEL_CLUSTER_PCT,
+        per_side=STOCK_LEVELS_PER_SIDE,
+    )
+
+    def _dibujar(nivel: PriceLevel, color: str, etiqueta: str) -> None:
+        toques = "toque" if nivel.touches == 1 else "toques"
+        fig.add_hline(
+            y=nivel.price,
+            line_dash="solid" if nivel.is_strong else "dot",
+            line_width=1.6 if nivel.is_strong else 1.0,
+            line_color=color,
+            opacity=0.75,
+            annotation_text=f"{etiqueta} {nivel.price:,.2f} ({nivel.touches} {toques})",
+            annotation_position="right",
+            annotation_font_size=10,
+            annotation_font_color=color,
+            row=1,
+            col=1,
+        )
+
+    for nivel in soportes:
+        _dibujar(nivel, COLOR_POSITIVE, "Soporte")
+    for nivel in resistencias:
+        _dibujar(nivel, COLOR_NEGATIVE, "Resistencia")
+
+
 def _add_volume_panel(fig: go.Figure, df: pd.DataFrame) -> None:
     """Panel 2: Volumen de operaciones, coloreado según suba (Verde) o baja (Rojo) de la barra."""
     if 'Volume' not in df.columns:
@@ -244,7 +295,8 @@ def plot_stock_detail(
     """
     Dibuja el gráfico profesional de 4 paneles apilados y sincronizados a partir
     de indicadores YA CALCULADOS (ver `compute_chart_indicators`):
-      1. Velas Japonesas (OHLC) + SMA 50 + SMA 200 + Bandas de Bollinger (con sombreado).
+      1. Velas Japonesas (OHLC) + SMA 50 + SMA 200 + Bandas de Bollinger (con
+         sombreado) + soportes y resistencias.
       2. Volumen de operaciones (Verde / Rojo).
       3. MACD (Línea, Señal e Histograma).
       4. RSI (14) y Oscilador Estocástico (%K, %D) superpuestos con líneas 30 y 70.
@@ -273,6 +325,7 @@ def plot_stock_detail(
     )
 
     _add_price_panel(fig, df, indicators, timeframe_label, suffix)
+    _add_levels(fig, df)
     _add_volume_panel(fig, df)
     _add_macd_panel(fig, df, indicators)
     _add_rsi_stochastic_panel(fig, df, indicators, suffix)

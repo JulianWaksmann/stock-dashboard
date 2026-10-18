@@ -15,3 +15,6 @@ __pycache__/
 .ruff_cache/
 build/
 dist/
+
+# Registro diario de los paneles: es un log local, no fuente.
+data/snapshots/

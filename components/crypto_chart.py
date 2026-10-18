@@ -1,7 +1,7 @@
 """
 components/crypto_chart.py - Gráfico de velas con soportes y resistencias.
 
-Solo dibuja: los niveles se los pasa `crypto/levels.py` ya calculados.
+Solo dibuja: los niveles se los pasa `levels.py` ya calculados.
 
 Criterios de lectura, que son los que hacen que el gráfico sirva de un
 vistazo en vez de ser una parrilla de líneas:
@@ -25,9 +25,9 @@ from plotly.subplots import make_subplots
 
 from components.formatting import format_crypto_price
 from constants import CRYPTO_LEVEL_LABEL_GAP_PX
-from crypto.divergences import Divergence
-from crypto.levels import PriceLevel
+from divergences import Divergence
 from indicators import compute_rsi, compute_sma
+from levels import PriceLevel
 from theme import (
     COLOR_NEGATIVE,
     COLOR_NEUTRAL,

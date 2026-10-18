@@ -1,7 +1,7 @@
 """
-crypto/divergences.py - Divergencias entre el precio y el oscilador.
+divergences.py - Divergencias entre el precio y el oscilador.
 
-Capa pura, como `crypto/levels.py`, y apoyada en los mismos pivotes: una
+Capa pura, como `levels.py`, y apoyada en los mismos pivotes: una
 divergencia es una comparación entre dos giros del precio, así que detectarla
 es comparar qué hizo el oscilador en esos mismos dos momentos.
 
@@ -33,7 +33,7 @@ from constants import (
     CRYPTO_DIVERGENCE_MIN_PRICE_GAP_PCT,
     CRYPTO_DIVERGENCE_MIN_RSI_GAP,
 )
-from crypto.levels import find_pivots
+from levels import find_pivots
 
 logger = logging.getLogger(__name__)
 

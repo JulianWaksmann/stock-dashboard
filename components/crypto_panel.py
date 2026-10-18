@@ -16,6 +16,7 @@ from datetime import datetime
 import pandas as pd
 import streamlit as st
 
+from components.changes_panel import render_changes
 from components.crypto_chart import build_crypto_chart, build_dominance_chart
 from components.crypto_table import render_crypto_table
 from components.formatting import (
@@ -48,10 +49,10 @@ from constants import (
     TIMEFRAME_CHOICE_WEEKLY,
 )
 from crypto.data_loader import load_chart_history, load_crypto_data
-from crypto.divergences import detect_divergences
-from crypto.levels import detect_support_resistance, scale_params
 from crypto.panel import CRYPTO_THRESHOLDS, apply_crypto_filters, spec_for_timeframe
+from divergences import detect_divergences
 from indicators import compute_rsi
+from levels import detect_support_resistance, scale_params
 
 
 def _render_sidebar() -> tuple[str, str]:
@@ -508,6 +509,10 @@ def render_crypto_panel():
     render_crypto_table(df_filtrado, timeframe_label=timeframe_label)
 
     st.markdown("---")
+    # El registro va sobre el panel entero y usa la columna de precio estable
+    # (en cripto el precio se muestra como texto, ver CLAUDE.md).
+    render_changes(df, "cripto", columna_precio="PRECIO_VAL")
+
     _render_chart(df, historiales)
 
     # La medición usa las ventanas y los umbrales de **cripto**: con los de

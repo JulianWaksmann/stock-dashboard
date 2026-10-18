@@ -968,6 +968,23 @@ CRYPTO_LEVEL_STRONG_TOUCHES: Final[int] = 3
 
 
 # ----------------------------------------------------------------------
+# Soportes y resistencias del gráfico de acciones (`levels.py`).
+#
+# El detector es el mismo que el de cripto —los mismos pivotes, el mismo
+# agrupamiento— pero los números son propios, y están **medidos**, no
+# elegidos a ojo: sobre dos años de velas diarias de AAPL, JPM, XOM, NVDA y
+# KO, con ±10 barras de entorno y 3,5% de tolerancia quedan entre dos y
+# cuatro zonas de dos toques o más por acción. Con ±15 o ±20 barras casi
+# ninguna zona llega a dos toques (los niveles salen de un solo giro, que es
+# exactamente lo que no sirve), y con ±5 barras los pivotes son ruido de dos
+# semanas.
+# ----------------------------------------------------------------------
+STOCK_PIVOT_LOOKAROUND_BARS: Final[int] = 10
+STOCK_LEVEL_CLUSTER_PCT: Final[float] = 3.5
+STOCK_LEVELS_PER_SIDE: Final[int] = 3
+
+
+# ----------------------------------------------------------------------
 # Escala del gráfico de soportes y resistencias
 #
 # Un nivel es fuerte cuando el precio lo respetó varias veces a lo largo

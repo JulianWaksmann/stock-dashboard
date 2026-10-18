@@ -1,5 +1,5 @@
 """
-Tests de divergencias (`crypto/divergences.py`).
+Tests de divergencias (`divergences.py`).
 
 El precio y el oscilador se construyen a mano para que la divergencia esté
 donde el test dice que está: es un detector fácil de "arreglar" hasta que
@@ -16,8 +16,8 @@ from constants import (
     CRYPTO_DIVERGENCE_BULLISH,
     CRYPTO_DIVERGENCE_MIN_RSI_GAP,
 )
-from crypto.divergences import detect_divergences
-from crypto.levels import find_pivots
+from divergences import detect_divergences
+from levels import find_pivots
 
 
 def serie_con_dos_giros(primero, segundo, hacia_arriba=True, plano=10):

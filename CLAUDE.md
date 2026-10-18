@@ -30,6 +30,9 @@ ruff check . --fix
 # Verificar los pipelines sin levantar Streamlit
 python3 scripts/panel_ons.py --top 20 --desglose
 python3 scripts/panel_cripto.py --grupo memes
+python3 scripts/panel_merval.py --ccl   # dólar implícito par por par: verifica los ratios de ADR
+python3 scripts/medir_semaforo.py --horizonte 20 60       # ¿funcionó el semáforo?
+python3 scripts/medir_semaforo.py --mercado cripto
 python3 scripts/verificar_fuentes.py    # diagnóstico de las fuentes de datos
 ```
 
@@ -41,6 +44,8 @@ CI (`.github/workflows/ci.yml`) corre `ruff check .` y `pytest` en **Python 3.11
 
 Son **tres motores independientes** que comparten el dashboard pero no el modelo de datos: acciones (osciladores de precio), bonos corporativos argentinos (valor presente del flujo de fondos contractual) y criptomonedas (los mismos osciladores, otro calendario y otra referencia). `app.py` los reparte con un selector.
 
+El motor de acciones sirve **dos mercados**: Estados Unidos (`data_loader.py`) y Argentina (`merval/`). Comparten todo lo que se dibuja —`components/stocks_body.py`— y todo lo que se filtra —`stock_screener.py`—; lo único propio del argentino es de dónde salen los precios y en qué moneda están medidos.
+
 Cripto y acciones comparten `indicators.py` —la lectura técnica es la misma— pero no el modelo de datos: una cripto no tiene balances, así que no hay PER ni sector, y opera los siete días, así que las ventanas de calendario se miden en otra cantidad de barras.
 
 ### Regla de capas (se respeta en los dos motores)
@@ -49,11 +54,11 @@ Cripto y acciones comparten `indicators.py` —la lectura técnica es la misma�
 I/O con red + Streamlit  →  cálculo puro  →  dibujo
 ```
 
-* **Puro (sin red, sin `streamlit`)**: `indicators.py`, `bonds/bond_math.py`, `bonds/panel.py`, `bonds/scoring.py`, `bonds/catalog.py`, `crypto/panel.py`, `crypto/catalog.py`, y el *parseo* de `bonds/byma_source.py` / `bonds/flows_source.py`. Esto es lo que la suite de tests verifica con datos fijos, sin mocks de red.
-* **I/O**: `data_loader.py` (acciones), `bonds/data_loader.py` (bonos) y `crypto/data_loader.py` (cripto) — los únicos que tocan `st.cache_data`. `crypto/prices_source.py` toca la red pero no Streamlit, igual que `bonds/byma_source.py`.
+* **Puro (sin red, sin `streamlit`)**: `indicators.py`, `stock_screener.py`, `signal_stats.py`, `levels.py`, `divergences.py`, `merval/catalog.py`, `merval/ccl.py`, `merval/splits.py`, `bonds/curve.py`, `bonds/bond_math.py`, `bonds/panel.py`, `bonds/scoring.py`, `bonds/catalog.py`, `crypto/panel.py`, `crypto/catalog.py`, y el *parseo* de `bonds/byma_source.py` / `bonds/flows_source.py`. Esto es lo que la suite de tests verifica con datos fijos, sin mocks de red.
+* **I/O**: `data_loader.py` (acciones), `merval/data_loader.py` (acciones argentinas), `bonds/data_loader.py` (bonos) y `crypto/data_loader.py` (cripto) — los únicos que tocan `st.cache_data`. `crypto/prices_source.py` toca la red pero no Streamlit, igual que `bonds/byma_source.py`.
 * **Dibujo**: `components/`.
 
-No metas lógica de negocio en `components/` ni `streamlit` en los módulos puros: `scripts/panel_ons.py` y `scripts/panel_cripto.py` corren exactamente la misma cadena desde la terminal y se rompen si esa separación se pierde.
+No metas lógica de negocio en `components/` ni `streamlit` en los módulos puros: `scripts/panel_ons.py`, `scripts/panel_cripto.py`, `scripts/panel_merval.py` y `scripts/medir_semaforo.py` corren exactamente la misma cadena desde la terminal y se rompen si esa separación se pierde.
 
 ### `constants.py` es la única fuente de verdad
 
@@ -69,6 +74,8 @@ Etiquetas de señal, umbrales numéricos y **textos de las opciones de cada sele
 
 `df_summary` tiene **columnas duplicadas a propósito**: las de nombre en castellano con sufijo de temporalidad (`"Dif. % SMA 50 (Día)"` / `" (Sem)"`) son para mostrar, y las de nombre estable en mayúsculas (`RSI_VAL`, `DIFF_SMA_200_VAL`, `DIST_52W_HIGH_PCT`, `BB_BANDWIDTH`) son las que usan filtros y KPIs, para no tener que reconstruir el nombre según la temporalidad elegida.
 
+Esa fila la arma `data_loader.build_summary_row`, que es **pura** y es el contrato entre la descarga y todo lo que dibuja (cuadro, KPIs, alertas, ficha de detalle y gráficos, que la indexan por nombre). Un nombre que cambia y nadie actualiza no falla en el cálculo: falla en pantalla, con un `KeyError` o con un `row.get()` que devuelve el valor por omisión y parece un dato. Por eso tiene su propio test (`tests/test_stock_summary_contract.py`), que además dibuja los gráficos sobre un panel sintético — es la única forma de verificar las columnas que viven dentro de un `customdata` de Plotly.
+
 `indicators.evaluate_confluence_signal` es el semáforo: condiciones **obligatorias** (soporte + RSI del lado compra; techo + RSI del lado venta) que habilitan el conteo, y opcionales que suman puntos hasta decidir FUERTE vs MODERADA. Squeeze y NEUTRAL son los estados de descarte.
 
 ### Bonos (ONs argentinas)
@@ -78,6 +85,8 @@ Dos fuentes de conocimiento sobre cada bono, y hacen falta las dos:
 * **Precios en vivo**: BYMA Open Data (`bonds/byma_source.py`). Es **POST**, no GET, y valida cookie de sesión del propio sitio. El feed alternativo (data912) se descartó tras medirlo; está documentado en el docstring del módulo.
 * **Condiciones de emisión** (cupón, amortizaciones, ley): `data/ons_catalog.csv`, cargado a mano, con marca `verificado` por fila. Es **dato editable, no código**. Un cupón mal cargado no rompe nada: devuelve una TIR mansamente incorrecta.
 * **Cronogramas de pago resueltos**: dataset comunitario (`bonds/flows_source.py`). Da cobertura sin mantenimiento manual, pero no separa renta de amortización, así que paridad, valor técnico y vida promedio quedan en blanco salvo que el bono también esté en el catálogo local.
+
+La **curva de rendimientos** (`bonds/curve.py`, puro, dibujada por `components/bonds_chart.py`) es lo que el cuadro no puede mostrar: una tabla ordena por TIR, y la TIR de un bono a un año y la de uno a cinco no son comparables. Ajusta `TIR ≈ a + b·ln(1 + duration)` por moneda y mide el residuo de cada especie contra la curva de sus pares. El ajuste excluye lo que lo distorsionaría —emisores en default, que cotizan a precio de recupero— pero igual les calcula el residuo, y el corte para llamar barato o caro es relativo a la dispersión del propio panel, como todo el resto del puntaje.
 
 Dos invariantes que es fácil romper:
 
@@ -98,10 +107,35 @@ Tres cosas más que conviene saber antes de tocar el módulo:
 
 4. **El semáforo se calibra, no se duplica.** `evaluate_confluence_signal` recibe `ConfluenceThresholds`; acciones usa `STOCK_THRESHOLDS` (los valores de siempre) y cripto `CRYPTO_THRESHOLDS`, que solo cambia un número: enciende el camino de "techo por extensión sobre la media". Sin ese camino el lado venta no dispara nunca en cripto, porque exige estar a menos de 6% del máximo anual y acá los drawdowns son de 70%. Medido sobre el panel real: con la calibración de acciones, 19 de 20 monedas salían NEUTRAL con RSI entre 60 y 80. El porqué está en `indicators._sell_near_ceiling`.
 5. **Dominancia**: `crypto/dominance.py` es puro y `crypto/market_source.py` trae los datos (capitalización y oferta de Yahoo; dominancia global de CoinGecko). Ninguna de las dos fuentes secundarias puede tumbar la sección: si fallan, el cuadro se arma igual sin esas columnas.
-6. **Divergencias**: `crypto/divergences.py`, puro, y se apoya en los **mismos pivotes** que los niveles (`find_pivots`). No es una economía: si un giro merece una línea en el gráfico, es el mismo giro que tiene sentido comparar contra el siguiente; dos detectores distintos marcarían niveles en un lado y divergencias en otro. Alimentan el gráfico y **no** el semáforo a propósito: una divergencia puede sostenerse meses sin que el precio gire.
-7. **Niveles del gráfico**: `crypto/levels.py`, también puro. Pivotes agrupados por cercanía porcentual; lo que distingue un nivel fuerte es la **cantidad de toques**. La escala (mensual/semanal/diaria) tiene sus propios parámetros en `CRYPTO_CHART_SCALE_PARAMS`, **medidos** sobre el historial de BTC: en mensual hay 145 barras en doce años, así que con entorno ±2 meses los niveles salían todos con un solo toque y con ±1 mes y 8% de tolerancia salen seis zonas de dos toques. Si cambiás esos valores, medí antes.
+6. **Divergencias**: `divergences.py`, puro, y se apoya en los **mismos pivotes** que los niveles (`find_pivots`). No es una economía: si un giro merece una línea en el gráfico, es el mismo giro que tiene sentido comparar contra el siguiente; dos detectores distintos marcarían niveles en un lado y divergencias en otro. Alimentan el gráfico y **no** el semáforo a propósito: una divergencia puede sostenerse meses sin que el precio gire.
+7. **Niveles del gráfico**: `levels.py`, también puro. Pivotes agrupados por cercanía porcentual; lo que distingue un nivel fuerte es la **cantidad de toques**. La escala (mensual/semanal/diaria) tiene sus propios parámetros en `CRYPTO_CHART_SCALE_PARAMS`, **medidos** sobre el historial de BTC: en mensual hay 145 barras en doce años, así que con entorno ±2 meses los niveles salían todos con un solo toque y con ±1 mes y 8% de tolerancia salen seis zonas de dos toques. Si cambiás esos valores, medí antes.
 
 El cuadro duplica columnas con el mismo criterio que el de acciones: nombre en castellano con sufijo de temporalidad para mostrar, nombre estable en mayúsculas (`RSI_VAL`, `DIFF_SMA_200_VAL`, `RS_BTC_PP`, `VOL_ANN_PCT`, `PRECIO_VAL`, `EXTENSION_SIGMAS`, `MARKET_CAP_VAL`) para filtros, KPIs y alertas.
+
+### Acciones argentinas (Merval), en dólares
+
+El precio en pesos mezcla lo que vale la empresa con lo que dejó de valer el peso: una media de 200 ruedas sube sola y el RSI marca sobrecompra en cada salto devaluatorio. Por eso el panel argentino **convierte a dólares antes de calcular nada**.
+
+El tipo de cambio sale del propio panel: trece empresas cotizan también en Nueva York, y cada par da un dólar implícito (`precio local × acciones por ADR ÷ precio del ADR`). Se usa la **mediana** de los pares, no el promedio: así un ratio mal cargado en `merval/catalog.py` queda como valor extremo y no mueve el resultado. `merval/ccl.py` publica además un diagnóstico por par con el ratio que lo volvería consistente, y `scripts/panel_merval.py --ccl` es la forma práctica de verificar la tabla contra precios reales (medido el 2026-10-18: los trece pares coinciden dentro de 0,9%).
+
+Dos trampas propias de este mercado:
+
+1. **Los ratios de ADR cambian** con cada split o reestructuración, y ninguno está verificado contra el programa del emisor: están verificados contra la consistencia del panel, que detecta un ratio absurdo pero no distingue entre dos plausibles. El de YPF estaba en 1 y la medición mostró que es 10.
+2. **Yahoo no ajusta todos los splits de las especies locales.** `MIRG.BA` pasa de 16.350 a 1.640 pesos el 2026-08-03 con `auto_adjust` activado, y con ese salto adentro la acción mostraba un precio 89% por debajo de su media de 200 ruedas: no cayó, se partió en diez. Lo corrige `merval/splits.py`, solo cuando el salto corresponde a un factor simple dentro de 3% (una caída real no se puede "corregir"), y el panel informa qué series tocó.
+
+### Medición del semáforo
+
+`signal_stats.py` replaya el semáforo barra por barra sobre el historial ya descargado y lo cruza con el retorno de las barras siguientes. Reusa `evaluate_confluence_signal` sin tocarlo —una copia de las reglas mediría otro sistema— y arma la entrada vectorizada en vez de rehacer `compute_stock_technicals` sobre una ventana creciente, que es cuadrático.
+
+Lo primero que hay que leer de la tabla es la **fila de base**: un "+3% a veinte ruedas" no dice nada hasta saber qué hizo una barra cualquiera del mismo período. La tasa de acierto es direccional (una venta acierta cuando el precio cae) y el squeeze no tiene: afirma magnitud, no dirección, así que se lee en la columna de movimiento absoluto.
+
+Dos tests fijan lo que la vuelve creíble: paridad con el semáforo del tablero, y que truncar el historial en una barra no cambie la señal de esa barra. Los límites —muestras solapadas, un solo régimen de mercado, mide la señal y no una estrategia— están en el docstring del módulo y en pantalla.
+
+En la interfaz va detrás de un interruptor apagado: Streamlit ejecuta el cuerpo de los expanders en cada corrida, igual que el de las pestañas, así que medir sin pedirlo le cobraría un par de segundos a cada cambio de filtro.
+
+### Registro diario
+
+`snapshots.py` guarda una foto por día de cada panel en `data/snapshots/<motor>/<fecha>.csv` (gitignored: es un log local, no fuente) y la compara contra la anterior. Dos reglas que no conviene cambiar: **una foto por día, la primera** —si cada recarga pisara el archivo, "lo que cambió desde ayer" dependería de a qué hora miró cada uno— y la comparación es contra la **última foto anterior**, no contra ayer, informando siempre contra qué fecha se compara.
 
 ### Por qué selector y no `st.tabs`
 
@@ -110,9 +144,11 @@ Streamlit ejecuta el cuerpo de **todas** las pestañas en cada corrida. Con `st.
 ## Estado actual (no dar por terminado)
 
 * **País de bonos: el desplegable existe, EEUU no.** `BOND_COUNTRY_OPTIONS` en `constants.py` y la rama en `render_bonds_panel()` son el punto de extensión; hoy EEUU muestra "en desarrollo". Lo que falta para sumar un país es fuente de precios + catálogo de emisiones, no matemática: `bonds/bond_math.py` ya es agnóstico. Evitá esparcir `if país` por el módulo — la rama vive en el panel.
+* **Los ratios de ADR del panel argentino no están verificados contra los programas de los emisores**, solo contra la consistencia del panel: `ratio_verificado` es `False` en los trece. Verificarlos es data entry contra las fichas de cada ADR, igual que el catálogo de ONs.
 * **La cobertura del cuadro argentino es el problema abierto**, y no es BYMA: el feed devuelve ~2700 especies sin problemas. El embudo medido es cronograma de pagos (≈140 especies) → TIR calculable (≈85) → que además operaron hoy (≈13). El catálogo local `data/ons_catalog.csv` está **vacío** (solo comentarios), y por eso paridad, valor técnico, interés corrido, vida promedio y ley salen sin datos para todo el panel: el cronograma comunitario publica el total de cada pago sin separar renta de capital. Cargar el catálogo es la única palanca, y es data entry contra prospectos.
 * **El scraping de BYMA sigue sin pulir** (`bonds/byma_source.py`): API no documentada, sin contrato de estabilidad, campos de precio y volumen elegidos por orden de preferencia porque BYMA no aclara cuál es cuál.
-* **Sin conectar**: `components/ticker_detail.py` y `components/charts.py` están escritos y testeados, pero `app.py` todavía no los usa.
+* **Acciones semanales usan ventanas de acciones diarias.** `load_all_stocks_data` llama a `compute_stock_technicals` con los valores por omisión (252 barras / 126), así que en temporalidad semanal el "máximo de 52 semanas" es en realidad el de 252 semanas y el squeeze se mide contra dos años y medio. El motor ya recibe las dos ventanas por parámetro —`merval/data_loader.py` y `crypto/panel.py` las pasan—; falta pasarlas acá.
+* **El registro diario no cubre bonos.** `snapshots.py` es genérico (la columna de señal se parametriza, y el panel de ONs llama `"Atractivo"` a lo que acciones llama `"Semáforo"`), pero la sección de bonos todavía no lo llama.
 * **La dominancia del panel no es la dominancia global, y se muestran las dos.** La global viene de CoinGecko (un pedido, sin clave); la del panel se reconstruye acá con `precio × oferta circulante` y por eso da más alto (el panel tiene decenas de monedas, el mercado tiene miles). De la del panel se informa la **variación**, no el nivel. La reconstrucción usa la oferta de hoy para todo el período: vale para leer rotación de un mes, no para reconstruir capitalizaciones históricas, y por eso la serie se corta en un año.
 * **El volumen de cripto es un agregado de exchanges.** Sirve para ver si un movimiento viene acompañado o está vacío; no para deducir quién está del otro lado. Por eso la columna se llama "Flujo de Volumen (OBV)" y no "Smart Money", aunque la cuenta sea la misma.
 
@@ -123,4 +159,5 @@ Streamlit ejecuta el cuerpo de **todas** las pestañas en cada corrida. Con `st.
 * **Precio de cripto: ningún formato fijo sirve para toda la tabla.** Conviven Bitcoin en decenas de miles de dólares y monedas de cinco millonésimos; con dos decimales media tabla muestra "$0.00". Por eso precio y volumen pasan por `format_crypto_price` / `format_usd_compact` y se muestran como texto, a costa de que esas dos columnas ordenen alfabéticamente. Es un costo aceptado: comparar el precio nominal de dos criptos no significa nada (depende de cuántas unidades se emitieron).
 * **Los dos caminos de descarga de cripto devolvían el índice con distinta zona horaria.** `yf.download` lo trae sin zona y el reintento individual (`Ticker.history`) con zona; alinear uno contra otro revienta con "Cannot join tz-naive with tz-aware", y solo los días en que alguna moneda cae al reintento. Se normaliza en `crypto/prices_source._normalizar_indice`, en la frontera de I/O. No quites esa normalización.
 * **Yahoo redondea el precio de las monedas muy chicas a un decimal significativo.** SHIB tiene 31 precios distintos en 731 ruedas. Dos consecuencias, las dos verificadas en pantalla: columnas de variación de ventanas distintas que dan el mismo número (no es un error de cálculo), y mesetas planas donde *toda* barra es máximo local — eso inflaba el conteo de toques de un nivel a 117. Lo resuelve `crypto/levels._colapsar_eventos`, que reduce a un pivote las barras contiguas del mismo giro; no lo quites.
+* **Las series locales argentinas traen splits sin ajustar.** No es un caso raro ni viejo: `MIRG.BA`, agosto de 2026, con `auto_adjust=True`. Lo corrige `merval/splits.py` antes de cualquier cálculo —también antes del dólar implícito, porque el salto arruina el tipo de cambio que ese par aporta en las fechas anteriores—. Si alguna vez hay que ampliar la tolerancia, medí: cuanto más ancha, más probable es "corregir" una caída real.
 * **El `.venv/` del repo tiene rutas viejas** (se creó cuando el proyecto vivía en `~/Documents/stock-dashboard`, sin `finanzas/`). `.venv/bin/pip` falla con "bad interpreter"; usá `.venv/bin/python -m pip`. Recrearlo desde cero lo arregla.

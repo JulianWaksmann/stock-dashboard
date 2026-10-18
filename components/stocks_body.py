@@ -21,6 +21,7 @@ import pandas as pd
 import streamlit as st
 
 from components.alerts_panel import render_alerts_panel
+from components.changes_panel import render_changes
 from components.charts import (
     plot_pe_comparison_bar,
     plot_sma_distances_bar,
@@ -108,6 +109,7 @@ def render_stocks_body(
     timeframe: str = "1d",
     nombre_archivo: str = "screener_confluencia",
     nombre_activo: str = "acciones",
+    motor_registro: str = "acciones_usa",
     window_52w: int = 252,
     squeeze_lookback: int = SQUEEZE_LOOKBACK_BARS,
     thresholds: ConfluenceThresholds = STOCK_THRESHOLDS,
@@ -116,13 +118,22 @@ def render_stocks_body(
     """
     Dibuja alertas, KPIs, cuadro, ficha, vistas agregadas y medición.
 
+    `motor_registro` nombra la carpeta del registro diario: un panel por
+    mercado, porque comparar acciones argentinas contra estadounidenses no
+    significaría nada.
+
     `window_52w`, `squeeze_lookback` y `thresholds` se pasan a la medición del
     semáforo y tienen que ser los mismos con los que se calculó el panel: medir
     con otra calibración daría el número de un sistema que no está en pantalla.
     """
     # ----------------------------------------------------
-    # 1. ALERTAS RÁPIDAS
+    # 1. QUÉ CAMBIÓ + ALERTAS RÁPIDAS
     # ----------------------------------------------------
+    # El registro va sobre el panel entero, no sobre el filtrado: lo que
+    # cambió desde ayer no depende de los filtros que estén puestos hoy.
+    render_changes(df_summary, motor_registro)
+
+
     st.subheader("⚡ Alertas de Confluencia del Día")
     render_alerts_panel(df_summary)
     st.markdown("---")
