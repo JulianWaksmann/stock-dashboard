@@ -9,21 +9,22 @@ import streamlit as st
 from components.bonds_panel import render_bonds_panel
 from components.branding import (
     inject_global_styles,
-    render_brand_bar,
+    render_brand_nav,
     render_nav_anchor,
 )
+from components.cartera_panel import render_cartera_panel
 from components.coming_soon import render_coming_soon
 from components.crypto_panel import render_crypto_panel
 from components.merval_panel import render_merval_panel
 from components.stocks_body import render_failed_tickers_notice, render_stocks_body
 from constants import (
+    APP_CARTERA,
     FLOW_FILTER_OPTIONS,
     MARKET_ARGENTINA,
     MARKET_OPTIONS,
     MARKET_USA_STOCKS,
     SECTION_BONDS,
     SECTION_OPTIONS,
-    SECTION_SHORT_LABELS,
     SECTION_STOCKS,
     SIGNAL_FILTER_OPTIONS,
     SMA200_FILTER_OPTIONS,
@@ -191,7 +192,9 @@ def _render_stocks_tab():
 
 def main():
     """
-    Punto de entrada: reparte la aplicación en secciones por clase de activo.
+    Punto de entrada. Arriba se elige entre Confluencia (el tablero de
+    mercado, repartido en secciones por clase de activo) y Mi cartera (el
+    informe de lo que uno operó).
 
     Es un selector y no `st.tabs` a propósito. Streamlit ejecuta el cuerpo de
     **todas** las pestañas en cada corrida, no solo el de la visible: con
@@ -202,10 +205,10 @@ def main():
     """
     inject_global_styles()
 
-    # La firma de marca nombra la sección elegida, que recién se conoce
-    # después de dibujar el selector: se reserva el lugar antes y se llena
-    # después, para que en pantalla quede arriba.
-    encabezado = st.container()
+    # La firma de marca de arriba es también el selector de producto.
+    if render_brand_nav() == APP_CARTERA:
+        render_cartera_panel()
+        return
 
     render_nav_anchor()
     section = st.radio(
@@ -215,16 +218,12 @@ def main():
         label_visibility="collapsed",
     )
 
-    with encabezado:
-        render_brand_bar(SECTION_SHORT_LABELS[section])
-
     if section == SECTION_STOCKS:
         _render_stocks_tab()
     elif section == SECTION_BONDS:
         render_bonds_panel()
     else:
         render_crypto_panel()
-
 
 if __name__ == "__main__":
     main()

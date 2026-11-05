@@ -344,15 +344,24 @@ SECTION_CRYPTO: Final[str] = "Criptomonedas"
 
 SECTION_OPTIONS: Final[tuple[str, ...]] = (SECTION_STOCKS, SECTION_BONDS, SECTION_CRYPTO)
 
-# Nombre corto de cada sección, para la firma de marca de la cabecera. El
-# texto del selector lleva emoji y aclaración entre paréntesis: sirve para
-# elegir, no para rotular. Vive acá por la misma razón que el resto: si se
-# escribe suelto en el panel, el día que cambie una opción queda desfasado.
-SECTION_SHORT_LABELS: Final[dict[str, str]] = {
-    SECTION_STOCKS: "Acciones",
-    SECTION_BONDS: "Bonos",
-    SECTION_CRYPTO: "Cripto",
+# ----------------------------------------------------------------------
+# Selector de arriba de todo, dibujado como la firma de marca: el tablero de
+# mercado (Confluencia, con sus secciones) o el informe de la cartera propia.
+# Son dos productos distintos —uno mira el mercado, el otro lo que uno operó—
+# y por eso Mi cartera no es una sección más al lado de Acciones o Bonos.
+# ----------------------------------------------------------------------
+APP_CONFLUENCIA: Final[str] = "Confluencia"
+APP_CARTERA: Final[str] = "Mi cartera"
+APP_OPTIONS: Final[tuple[str, ...]] = (APP_CONFLUENCIA, APP_CARTERA)
+# La bajada chica de cada píldora, debajo del nombre.
+APP_TAGLINES: Final[dict[str, str]] = {
+    APP_CONFLUENCIA: "Señales de mercado",
+    APP_CARTERA: "Tus brokers",
 }
+
+# Filtro por broker de "Mi cartera". Las demás opciones son los nombres de
+# los brokers que aparecen en los archivos subidos (`cartera/modelo.py`).
+CARTERA_BROKER_ALL: Final[str] = "Todos"
 
 # ----------------------------------------------------------------------
 # Vistas agregadas del panel de acciones (selector horizontal del cuerpo).

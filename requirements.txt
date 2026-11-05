@@ -11,7 +11,9 @@
 # yfinance is the exception - it wraps an undocumented, frequently-changing
 # Yahoo Finance API, so its ceiling is the next minor rather than the next
 # major release.
-streamlit>=1.35.0,<2.0.0
+# 1.53 is where st.components.v2 got style isolation on `component()`, which
+# the Balanz report (components/balanz_report.py) relies on.
+streamlit>=1.53.0,<2.0.0
 yfinance>=0.2.40,<0.3.0
 pandas>=2.2.0,<4.0.0
 numpy>=1.26.0,<3.0.0
@@ -20,3 +22,5 @@ plotly>=5.20.0,<6.0.0
 # already pulls it in transitively, but it is declared explicitly because the
 # bonds module imports it directly.
 requests>=2.31.0,<3.0.0
+# Reads the .xlsx export of the Balanz report (balanz/parser.py, via pandas).
+openpyxl>=3.1.0,<4.0.0

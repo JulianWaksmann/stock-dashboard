@@ -42,7 +42,7 @@ CI (`.github/workflows/ci.yml`) corre `ruff check .` y `pytest` en **Python 3.11
 
 ## Arquitectura
 
-Son **tres motores independientes** que comparten el dashboard pero no el modelo de datos: acciones (osciladores de precio), bonos corporativos argentinos (valor presente del flujo de fondos contractual) y criptomonedas (los mismos osciladores, otro calendario y otra referencia). `app.py` los reparte con un selector.
+Arriba de todo se elige entre **Confluencia** (el tablero de mercado) y **Mi cartera** (ver más abajo). Confluencia son **tres motores independientes** que comparten el dashboard pero no el modelo de datos: acciones (osciladores de precio), bonos corporativos argentinos (valor presente del flujo de fondos contractual) y criptomonedas (los mismos osciladores, otro calendario y otra referencia). `app.py` los reparte con un selector.
 
 El motor de acciones sirve **dos mercados**: Estados Unidos (`data_loader.py`) y Argentina (`merval/`). Comparten todo lo que se dibuja —`components/stocks_body.py`— y todo lo que se filtra —`stock_screener.py`—; lo único propio del argentino es de dónde salen los precios y en qué moneda están medidos.
 
@@ -54,7 +54,7 @@ Cripto y acciones comparten `indicators.py` —la lectura técnica es la misma�
 I/O con red + Streamlit  →  cálculo puro  →  dibujo
 ```
 
-* **Puro (sin red, sin `streamlit`)**: `indicators.py`, `stock_screener.py`, `signal_stats.py`, `levels.py`, `divergences.py`, `merval/catalog.py`, `merval/ccl.py`, `merval/splits.py`, `bonds/curve.py`, `bonds/bond_math.py`, `bonds/panel.py`, `bonds/scoring.py`, `bonds/catalog.py`, `crypto/panel.py`, `crypto/catalog.py`, y el *parseo* de `bonds/byma_source.py` / `bonds/flows_source.py`. Esto es lo que la suite de tests verifica con datos fijos, sin mocks de red.
+* **Puro (sin red, sin `streamlit`)**: `indicators.py`, `stock_screener.py`, `signal_stats.py`, `levels.py`, `divergences.py`, `merval/catalog.py`, `merval/ccl.py`, `merval/splits.py`, `bonds/curve.py`, `bonds/bond_math.py`, `bonds/panel.py`, `bonds/scoring.py`, `bonds/catalog.py`, `crypto/panel.py`, `crypto/catalog.py`, `cartera/modelo.py`, `cartera/balanz.py`, `cartera/cocos.py`, `cartera/lectura.py`, `cartera/informe.py`, y el *parseo* de `bonds/byma_source.py` / `bonds/flows_source.py`. Esto es lo que la suite de tests verifica con datos fijos, sin mocks de red.
 * **I/O**: `data_loader.py` (acciones), `merval/data_loader.py` (acciones argentinas), `bonds/data_loader.py` (bonos) y `crypto/data_loader.py` (cripto) — los únicos que tocan `st.cache_data`. `crypto/prices_source.py` toca la red pero no Streamlit, igual que `bonds/byma_source.py`.
 * **Dibujo**: `components/`.
 
@@ -124,6 +124,20 @@ Dos trampas propias de este mercado:
 
 1. **Los ratios de ADR cambian** con cada split o reestructuración, y ninguno está verificado contra el programa del emisor: están verificados contra la consistencia del panel, que detecta un ratio absurdo pero no distingue entre dos plausibles. El de YPF estaba en 1 y la medición mostró que es 10.
 2. **Yahoo no ajusta todos los splits de las especies locales.** `MIRG.BA` pasa de 16.350 a 1.640 pesos el 2026-08-03 con `auto_adjust` activado, y con ese salto adentro la acción mostraba un precio 89% por debajo de su media de 200 ruedas: no cayó, se partió en diez. Lo corrige `merval/splits.py`, solo cuando el salto corresponde a un factor simple dentro de 3% (una caída real no se puede "corregir"), y el panel informa qué series tocó.
+
+### Mi cartera (Balanz + Cocos)
+
+La segunda opción del selector de arriba de todo de `app.main()` —**Confluencia / Mi cartera**— (`components/cartera_panel.py`): no es una sección más al lado de Acciones o Bonos, porque mira lo que uno operó y no el mercado. Quien la abre sube los exports de sus brokers y ve **un solo informe en dólares MEP**, con un filtro por broker cuando hay más de uno. No tiene controles de temporalidad: la tarjeta de arriba es la carga de archivos.
+
+* **Cada broker exporta otra cosa** y cada uno tiene su lector, que devuelve la misma `Cartera` (`cartera/modelo.py`): operaciones cerradas y lotes abiertos en USD, con columna `broker`. El formato se reconoce por el contenido (`cartera/lectura.py`), no por el nombre del archivo.
+  * `cartera/balanz.py`: el reporte "resultados por info completa" ya trae cada lote vendido con su costo y el MEP de cada fecha. Es acumulado: si suben dos, se usa el más reciente. Trampas medidas sobre un export real (cubiertas por `tests/test_cartera_balanz.py`): en el export medido los cupones dicen "Dólares" pero vienen en pesos —por eso la moneda de un cupón se decide por el monto por nominal tenido, no por la etiqueta—, `Gastos` está siempre en pesos, y el vencimiento de una ON llega con precio de venta negativo.
+  * `cartera/cocos.py`: el CSV de movimientos (uno por año) es el libro crudo, sin costos ni tipo de cambio. Arma lotes por orden de llegada **dentro de Cocos**, junta contado y término de cada caución (mismo día de ejecución), dedupe por `nroTicket` porque los archivos se superponen, y pasa a USD con la serie del MEP. Una venta sin compra en los archivos va a `no_reconocidos`, agrupada por activo y sin suponer la causa (compra anterior al primer archivo o transferencia desde otro broker): no se le inventa costo. "Dividendos en especie" son dólares solo si la especie es el dólar; si son acciones, entran como lote a costo cero.
+* **Nada de una cuenta en particular va en el código.** La sección es pública: lo que se midió sobre los exports del autor queda como regla verificable con datos de cualquiera (moneda del cupón por monto, fechas y cantidades leídas del archivo), nunca como un valor fijo.
+* **El activo se une por ticker de BYMA**, el mismo en todos los brokers: MSFT de Balanz y de Cocos son una fila del informe. Los lotes no se mezclan entre brokers. Cocos trae el ticker en el último paréntesis de `instrumento`; la especie en dólares (MSFTD) se junta con la de pesos solo si el nombre coincide, porque YPFD es la acción clase D de YPF, no YPF en dólares.
+* **MEP de Cocos**: `cartera/mep_source.py` (red, sin Streamlit) baja la serie entera de ArgentinaDatos en un pedido; `cartera/data_loader.py` la cachea seis horas, con el error atrapado fuera de la función cacheada para que un corte no quede guardado. Sin MEP, Cocos queda afuera con un aviso y Balanz sigue con el suyo.
+* `cartera/informe.py` (puro) arma todo el informe. **Ningún precio de mercado sale de afuera**: lo abierto cuenta al costo, el resultado de cada venta se reparte entre los años que se tuvo el activo en proporción a los días, y la renta cuenta el año del cobro. Es una decisión del usuario, no una limitación a resolver: buscar precios de cierre afuera hacía frágil el rendimiento anual.
+* `components/cartera_report.py` dibuja con `st.components.v2` (HTML/CSS/JS en `components/cartera_report/`), no con widgets de Streamlit: es lo que permite el diseño del informe. El JS solo da formato; los colores salen de `theme.py` por marcadores `$nombre` en el CSS. "Ocultar montos" tapa todo importe en dólares con `****` y deja visibles los porcentajes.
+* Privacidad: los archivos no se cachean (`st.cache_data` los dejaría vivos y compartidos en el servidor), no se escriben a disco y no se muestra nombre ni número de cuenta. Los datos de los archivos van al DOM siempre por `textContent`.
 
 ### Medición del semáforo
 

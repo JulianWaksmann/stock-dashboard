@@ -24,9 +24,11 @@ Es capa de dibujo: no calcula nada y no decide nada de negocio.
 """
 
 from string import Template
+from urllib.parse import quote
 
 import streamlit as st
 
+from constants import APP_CARTERA, APP_CONFLUENCIA, APP_OPTIONS, APP_TAGLINES
 from theme import (
     COLOR_BACKGROUND,
     COLOR_BORDER,
@@ -53,22 +55,35 @@ from theme import (
     RADIUS_CONTROL,
 )
 
-# Ancla del selector de secciones. Streamlit no deja ponerle una clase a un
-# widget, así que se dibuja un `<div>` vacío justo antes y se lo alcanza por
-# `:has()`. Si el navegador no soporta `:has()`, el selector se ve como el
+# Anclas de los dos selectores de navegación: el de producto (la firma de
+# marca) y el de secciones de Confluencia. Streamlit no deja ponerle una clase
+# a un widget, así que se dibuja un `<div>` vacío justo antes y se lo alcanza
+# por `:has()`. Si el navegador no soporta `:has()`, el selector se ve como el
 # `st.radio` de siempre: se degrada, no se rompe.
-NAV_ANCHOR_ID = "nav-secciones"
+NAV_ANCHOR_CLASS = "nav-anchor"
+BRAND_ANCHOR_CLASS = "brand-nav-anchor"
 
-# El logo de la marca, el mismo de la landing: una línea quebrada que sube y
-# un punto. Va inline y no como archivo porque son 200 bytes y una imagen
-# suelta obligaría a servir estáticos solo para esto.
-_LOGO_SVG = (
-    '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="'
-    + COLOR_BRAND
-    + '" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"'
-    ' aria-hidden="true"><path d="M3 17l5-6 4 3 5-8"/>'
-    '<circle cx="19.5" cy="5.5" r="2" fill="' + COLOR_BRAND + '" stroke="none"/></svg>'
-)
+
+def _svg_data_uri(cuerpo: str) -> str:
+    svg = (
+        '<svg xmlns="http://www.w3.org/2000/svg" width="17" height="17" viewBox="0 0 24 24" fill="none" '
+        f'stroke="{COLOR_BRAND}" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">{cuerpo}</svg>'
+    )
+    return "data:image/svg+xml," + quote(svg)
+
+
+# Los logos de cada píldora. El de Confluencia es el de la landing: una línea
+# quebrada que sube y un punto. Van como data URI dentro del CSS porque son
+# 200 bytes y servir estáticos solo para esto no vale la pena.
+_ICONOS_PRODUCTO = {
+    APP_CONFLUENCIA: _svg_data_uri(
+        f'<path d="M3 17l5-6 4 3 5-8"/><circle cx="19.5" cy="5.5" r="2" fill="{COLOR_BRAND}" stroke="none"/>'
+    ),
+    APP_CARTERA: _svg_data_uri(
+        '<path d="M17 8V5a1 1 0 0 0-1-1H6a2 2 0 0 0 0 4h12a1 1 0 0 1 1 1v3m0 4v3a1 1 0 0 1-1 1H6a2 2 0 0 1-2-2V6"/>'
+        '<path d="M20 12v4h-4a2 2 0 0 1 0-4h4"/>'
+    ),
+}
 
 _GLOBAL_CSS = Template("""
 <style>
@@ -130,60 +145,83 @@ div[data-testid="stMetricDelta"] {
 }
 
 /* ----------------------------------------------------------------
-   Firma de marca: la píldora violeta de la landing
-   ---------------------------------------------------------------- */
-.brand-bar {
-    display: flex;
-    align-items: center;
+   Firma de marca, que es también el selector de producto
+   ----------------------------------------------------------------
+   Las dos píldoras (Confluencia / Mi cartera) son un `st.radio`: la elegida
+   es la píldora violeta de la landing con el logo en un círculo blanco; la
+   otra, la misma forma en blanco con borde lavanda. El logo y la bajada no
+   pueden ir en el texto de una opción de radio, así que los pone el CSS:
+   `::before` es el círculo del logo y `p::after` la bajada. Qué logo y qué
+   bajada lleva cada opción lo decide `render_brand_nav()`, por posición. */
+div.element-container:has(.$brand_anchor) + div div[role="radiogroup"] {
     gap: 0.7rem;
     flex-wrap: wrap;
     margin-bottom: 1.15rem;
 }
-.brand-pill {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.6rem;
-    background: $brand;
-    border-radius: 999px;
+div.element-container:has(.$brand_anchor) + div div[role="radiogroup"] label {
+    margin: 0;
     padding: 0.42rem 1.1rem 0.42rem 0.45rem;
+    border-radius: 999px;
+    background: $surface;
+    border: 1px solid $brand_border;
+    cursor: pointer;
+    transition: background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+}
+div.element-container:has(.$brand_anchor) + div div[role="radiogroup"] label:hover {
+    border-color: $brand;
+}
+div.element-container:has(.$brand_anchor) + div div[role="radiogroup"] label[data-selected="true"] {
+    background: $brand;
+    border-color: $brand;
     box-shadow: 0 12px 26px -14px rgba(49, 27, 140, 0.75);
 }
-.brand-mark {
-    width: 30px;
-    height: 30px;
-    border-radius: 999px;
-    background: #ffffff;
+div.element-container:has(.$brand_anchor) + div div[role="radiogroup"] label > div > div {
     display: flex;
     align-items: center;
-    justify-content: center;
+    gap: 0.6rem;
+}
+/* El puntito del radio sobra: la píldora entera es la opción. */
+div.element-container:has(.$brand_anchor) + div div[role="radiogroup"] label > div > div > div:first-child {
+    display: none;
+}
+div.element-container:has(.$brand_anchor) + div div[role="radiogroup"] label > div > div::before {
+    content: "";
+    width: 30px;
+    height: 30px;
     flex: none;
+    border-radius: 999px;
+    background-color: $brand_soft;
+    background-position: center;
+    background-repeat: no-repeat;
+    background-size: 17px;
 }
-.brand-text {
-    display: flex;
-    flex-direction: column;
-    line-height: 1.12;
+div.element-container:has(.$brand_anchor) + div div[role="radiogroup"] label[data-selected="true"] > div > div::before {
+    background-color: #ffffff;
 }
-.brand-name {
+div.element-container:has(.$brand_anchor) + div div[role="radiogroup"] p {
+    margin: 0;
     font-family: $font_display;
     font-size: 0.95rem;
     font-weight: 600;
     letter-spacing: -0.01em;
-    color: #ffffff;
+    line-height: 1.12;
+    color: $brand_strong;
 }
-.brand-slogan {
+div.element-container:has(.$brand_anchor) + div div[role="radiogroup"] p::after {
+    display: block;
+    margin-top: 2px;
+    font-family: $font;
     font-size: 0.58rem;
+    font-weight: 500;
     letter-spacing: 0.09em;
     text-transform: uppercase;
-    color: rgba(255, 255, 255, 0.72);
+    color: $muted;
 }
-.brand-tag {
-    font-size: 0.78rem;
-    font-weight: 600;
-    color: $brand_strong;
-    padding: 0.3rem 0.85rem;
-    border: 1px solid $brand_border;
-    border-radius: 999px;
-    background: $brand_soft;
+div.element-container:has(.$brand_anchor) + div div[role="radiogroup"] label[data-selected="true"] p {
+    color: #ffffff;
+}
+div.element-container:has(.$brand_anchor) + div div[role="radiogroup"] label[data-selected="true"] p::after {
+    color: rgba(255, 255, 255, 0.72);
 }
 
 .main-title {
@@ -207,7 +245,7 @@ div[data-testid="stMetricDelta"] {
 /* ----------------------------------------------------------------
    Selector de secciones como control segmentado
    ---------------------------------------------------------------- */
-div.element-container:has(#$nav_anchor) + div div[role="radiogroup"] {
+div.element-container:has(.$nav_anchor) + div div[role="radiogroup"] {
     gap: 0.3rem;
     background: $surface;
     border: 1px solid $border;
@@ -217,27 +255,27 @@ div.element-container:has(#$nav_anchor) + div div[role="radiogroup"] {
     margin-bottom: 1.5rem;
     box-shadow: 0 10px 26px -18px $shadow;
 }
-div.element-container:has(#$nav_anchor) + div div[role="radiogroup"] label {
+div.element-container:has(.$nav_anchor) + div div[role="radiogroup"] label {
     border-radius: 999px;
     padding: 0.45rem 1.15rem;
     margin: 0;
     transition: background 0.15s ease, color 0.15s ease;
 }
-div.element-container:has(#$nav_anchor) + div div[role="radiogroup"] label:hover {
+div.element-container:has(.$nav_anchor) + div div[role="radiogroup"] label:hover {
     background: $surface_alt;
 }
-div.element-container:has(#$nav_anchor) + div div[role="radiogroup"] label[data-selected="true"] {
+div.element-container:has(.$nav_anchor) + div div[role="radiogroup"] label[data-selected="true"] {
     background: $brand;
     box-shadow: 0 10px 22px -12px rgba(49, 27, 140, 0.8);
 }
-div.element-container:has(#$nav_anchor) + div div[role="radiogroup"] label[data-selected="true"] p {
+div.element-container:has(.$nav_anchor) + div div[role="radiogroup"] label[data-selected="true"] p {
     color: #ffffff;
     font-weight: 600;
 }
 /* El puntito del radio sobra cuando las opciones ya son pastillas. Va tan
    adentro porque Streamlit envuelve cada opción en tres `div` sin clase
    estable: label > wrapper > fila > [punto, texto]. */
-div.element-container:has(#$nav_anchor) + div div[role="radiogroup"] label > div > div > div:first-child {
+div.element-container:has(.$nav_anchor) + div div[role="radiogroup"] label > div > div > div:first-child {
     display: none;
 }
 
@@ -554,39 +592,37 @@ def inject_global_styles() -> None:
             negative_text=COLOR_NEGATIVE_TEXT_STRONG,
             squeeze_bg=COLOR_SQUEEZE_BG,
             squeeze_text=COLOR_SQUEEZE_TEXT,
-            nav_anchor=NAV_ANCHOR_ID,
+            nav_anchor=NAV_ANCHOR_CLASS,
+            brand_anchor=BRAND_ANCHOR_CLASS,
         ),
         unsafe_allow_html=True,
     )
 
 
-def render_brand_bar(etiqueta: str) -> None:
+def render_brand_nav() -> str:
     """
-    Dibuja la firma del producto arriba de todo: marca + sección actual.
+    Dibuja la firma de marca arriba de todo, que es el selector de producto.
 
-    `etiqueta` es el nombre corto de lo que se está mirando ("Acciones",
-    "Bonos", "Cripto"), para que la marca no quede como un adorno suelto.
+    Devuelve la opción elegida (`APP_CONFLUENCIA` o `APP_CARTERA`). El logo y
+    la bajada de cada píldora salen de acá y de `APP_TAGLINES`; la forma, del
+    CSS global.
     """
-    st.markdown(
-        f'<div class="brand-bar">'
-        f'<div class="brand-pill">'
-        f'<div class="brand-mark">{_LOGO_SVG}</div>'
-        f'<div class="brand-text">'
-        f'<span class="brand-name">Confluencia</span>'
-        f'<span class="brand-slogan">Señales de mercado</span>'
-        f'</div></div>'
-        f'<div class="brand-tag">{etiqueta}</div>'
-        f'</div>',
-        unsafe_allow_html=True,
+    sel = f'div.element-container:has(.{BRAND_ANCHOR_CLASS}) + div div[role="radiogroup"]'
+    reglas = "".join(
+        f'{sel} label:nth-child({i}) > div > div::before {{ background-image: url("{_ICONOS_PRODUCTO[op]}"); }}'
+        f'{sel} label:nth-child({i}) p::after {{ content: "{APP_TAGLINES[op]}"; }}'
+        for i, op in enumerate(APP_OPTIONS, start=1)
     )
+    st.markdown(f'<div class="{BRAND_ANCHOR_CLASS}"></div><style>{reglas}</style>', unsafe_allow_html=True)
+    return st.radio("Vista", APP_OPTIONS, horizontal=True, label_visibility="collapsed")
 
 
 def render_nav_anchor() -> None:
     """
-    Marca el punto del DOM desde el que se estiliza el selector de secciones.
+    Marca el punto del DOM desde el que se estiliza un selector de navegación.
 
-    Va inmediatamente antes del `st.radio` de `app.main()`; el CSS lo alcanza
+    Va inmediatamente antes de cada `st.radio` de navegación de `app.main()`; el CSS lo alcanza
     por `:has()` sobre el contenedor hermano. Si se mueve uno de los dos, el
     selector pierde el aspecto de control segmentado (y nada más).
     """
-    st.markdown(f'<div id="{NAV_ANCHOR_ID}"></div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="{NAV_ANCHOR_CLASS}"></div>', unsafe_allow_html=True)

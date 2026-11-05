@@ -1,0 +1,133 @@
+<div class="bz">
+ <div class="bz-hero"><div class="bz-in">
+  <div class="bz-hero-top">
+    <span class="bz-eyebrow" id="eyebrow">Tu historia</span>
+    <button type="button" class="bz-eye" id="bz-eye" aria-pressed="false" aria-label="Ocultar montos" title="Ocultar montos">
+      <svg class="ico-on" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M1.5 12S5.5 5 12 5s10.5 7 10.5 7-4 7-10.5 7S1.5 12 1.5 12Z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><circle cx="12" cy="12" r="3.2" fill="none" stroke="currentColor" stroke-width="1.8"/></svg>
+      <svg class="ico-off" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M1.5 12S5.5 5 12 5s10.5 7 10.5 7-4 7-10.5 7S1.5 12 1.5 12Z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><circle cx="12" cy="12" r="3.2" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M3 3l18 18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+      <span class="lbl">Ocultar montos</span>
+    </button>
+  </div>
+  <h1 class="bz-title" id="titulo">—</h1>
+  <p class="bz-take" id="takeaway"></p>
+  <p class="bz-how">Todo en dólares MEP del día de cada operación. Lo que seguís teniendo cuenta al costo. El resultado de cada venta se reparte entre los años en que tuviste el activo.</p>
+  <section class="bz-kpis">
+    <div class="bz-kpi main"><span class="bz-kpi-label">Resultado realizado</span><span class="bz-kpi-value" id="k-total">—</span><span class="bz-kpi-note">Ventas, dividendos, cupones e intereses</span></div>
+    <div class="bz-kpi"><span class="bz-kpi-label">Compraventa</span><span class="bz-kpi-value" id="k-ventas">—</span><span class="bz-kpi-note" id="k-ventas-n"></span></div>
+    <div class="bz-kpi"><span class="bz-kpi-label">Renta cobrada</span><span class="bz-kpi-value" id="k-renta">—</span><span class="bz-kpi-note">Netos de gastos</span></div>
+    <div class="bz-kpi"><span class="bz-kpi-label">Cartera al costo</span><span class="bz-kpi-value" id="k-cartera">—</span><span class="bz-kpi-note" id="k-cartera-n"></span></div>
+  </section>
+ </div>
+ <svg class="bz-wave" viewBox="0 0 1440 64" preserveAspectRatio="none" aria-hidden="true"><path d="M0,34 C180,64 360,64 560,40 C760,16 900,4 1080,18 C1240,30 1340,50 1440,40 L1440,64 L0,64 Z"/></svg>
+ </div>
+
+ <div class="bz-in">
+  <p class="bz-aviso" id="aviso" hidden></p>
+
+  <section class="bz-card" id="activos">
+    <div class="bz-sec-head">
+      <div>
+        <h2>Resultado por activo</h2>
+        <p class="bz-note">Todas las operaciones de cada ticker consolidadas. Elegí uno para ver cada venta y cobro con sus precios y el MEP usado.</p>
+      </div>
+      <div class="bz-tools">
+        <input class="bz-input" id="tk-search" type="search" placeholder="Buscar ticker o nombre" aria-label="Buscar activo">
+        <select class="bz-input" id="tk-clase" aria-label="Filtrar por tipo de activo"></select>
+      </div>
+    </div>
+    <div class="bz-md-wrap"><div class="bz-md">
+      <div class="bz-master"><div class="bz-tablewrap">
+        <table id="t-tk"><thead><tr>
+          <th class="l"><button data-k="ticker">Ticker</button></th>
+          <th class="l bz-hide-sm"><button data-k="clase">Tipo</button></th>
+          <th><button data-k="compraventa" data-num="1">Compraventa</button></th>
+          <th class="bz-hide-sm"><button data-k="renta" data-num="1">Renta</button></th>
+          <th><button data-k="total" data-num="1">Realizado</button></th>
+        </tr></thead><tbody></tbody></table>
+      </div></div>
+      <div class="bz-card bz-detail" id="detalle" aria-live="polite">
+        <div class="bz-dt-head"><span class="bz-dt-tk" id="dt-tk">—</span><span class="bz-dt-sub" id="dt-sub">—</span></div>
+        <div class="bz-stats">
+          <div class="bz-stat"><span class="bz-stat-label">Compraventa</span><span class="bz-stat-value" id="st-cv">—</span></div>
+          <div class="bz-stat"><span class="bz-stat-label">Dividendos y cupones</span><span class="bz-stat-value" id="st-re">—</span></div>
+          <div class="bz-stat"><span class="bz-stat-label">Realizado</span><span class="bz-stat-value" id="st-to">—</span></div>
+          <div class="bz-stat"><span class="bz-stat-label">Costo de lo vendido</span><span class="bz-stat-value" id="st-co">—</span></div>
+          <div class="bz-stat"><span class="bz-stat-label">Rendimiento s/ costo</span><span class="bz-stat-value" id="st-rd">—</span></div>
+          <div class="bz-stat"><span class="bz-stat-label">En cartera, al costo</span><span class="bz-stat-value" id="st-ab">—</span></div>
+        </div>
+        <p class="bz-note" id="dt-note"></p>
+        <div class="bz-tablewrap">
+          <table id="t-ops"><thead><tr>
+            <th class="l">Fecha</th><th class="l c-b">Broker</th><th class="l">Tipo</th>
+            <th class="l c-v">Compra del</th><th class="c-v">Cant.</th><th class="c-v">Precio compra → venta</th>
+            <th>MEP</th><th class="c-v">Costo US$</th><th>Venta o cobro US$</th><th>Gastos US$</th><th>Resultado</th>
+          </tr></thead><tbody></tbody></table>
+        </div>
+      </div>
+    </div></div>
+  </section>
+
+  <section class="bz-grid">
+    <div class="bz-card"><h2>Ganancia realizada por año</h2><p class="bz-note">Por año de venta o cobro.</p><div class="bz-legend" id="leg-anio"></div><div class="bz-chart" id="chart-anio"></div></div>
+    <div class="bz-card"><h2>Por tipo de activo</h2><p class="bz-note">Tocá una barra para filtrar la tabla de activos por ese tipo.</p><div class="bz-chart" id="chart-clase"></div></div>
+    <div class="bz-card">
+      <div class="bz-sec-head"><h2>Cómo está armada tu cartera</h2>
+        <div class="bz-seg" role="group" aria-label="Agrupar cartera"><button type="button" id="mix-activo" aria-pressed="true">Por activo</button><button type="button" id="mix-tipo" aria-pressed="false">Por tipo</button></div>
+      </div>
+      <p class="bz-note">Peso de cada posición según lo que pagaste por ella.</p>
+      <div class="bz-donut-wrap"><div class="bz-donut" id="chart-mix"></div></div>
+    </div>
+  </section>
+
+  <section class="bz-card" id="cobros">
+    <div class="bz-sec-head">
+      <div><h2>Calendario de cobros</h2><p class="bz-note">Dividendos y cupones de los próximos 12 meses con lo que tenés hoy: cada cobro del último año, en el mismo mes, ajustado a tu cantidad actual. Montos brutos.</p></div>
+      <div class="bz-legend"><span><i style="background:var(--bz-d3)"></i>Dividendo</span><span><i style="background:var(--bz-d1)"></i>Cupón</span></div>
+    </div>
+    <div class="bz-cobros-kpis">
+      <div class="bz-ck"><span class="bz-ck-label">Total estimado, 12 meses</span><span class="bz-ck-value" id="c-total">—</span></div>
+      <div class="bz-ck"><span class="bz-ck-label">Promedio por mes</span><span class="bz-ck-value" id="c-mes">—</span></div>
+      <div class="bz-ck"><span class="bz-ck-label">Rendimiento sobre costo</span><span class="bz-ck-value" id="c-yoc">—</span><span class="bz-ck-note" id="c-yoc-n"></span></div>
+      <div class="bz-ck"><span class="bz-ck-label">Próximo cobro</span><span class="bz-ck-value" id="c-prox">—</span><span class="bz-ck-note" id="c-prox-n"></span></div>
+    </div>
+    <div class="bz-meses" id="cal-div"></div>
+    <p class="bz-note" id="sin-cobro"></p>
+  </section>
+
+  <div class="bz-sec-title"><h2 class="bz-big">Tu forma de invertir</h2><p class="bz-note">Patrones que salen de tus ventas y cobros.</p></div>
+  <section class="bz-tiles" id="tiles"></section>
+
+  <section class="bz-card"><h2>Calendario de resultados</h2><p class="bz-note">Ganancia realizada de cada mes. Verde es ganancia, rojo es pérdida; más intenso, más grande.</p><div class="bz-chart bz-cal" id="chart-cal"></div></section>
+
+  <section class="bz-grid">
+    <div class="bz-card"><h2>¿Te conviene esperar?</h2><p class="bz-note">Cada punto es una venta: cuántos días tuviste el activo y cuánto rindió sobre lo que pagaste. El tamaño es el monto invertido.</p><div class="bz-chart" id="chart-scatter"></div></div>
+    <div class="bz-card"><h2>Renta pasiva por trimestre</h2><p class="bz-note">Dividendos, cupones e intereses de caución, netos de gastos.</p><div class="bz-legend" id="leg-renta"></div><div class="bz-chart" id="chart-renta"></div></div>
+  </section>
+
+  <section class="bz-grid">
+    <div class="bz-card"><h2>Tus 5 mejores ventas</h2><p class="bz-note" id="nota-mejores">Por resultado en dólares de cada lote vendido.</p>
+      <div class="bz-tablewrap"><table><thead><tr><th class="l">Ticker</th><th class="l">Fecha</th><th>Días</th><th>Rend.</th><th>Resultado</th></tr></thead><tbody id="tb-mejores"></tbody></table></div></div>
+    <div class="bz-card"><h2>Tus 5 peores ventas</h2><p class="bz-note">Las que más dólares te hicieron perder.</p>
+      <div class="bz-tablewrap"><table><thead><tr><th class="l">Ticker</th><th class="l">Fecha</th><th>Días</th><th>Rend.</th><th>Resultado</th></tr></thead><tbody id="tb-peores"></tbody></table></div></div>
+  </section>
+
+  <section class="bz-card" id="anual">
+    <h2>Rendimiento anual</h2>
+    <p class="bz-note">Resultado de cada año sobre el capital que tuviste invertido en promedio ese año.</p>
+    <div class="bz-anual-kpis">
+      <div class="bz-ak main"><span class="bz-ak-label" id="a-tir-l">TIR anualizada</span><span class="bz-ak-value" id="a-tir">—</span><span class="bz-ak-note">Toda la historia, con tu cartera actual al costo</span></div>
+      <div class="bz-ak"><span class="bz-ak-label">Mejor año</span><span class="bz-ak-value" id="a-mejor">—</span></div>
+      <div class="bz-ak"><span class="bz-ak-label">Peor año</span><span class="bz-ak-value" id="a-peor">—</span></div>
+    </div>
+    <div class="bz-tablewrap"><table id="t-anual"><thead><tr>
+      <th class="l">Año</th><th class="bz-hide-sm">Compraventa</th><th class="bz-hide-sm">Renta</th><th>Resultado</th><th>Capital promedio</th><th>Rendimiento</th><th class="bz-hide-sm"></th>
+    </tr></thead><tbody></tbody></table></div>
+  </section>
+
+  <section class="bz-card" id="raros" hidden>
+    <h2>Movimientos que no pudimos interpretar</h2>
+    <p class="bz-note">Quedaron fuera de todos los totales. Si falta el archivo de un período anterior, subirlo suele resolver las ventas sin compra.</p>
+    <div class="bz-tablewrap"><table><thead><tr><th class="l">Broker</th><th class="l">Fecha</th><th class="l">Ticker</th><th class="l">Movimiento</th><th class="l">Motivo</th></tr></thead><tbody id="tb-raros"></tbody></table></div>
+  </section>
+ </div>
+</div>
