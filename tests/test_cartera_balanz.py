@@ -99,12 +99,44 @@ class TestConversion:
         assert d["resultado_usd"] == pytest.approx(2.5)
 
     def test_cupon_viene_en_pesos_aunque_diga_dolares(self):
+        # El caso medido en el export real: 5.000 sobre 100 nominales solo
+        # cierra en pesos (50 dólares por nominal no paga ningún bono).
         fila = _realizado(Fecha="2024-03-01", Ticker="ONX", Tipo="Corporativos - Dólar",
                           **{"Tipo Movimiento": "Cupón", "Moneda Venta": "Dólares C.V. 7000"}, Cupones=5000.0)
-        d = leer_export(_xlsx([fila])).operaciones.iloc[0]
+        lote = _lote("ONX", "2024-01-10", 100, 1.0, moneda="Dólares", tipo="Corporativos - Dólar")
+        d = leer_export(_xlsx([fila], [lote])).operaciones.iloc[0]
         assert d["movimiento"] == MOV_CUPON
         assert d["cobro_moneda"] == "ARS"
         assert d["resultado_usd"] == pytest.approx(5)
+
+    def test_cupon_sin_nominales_no_se_adivina(self):
+        fila = _realizado(Fecha="2024-03-01", Ticker="ONX", Tipo="Corporativos - Dólar",
+                          **{"Tipo Movimiento": "Cupón", "Moneda Venta": "Dólares C.V. 7000"}, Cupones=5000.0)
+        x = leer_export(_xlsx([fila, _venta("AAA", "2024-01-01", "2024-06-01", 1, 1000, 1100)]))
+        assert list(x.operaciones["ticker"]) == ["AAA"]
+        assert "pesos o en dólares" in x.no_reconocidos.iloc[0]["motivo"]
+
+    def test_cupon_en_dolares_cobrado_el_dia_del_vencimiento(self):
+        # Ese día la venta ya está en el reporte, pero los nominales seguían.
+        venc = _venta("ONX", "2023-06-01", "2025-06-01", 1000, 1.0, -40,
+                      **{"Operacion Venta": "Renta y Amortización / ONX"})
+        venc["Moneda Compra"] = venc["Moneda Venta"] = "Dólares"
+        cupon = _realizado(Fecha="2025-06-01", Ticker="ONX", Tipo="Corporativos - Dólar",
+                           **{"Tipo Movimiento": "Cupón", "Moneda Venta": "Dólares"}, Cupones=35.0)
+        c = leer_export(_xlsx([venc, cupon])).operaciones.set_index("movimiento")
+        assert c.loc[MOV_CUPON, "cobro_moneda"] == "USD"
+        assert c.loc[MOV_CUPON, "resultado_usd"] == pytest.approx(35)
+
+    def test_cupon_en_pesos_con_el_mep_de_2018(self):
+        # Con MEP 38, 665 pesos sobre 1.000 nominales son 0,665 "por nominal":
+        # un corte fijo lo leía como dólares. Son US$ 17,50 (1,75% del capital).
+        cupon = _realizado(Fecha="2018-06-01", Ticker="ONX", Tipo="Corporativos - Dólar",
+                           **{"Tipo Movimiento": "Cupón", "Moneda Venta": "Dólares"}, Cupones=665.0,
+                           OperacionVentaDolarMEP=38.0)
+        lote = _lote("ONX", "2018-01-10", 1000, 1.0, moneda="Dólares", mep=38.0, tipo="Corporativos - Dólar")
+        d = leer_export(_xlsx([cupon], [lote])).operaciones.iloc[0]
+        assert d["cobro_moneda"] == "ARS"
+        assert d["resultado_usd"] == pytest.approx(17.5)
 
     def test_la_moneda_del_cupon_sale_del_monto_por_nominal(self):
         # Otra cuenta: un cupón cobrado en dólares. 1.000 nominales que cobran

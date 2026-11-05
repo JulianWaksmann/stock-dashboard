@@ -16,6 +16,8 @@ ni número de cuenta. Lo único que se cachea es la serie pública del MEP.
 Es capa de dibujo: lee y calcula a través de `cartera/`.
 """
 
+import re
+
 import streamlit as st
 
 from cartera.cocos import es_cocos
@@ -25,6 +27,10 @@ from cartera.lectura import leer_archivos
 from cartera.modelo import ExportInvalido, filtrar_broker
 from components.cartera_report import render_cartera_report
 from constants import CARTERA_BROKER_ALL
+
+
+def _texto_plano(texto: str) -> str:
+    return re.sub(r"([\\`*_{}\[\]()#+\-.!|>~<$])", r"\\\1", texto)
 
 
 def render_cartera_panel() -> None:
@@ -66,7 +72,9 @@ def render_cartera_panel() -> None:
             return
 
     for aviso in avisos:
-        st.warning(aviso)
+        # Los avisos citan nombres de archivo, que elige quien sube: se
+        # muestran como texto, sin que un "*" o un "[...]" se lea como Markdown.
+        st.warning(_texto_plano(aviso))
 
     brokers = sorted(set(cartera.operaciones["broker"]) | set(cartera.lotes_abiertos["broker"]))
     elegido = None

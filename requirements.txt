@@ -11,9 +11,10 @@
 # yfinance is the exception - it wraps an undocumented, frequently-changing
 # Yahoo Finance API, so its ceiling is the next minor rather than the next
 # major release.
-# 1.53 is where st.components.v2 got style isolation on `component()`, which
-# the Balanz report (components/balanz_report.py) relies on.
-streamlit>=1.53.0,<2.0.0
+# The portfolio report (components/cartera_report.py) needs st.components.v2
+# with style isolation on `component()` (1.53+); 1.62 is the oldest version
+# it and the brand selector CSS were actually checked on (also on 1.66.1).
+streamlit>=1.62.0,<2.0.0
 yfinance>=0.2.40,<0.3.0
 pandas>=2.2.0,<4.0.0
 numpy>=1.26.0,<3.0.0
@@ -22,5 +23,8 @@ plotly>=5.20.0,<6.0.0
 # already pulls it in transitively, but it is declared explicitly because the
 # bonds module imports it directly.
 requests>=2.31.0,<3.0.0
-# Reads the .xlsx export of the Balanz report (balanz/parser.py, via pandas).
+# Reads the .xlsx export of the Balanz report (cartera/balanz.py, via pandas).
 openpyxl>=3.1.0,<4.0.0
+# openpyxl parses the uploaded workbook's XML with it when installed, which
+# protects the shared server from XML bombs in a file anyone can upload.
+defusedxml>=0.7.1,<1.0.0

@@ -37,6 +37,7 @@ Puro: recibe bytes y la serie del MEP, sin red ni Streamlit.
 
 from __future__ import annotations
 
+import csv
 import io
 import re
 from dataclasses import dataclass, field
@@ -92,14 +93,33 @@ def es_cocos(contenido: bytes) -> bool:
 
 
 def _numero(v) -> float:
-    """'-67.011,8761' → -67011.8761. Vacío → 0."""
+    """
+    '-67.011,8761' → -67011.8761; '$ -1.000' → -1000. Vacío → 0.
+
+    Lo que no se entiende es NaN, no cero: un monto ilegible tomado como cero
+    da un resultado falso sin aviso (una caución con lo colocado ilegible
+    salía con todo lo devuelto como interés). La fila con NaN se lista.
+    """
     if v is None or (isinstance(v, float) and pd.isna(v)):
         return 0.0
-    t = str(v).strip().replace(".", "").replace(",", ".")
-    try:
-        return float(t) if t else 0.0
-    except ValueError:
+    t = re.sub(r"(U\$S|US\$|\$|\s)", "", str(v).strip(), flags=re.IGNORECASE)
+    if not t:
         return 0.0
+    t = t.replace(".", "").replace(",", ".")
+    try:
+        return float(t)
+    except ValueError:
+        return float("nan")
+
+
+def _moneda(v) -> str:
+    """'ARS', '$', 'Pesos' → ARS; 'USD', 'U$S', 'US$', 'Dólares', 'USD MEP' → USD; otra cosa → ''."""
+    t = str(v or "").strip().upper()
+    if t in ("ARS", "$") or t.startswith("PES"):
+        return "ARS"
+    if t.startswith(("USD", "US$", "U$S", "U$D", "DOL", "DÓL")):
+        return "USD"
+    return ""
 
 
 def _leer(contenido: bytes) -> pd.DataFrame:
@@ -109,7 +129,27 @@ def _leer(contenido: bytes) -> pd.DataFrame:
             break
         except UnicodeDecodeError:
             continue
-    df = pd.read_csv(io.StringIO(texto), sep=";", dtype=str, keep_default_na=False)
+    # Se lee a mano y no con `pd.read_csv` para controlar las filas que no
+    # tienen la cantidad de campos del encabezado: pandas, según cómo se lo
+    # llame, corre todas las columnas o descarta las sobrantes sin avisar, y
+    # en los dos casos los montos quedan en la columna equivocada.
+    filas = [f for f in csv.reader(io.StringIO(texto), delimiter=";") if any(c.strip() for c in f)]
+    if not filas:
+        raise ExportInvalido("El CSV está vacío.")
+    encabezado, cuerpo = [c.strip() for c in filas[0]], []
+    while encabezado and not encabezado[-1]:
+        encabezado.pop()
+    for f in filas[1:]:
+        # Un ";" final deja un campo vacío de más: eso no es un error.
+        while len(f) > len(encabezado) and not f[-1].strip():
+            f = f[:-1]
+        if len(f) > len(encabezado):
+            raise ExportInvalido(
+                "El CSV de Cocos tiene filas con más columnas de las que indica el encabezado. "
+                "Descargalo de nuevo desde Cocos, sin abrirlo y guardarlo con otro programa."
+            )
+        cuerpo.append(f + [""] * (len(encabezado) - len(f)))
+    df = pd.DataFrame(cuerpo, columns=encabezado, dtype=str)
     faltan = [c for c in COLUMNAS if c not in df.columns]
     if faltan:
         raise ExportInvalido(
@@ -160,7 +200,7 @@ def _clase(instrumento: str) -> str:
 
 
 def _mapa_tickers(df: pd.DataFrame) -> dict[str, str]:
-    """Ticker crudo → ticker con el que se agrupa (junta MSFTD con MSFT si es el mismo instrumento)."""
+    """Ticker crudo → ticker con el que se agrupa (la especie en dólares con la de pesos, si es el mismo instrumento)."""
     nombres: dict[str, str] = {}
     for inst in df["instrumento"]:
         t = _ticker_crudo(inst)
@@ -168,11 +208,15 @@ def _mapa_tickers(df: pd.DataFrame) -> dict[str, str]:
             nombres.setdefault(t, _nombre(inst).upper())
     mapa = {}
     for t, nombre in nombres.items():
-        base = t[:-1]
-        if len(t) >= 4 and t[-1] in "DC" and base in nombres and nombres[base] == nombre:
-            mapa[t] = base
-        else:
-            mapa[t] = t
+        mapa[t] = t
+        if len(t) < 3 or t[-1] not in "DC":
+            continue
+        # La especie en pesos de un CEDEAR es el ticker sin la letra (KOD →
+        # KO, MSFTD → MSFT); la de una ON termina en O (YCA6D → YCA6O).
+        for base in (t[:-1], t[:-1] + "O"):
+            if base != t and base in nombres and nombres[base] == nombre:
+                mapa[t] = base
+                break
     return mapa
 
 
@@ -201,10 +245,27 @@ def _a_usd(monto: float, moneda: str, mep: float | None) -> float | None:
     return monto / mep if mep else None
 
 
+def _sin_superposicion(tablas: list[pd.DataFrame]) -> pd.DataFrame:
+    """
+    Une los archivos sacando lo que se repite **entre** ellos.
+
+    Se compara la fila entera, no solo `nroTicket`: un ticket vacío o
+    compartido (contado y término de una caución) haría desaparecer filas
+    distintas. Y solo entre archivos: dos filas idénticas dentro del mismo
+    archivo son dos movimientos (dos dividendos iguales el mismo día).
+    """
+    vistas: set = set()
+    partes = []
+    for t in tablas:
+        claves = t.astype(str).apply(tuple, axis=1)
+        partes.append(t[~claves.isin(vistas)])
+        vistas.update(claves)
+    return pd.concat(partes, ignore_index=True)
+
+
 def leer_cocos(archivos: list[bytes], serie_mep: pd.Series | None) -> Cartera:
     """Uno o varios CSV de movimientos de Cocos → operaciones y lotes en USD MEP."""
-    df = pd.concat([_leer(a) for a in archivos], ignore_index=True)
-    df = df.drop_duplicates(subset="nroTicket", keep="first")
+    df = _sin_superposicion([_leer(a) for a in archivos])
     if df.empty:
         raise ExportInvalido("Los archivos de Cocos no tienen movimientos.")
     if serie_mep is None or serie_mep.empty:
@@ -220,7 +281,7 @@ def leer_cocos(archivos: list[bytes], serie_mep: pd.Series | None) -> Cartera:
         df[c] = df[c].map(_numero)
     df["tipoOperacion"] = df["tipoOperacion"].str.strip()
     df["instrumento"] = df["instrumento"].fillna("").str.strip()
-    df["moneda"] = df["moneda"].str.strip().str.upper()
+    df["moneda"] = df["moneda"].map(_moneda)
     # El mismo día, primero lo que abre lotes: un rescate y una suscripción
     # del mismo día no deberían dejar al rescate sin cuotapartes.
     df["_orden"] = df["tipoOperacion"].map(lambda t: 0 if t in ABREN_LOTE else 1)
@@ -254,6 +315,12 @@ def leer_cocos(archivos: list[bytes], serie_mep: pd.Series | None) -> Cartera:
             rara(r, "sin fecha")
             continue
         if tipo in SIN_RESULTADO:
+            continue
+        if any(pd.isna(r[c]) for c in ("cantidad", "montoBruto", "total")):
+            rara(r, "tiene un monto o una cantidad que no se pudo leer")
+            continue
+        if not r["moneda"]:
+            rara(r, "moneda desconocida")
             continue
         if tipo == OP_CAUCION_CONTADO:
             contados.setdefault(fecha, []).append(r)
@@ -347,34 +414,44 @@ def leer_cocos(archivos: list[bytes], serie_mep: pd.Series | None) -> Cartera:
         rara(r, "movimiento desconocido")
 
     # Cauciones: contado y término del mismo día de ejecución.
-    fechas = [f for f in (*df["fechaEjecucion"], *df["fechaLiquidacion"]) if f]
+    # El corte es la última ejecución: una caución que liquida después del
+    # día del export dejaría una fecha de corte en el futuro.
+    fechas = [f for f in df["fechaEjecucion"] if f]
     abiertas_caucion = []
     for fecha in sorted(set(contados) | set(terminos)):
-        cs, ts = contados.get(fecha, []), terminos.get(fecha, [])
-        if cs and ts:
-            colocado = sum(abs(c["total"]) for c in cs)
-            devuelto_bruto = sum(t["montoBruto"] for t in ts)
-            devuelto = sum(t["total"] for t in ts)
-            cobro = max(t["fechaLiquidacion"] or fecha for t in ts)
-            m = mep(cobro)
-            if not m:
-                rara(ts[0], "faltan datos para pasarlo a dólares")
-                continue
-            gastos = devuelto_bruto - devuelto
-            filas.append({
-                "broker": BROKER_COCOS, "fecha": cobro, "ticker": TICKER_CAUCION, "descripcion": "Caución en pesos",
-                "clase": CLASE_CAUCION, "movimiento": MOV_INTERES, "mep_venta": m, "gastos_ars": gastos,
-                # Lo colocado y desde cuándo: no es un costo de venta, es el
-                # capital que el rendimiento anual tiene que ver invertido.
-                "fecha_compra": fecha, "costo_usd": colocado / (mep(fecha) or m),
-                "gastos_usd": gastos / m, "resultado_usd": (devuelto - colocado) / m,
-                "cobro_monto": devuelto_bruto - colocado, "cobro_moneda": "ARS", "cobro_usd": (devuelto_bruto - colocado) / m,
-            })
-        elif cs:
-            abiertas_caucion += cs
-        else:
-            for t in ts:
+        # Cada término se empareja con su contado del mismo día: el de monto
+        # más alto que no supere lo devuelto (la caución vuelve con interés).
+        # Sumar todo el día servía solo si había la misma cantidad de filas
+        # de cada lado; con un término en el archivo que no se subió, daba un
+        # interés negativo enorme.
+        libres = sorted(contados.get(fecha, []), key=lambda c: abs(c["total"]))
+        for t in sorted(terminos.get(fecha, []), key=lambda t: t["montoBruto"]):
+            candidatos = [c for c in libres if abs(c["total"]) <= t["montoBruto"] and c["moneda"] == t["moneda"]]
+            if not candidatos:
                 rara(t, "caución sin su colocación en los archivos")
+                continue
+            c = candidatos[-1]
+            libres.remove(c)
+            colocado, devuelto, bruto = abs(c["total"]), t["total"], t["montoBruto"]
+            cobro = t["fechaLiquidacion"] or fecha
+            m_cobro, m_coloc = mep(cobro), mep(fecha)
+            if t["moneda"] != "USD" and not (m_cobro and m_coloc):
+                rara(t, "faltan datos para pasarlo a dólares")
+                continue
+            gastos = bruto - devuelto
+            filas.append({
+                "broker": BROKER_COCOS, "fecha": cobro, "ticker": TICKER_CAUCION,
+                "descripcion": "Caución en " + ("dólares" if t["moneda"] == "USD" else "pesos"),
+                "clase": CLASE_CAUCION, "movimiento": MOV_INTERES, "mep_venta": m_cobro, "gastos_ars": gastos,
+                # Lo colocado y desde cuándo: no es un costo de venta, es el
+                # capital que el rendimiento anual y la TIR tienen que ver.
+                "fecha_compra": fecha, "costo_usd": _a_usd(colocado, t["moneda"], m_coloc),
+                "gastos_usd": _a_usd(gastos, t["moneda"], m_cobro),
+                "resultado_usd": _a_usd(devuelto - colocado, t["moneda"], m_cobro),
+                "cobro_monto": bruto - colocado, "cobro_moneda": t["moneda"],
+                "cobro_usd": _a_usd(bruto - colocado, t["moneda"], m_cobro),
+            })
+        abiertas_caucion += libres
 
     primera = df["fechaEjecucion"][df["fechaEjecucion"] != ""].min()
     for ticker, g in sin_compra.items():
@@ -401,12 +478,13 @@ def leer_cocos(archivos: list[bytes], serie_mep: pd.Series | None) -> Cartera:
                     "costo_usd": lote.costo_usd_u * lote.resto,
                 })
     for c in abiertas_caucion:
-        m = mep(c["fechaEjecucion"])
-        if m:
+        costo = _a_usd(abs(c["total"]), c["moneda"], mep(c["fechaEjecucion"]))
+        if costo is not None:
             abiertos.append({
-                "broker": BROKER_COCOS, "ticker": TICKER_CAUCION, "descripcion": "Caución en pesos",
+                "broker": BROKER_COCOS, "ticker": TICKER_CAUCION,
+                "descripcion": "Caución en " + ("dólares" if c["moneda"] == "USD" else "pesos"),
                 "clase": CLASE_CAUCION, "fecha_compra": c["fechaEjecucion"], "cantidad": abs(c["total"]),
-                "costo_usd": abs(c["total"]) / m,
+                "costo_usd": costo,
             })
 
     # Si hay algo no reconocido se devuelve igual: el informe lo lista, que es

@@ -29,7 +29,7 @@ from datetime import date
 
 import pandas as pd
 
-from cartera.modelo import MOV_CUPON, MOV_DIVIDENDO, MOV_VENTA, Cartera
+from cartera.modelo import MOV_CUPON, MOV_DIVIDENDO, MOV_INTERES, MOV_VENTA, Cartera
 
 # Cuántas posiciones muestra por nombre la composición de cartera; el resto
 # va a "Otros".
@@ -58,6 +58,26 @@ def _renta(ops: pd.DataFrame) -> pd.DataFrame:
     return ops[ops["movimiento"] != MOV_VENTA] if not ops.empty else ops
 
 
+def _renta_sin_capital(ops: pd.DataFrame) -> pd.DataFrame:
+    """
+    Intereses de caución que no informan cuánto se colocó (los de Balanz).
+
+    Un dividendo o un cupón tienen su capital en el lote del activo; una
+    caución no tiene lote. Sin lo colocado, su interés sumaría resultado sin
+    sumar capital e inflaría el rendimiento (medido: 361% en un año con doce
+    cauciones). Cuentan en los totales, pero no en el rendimiento ni en la TIR.
+    """
+    r = _renta(ops)
+    if r.empty:
+        return r
+    return r[(r["movimiento"] == MOV_INTERES) & (r["costo_usd"].isna() | r["fecha_compra"].isna())]
+
+
+def _renta_para_rendimiento(ops: pd.DataFrame) -> pd.DataFrame:
+    r = _renta(ops)
+    return r.drop(index=_renta_sin_capital(ops).index) if not r.empty else r
+
+
 def por_ticker(ops: pd.DataFrame, lotes: pd.DataFrame) -> list[dict]:
     filas: dict[str, dict] = {}
 
@@ -65,7 +85,7 @@ def por_ticker(ops: pd.DataFrame, lotes: pd.DataFrame) -> list[dict]:
         return filas.setdefault(t, {
             "ticker": t, "descripcion": desc, "clase": clase, "operaciones": 0,
             "compraventa": 0.0, "renta": 0.0, "total": 0.0, "costo_vendido": 0.0,
-            "cartera_costo": 0.0, "cartera_cant": 0.0,
+            "cartera_costo": 0.0, "cartera_cant": 0.0, "vendio": False,
         })
 
     for r in ops.itertuples():
@@ -75,6 +95,7 @@ def por_ticker(ops: pd.DataFrame, lotes: pd.DataFrame) -> list[dict]:
         if r.movimiento == MOV_VENTA:
             a["compraventa"] += r.resultado_usd
             a["costo_vendido"] += r.costo_usd
+            a["vendio"] = True
         else:
             a["renta"] += r.resultado_usd
     for r in lotes.itertuples():
@@ -89,6 +110,9 @@ def por_ticker(ops: pd.DataFrame, lotes: pd.DataFrame) -> list[dict]:
             **a,
             **{k: _r2(a[k]) for k in ("compraventa", "renta", "total", "costo_vendido", "cartera_costo", "cartera_cant")},
             "rendimiento": None if rend is None else round(rend, 1),
+            # Si vendió algo, aunque el costo haya sido cero (acciones
+            # recibidas como dividendo): su compraventa se muestra igual.
+            "vendio": a["vendio"],
         })
     return sorted(salida, key=lambda a: a["total"], reverse=True)
 
@@ -181,6 +205,13 @@ def estilo(ops: pd.DataFrame, fecha_corte: str) -> dict:
         "renta_12m": _r2(renta[edad < 365].sum()),
         "renta_12m_previos": _r2(renta[(edad >= 365) & (edad < 730)].sum()),
     })
+    # Lo derivado también se calcula acá y no en el dibujo, que solo da formato.
+    previos = out["renta_12m_previos"]
+    out.update({
+        "acierto_pct": round(out["ganadoras"] / out["ventas"] * 100),
+        "payoff": round(out["ganancia_media"] / abs(out["perdida_media"]), 1) if out["perdida_media"] else None,
+        "renta_var_pct": round((out["renta_12m"] - previos) / abs(previos) * 100) if previos else None,
+    })
     return out
 
 
@@ -238,61 +269,80 @@ def renta_trim(ops: pd.DataFrame) -> list[dict]:
     ]
 
 
-def _tenencia(ops: pd.DataFrame, lotes: pd.DataFrame, ticker: str, dia: str) -> float:
-    """Cantidad que se tenía de `ticker` el día `dia`, reconstruida con los lotes."""
+def _tenencia(ops: pd.DataFrame, lotes: pd.DataFrame, broker: str, ticker: str, dia: str) -> float:
+    """
+    Cantidad de `ticker` que se tenía en `broker` el día `dia`, con los lotes.
+
+    Por broker: un dividendo cobrado en Balanz se paga sobre lo que había en
+    Balanz, no sobre la suma de las tenencias en todos los brokers.
+    """
     v = _ventas(ops)
-    v = v[(v["ticker"] == ticker) & (v["fecha_compra"] <= dia) & (dia < v["fecha"])]
-    a = lotes[(lotes["ticker"] == ticker) & (lotes["fecha_compra"] <= dia)] if not lotes.empty else lotes
+    v = v[(v["broker"] == broker) & (v["ticker"] == ticker) & v["fecha_compra"].notna()]
+    # `fecha_compra` es texto solo si hay alguna venta: sin ventas la columna
+    # entera es NaN (float) y compararla contra un texto revienta.
+    v = v[(v["fecha_compra"].astype(str) <= dia) & (dia < v["fecha"].astype(str))]
+    a = lotes[(lotes["broker"] == broker) & (lotes["ticker"] == ticker)] if not lotes.empty else lotes
+    a = a[a["fecha_compra"].astype(str) <= dia] if not a.empty else a
     return float(v["cantidad"].sum()) + (float(a["cantidad"].sum()) if not a.empty else 0.0)
+
+
+def _meses_desde(inicio: date, n: int) -> list[str]:
+    return [date(inicio.year + (inicio.month - 1 + i) // 12, (inicio.month - 1 + i) % 12 + 1, 1).isoformat()[:7]
+            for i in range(n)]
 
 
 def calendario_cobros(ops: pd.DataFrame, lotes: pd.DataFrame, fecha_corte: str) -> dict:
     """
     Cobros esperados en los próximos doce meses con lo que se tiene hoy.
 
-    Repite cada dividendo o cupón de los últimos doce meses en el mismo mes del
-    año siguiente, escalado de lo que se tenía ese día a lo que se tiene hoy.
-    Montos brutos, en dólares.
+    Repite cada dividendo o cupón del último año en el mismo día del año
+    siguiente, escalado de lo que se tenía ese día a lo que se tiene hoy, en
+    el mismo broker. Los doce meses arrancan en el mes del corte: un cobro de
+    ese mes que todavía no pasó también se ve. Montos brutos, en dólares.
     """
     corte = _d(fecha_corte)
-    desde = date(corte.year + (corte.month // 12), corte.month % 12 + 1, 1).isoformat()[:7]
-    hoy = lotes.groupby("ticker")["cantidad"].sum().to_dict() if not lotes.empty else {}
+    meses = _meses_desde(corte, 12)
+    hoy = lotes.groupby(["broker", "ticker"])["cantidad"].sum().to_dict() if not lotes.empty else {}
     pagos = []
     renta = _renta(ops)
     for r in renta[renta["movimiento"].isin([MOV_DIVIDENDO, MOV_CUPON])].itertuples():
-        if r.ticker not in hoy:
+        clave = (r.broker, r.ticker)
+        if clave not in hoy:
             continue
         f = _d(r.fecha)
-        if not (0 <= (corte - f).days < 365):
-            continue
-        q = _tenencia(ops, lotes, r.ticker, r.fecha)
-        if q <= 0:
-            continue
         try:
             sig = f.replace(year=f.year + 1)
         except ValueError:  # 29 de febrero
             sig = f.replace(year=f.year + 1, day=28)
+        if not (sig > corte and sig.isoformat()[:7] in meses):
+            continue
+        q = _tenencia(ops, lotes, r.broker, r.ticker, r.fecha)
+        if q <= 0 or pd.isna(r.cobro_usd):
+            continue
         pagos.append({
-            "ticker": r.ticker, "tipo": r.movimiento, "mes": sig.isoformat()[:7], "fecha_est": sig.isoformat(),
-            "base": r.fecha, "monto_usd": _r2(r.cobro_usd / q * hoy[r.ticker]),
+            "broker": r.broker, "ticker": r.ticker, "tipo": r.movimiento, "mes": sig.isoformat()[:7],
+            "fecha_est": sig.isoformat(), "base": r.fecha, "monto_usd": _r2(r.cobro_usd / q * hoy[clave]),
         })
     pagos.sort(key=lambda p: p["fecha_est"])
     total = sum(p["monto_usd"] for p in pagos)
     pagan = sorted({p["ticker"] for p in pagos})
-    costo = float(lotes.loc[lotes["ticker"].isin(pagan), "costo_usd"].sum()) if pagan else 0.0
+    pares = {(p["broker"], p["ticker"]) for p in pagos}
+    costo = float(sum(
+        lotes.loc[(lotes["broker"] == b) & (lotes["ticker"] == t), "costo_usd"].sum() for b, t in pares
+    )) if pares else 0.0
     prox = pagos[0]["mes"] if pagos else None
     return {
         "pagos": pagos,
-        "desde": desde,
+        "desde": meses[0],
         "total": _r2(total),
         "mensual": _r2(total / 12),
         "yoc": round(total / costo * 100, 1) if costo > 0 else None,
         "costo_pagan": _r2(costo),
         "pagan": pagan,
         "proximo_mes": prox,
-        "proximo_tickers": [p["ticker"] for p in pagos if p["mes"] == prox],
+        "proximo_tickers": sorted({p["ticker"] for p in pagos if p["mes"] == prox}),
         "proximo_total": _r2(sum(p["monto_usd"] for p in pagos if p["mes"] == prox)),
-        "sin_cobro": sorted(set(hoy) - set(pagan)),
+        "sin_cobro": sorted({t for _, t in hoy} - set(pagan)),
     }
 
 
@@ -319,7 +369,7 @@ def rendimiento_anual(ops: pd.DataFrame, lotes: pd.DataFrame, fecha_corte: str) 
         tramos.append((_d(r.fecha_compra), corte, r.costo_usd, 0.0))
     # Renta que trae su capital (una caución de Cocos: lo colocado y desde
     # cuándo). Su resultado ya cuenta como renta; acá solo suma capital.
-    renta_con_capital = _renta(ops)
+    renta_con_capital = _renta_para_rendimiento(ops)
     if not renta_con_capital.empty:
         renta_con_capital = renta_con_capital[renta_con_capital["costo_usd"].notna() & renta_con_capital["fecha_compra"].notna()]
         for r in renta_con_capital.itertuples():
@@ -328,7 +378,7 @@ def rendimiento_anual(ops: pd.DataFrame, lotes: pd.DataFrame, fecha_corte: str) 
     if not fechas:
         return []
     primero = min(fechas)
-    renta = _renta(ops)
+    renta = _renta_para_rendimiento(ops)
     out = []
     for anio in range(primero.year, corte.year + 1):
         a = max(date(anio, 1, 1), primero)
@@ -399,8 +449,14 @@ def tir_anualizada(ops: pd.DataFrame, lotes: pd.DataFrame, fecha_corte: str) -> 
     for r in _ventas(ops).itertuples():
         flujos.append((_d(r.fecha_compra), -r.costo_usd))
         flujos.append((_d(r.fecha), r.venta_usd - r.gastos_usd))
-    for r in _renta(ops).itertuples():
-        flujos.append((_d(r.fecha), r.resultado_usd))
+    for r in _renta_para_rendimiento(ops).itertuples():
+        # Una caución que informa lo colocado es plata que sale y vuelve con
+        # interés; sin eso la TIR vería solo el interés y daría cientos de %.
+        if pd.notna(r.costo_usd) and pd.notna(r.fecha_compra):
+            flujos.append((_d(r.fecha_compra), -r.costo_usd))
+            flujos.append((_d(r.fecha), r.costo_usd + r.resultado_usd))
+        else:
+            flujos.append((_d(r.fecha), r.resultado_usd))
     corte = _d(fecha_corte)
     for r in lotes.itertuples():
         flujos.append((_d(r.fecha_compra), -r.costo_usd))
@@ -439,5 +495,6 @@ def armar_informe(cartera: Cartera) -> dict:
         "peores": sorted(vr, key=lambda r: r["resultado"])[:TOP_VENTAS],
         "rendimiento_anual": rendimiento_anual(ops, lotes, corte),
         "tir": tir_anualizada(ops, lotes, corte),
+        "renta_sin_capital": _r2(_renta_sin_capital(ops)["resultado_usd"].sum()) if not ops.empty else 0.0,
         "no_reconocidos": cartera.no_reconocidos.astype(object).where(cartera.no_reconocidos.notna(), None).to_dict("records"),
     }

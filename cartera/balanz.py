@@ -28,9 +28,12 @@ Lo que trae el export, medido sobre uno real:
     los cupones de ONs dicen lo mismo y vienen en pesos: 51.649 de cupón sobre
     996 nominales solo cierra en pesos. Como eso puede no valer para todas las
     cuentas, la moneda de un cupón se decide **por el monto**: se divide por
-    los nominales que se tenían ese día (reconstruidos con los lotes). En
-    dólares un cupón es de centavos por nominal; en pesos, de decenas o
-    cientos. `_CUPON_MAX_USD_POR_NOMINAL` es el corte.
+    los nominales que se tenían ese día (reconstruidos con los lotes) y se
+    elige la lectura —pesos al MEP de ese día, o dólares— que da un pago por
+    nominal más cercano a uno típico (`_CUPON_TIPICO_POR_NOMINAL`). Un corte
+    fijo no sirve: con el MEP de 2018 (unos 38) un cupón en pesos por nominal
+    cae en el rango de uno en dólares. Si no hay tenencia de ese bono en el
+    archivo, no hay cómo medirlo y el cupón va a `no_reconocidos`.
   * El vencimiento de una ON puede llegar como `Orden` con `Operacion Venta`
     "Renta y Amortización" y un precio de venta negativo. Ahí se toma el
     rescate a la par: 1 por nominal.
@@ -44,6 +47,9 @@ alcanza con saber que es un activo, no qué clase de activo es.
 from __future__ import annotations
 
 import io
+import math
+import zipfile
+from datetime import date
 
 import pandas as pd
 
@@ -106,9 +112,12 @@ MOVIMIENTOS = {
     "No Realizado": None,
 }
 
-# Un cupón en dólares no paga más que esto por nominal (ni sumándole la
-# amortización completa, que es 1). Por encima, el monto está en pesos.
-_CUPON_MAX_USD_POR_NOMINAL = 1.5
+# Lo que paga un bono en dólares por nominal en un cupón típico (3%). Sirve de
+# referencia para elegir entre leer el monto en pesos o en dólares: se toma la
+# lectura cuyo pago por nominal queda más cerca de este, en escala logarítmica.
+# Entre las dos lecturas hay un factor MEP (de 38 a más de 1.500), así que la
+# equivocada siempre queda lejísimos.
+_CUPON_TIPICO_POR_NOMINAL = 0.03
 
 # Columna donde viene el monto cobrado, por movimiento de renta.
 _COLUMNA_COBRO = {
@@ -139,18 +148,65 @@ def _a_usd(monto: float, mon: str | None, mep: float) -> float | None:
 
 
 def _fecha(serie: pd.Series) -> pd.Series:
-    return pd.to_datetime(serie, errors="coerce").dt.strftime("%Y-%m-%d")
+    """
+    Fechas a ISO. Acepta lo que puede venir en un xlsx: celdas de fecha, texto
+    ISO (lo que trae Balanz), texto dd/mm/aaaa y números de serie de Excel.
+    """
+    def una(v):
+        if v is None or (isinstance(v, float) and pd.isna(v)) or v == "":
+            return None
+        if isinstance(v, (int, float)) and not isinstance(v, bool):
+            # Número de serie de Excel: días desde el 30/12/1899.
+            return (pd.Timestamp("1899-12-30") + pd.Timedelta(days=float(v))).strftime("%Y-%m-%d")
+        if isinstance(v, (pd.Timestamp, date)):
+            return pd.Timestamp(v).strftime("%Y-%m-%d")
+        t = str(v).strip()[:10]
+        for formato in ("%Y-%m-%d", "%d/%m/%Y", "%d-%m-%Y"):
+            try:
+                return pd.to_datetime(t, format=formato).strftime("%Y-%m-%d")
+            except ValueError:
+                continue
+        return None
+
+    return serie.map(una)
+
+
+class _SinMoneda(ValueError):
+    """Un cupón cuya moneda no se puede deducir (no hay nominales de ese bono en el reporte)."""
+
+
+class _DatoIlegible(ValueError):
+    """Una celda numérica que no es un número. La fila se lista, no se adivina."""
 
 
 def _num(v) -> float:
-    return 0.0 if pd.isna(v) else float(v)
+    if v is None or (isinstance(v, float) and pd.isna(v)) or v == "":
+        return 0.0
+    try:
+        return float(v)
+    except (TypeError, ValueError):
+        raise _DatoIlegible(str(type(v).__name__)) from None
 
 
 def _texto(v) -> str:
     return "" if pd.isna(v) else str(v).strip()
 
 
+# Un reporte real pesa unos cientos de KB descomprimido. Un xlsx es un zip:
+# uno chico puede inflarse a gigas al abrirlo y tumbar el servidor, que es
+# compartido. Se mide antes de abrir.
+_MAX_DESCOMPRIMIDO = 100 * 1024 * 1024
+
+
 def _leer_hojas(contenido: bytes) -> tuple[pd.DataFrame, pd.DataFrame]:
+    try:
+        tamanio = sum(i.file_size for i in zipfile.ZipFile(io.BytesIO(contenido)).infolist())
+    except zipfile.BadZipFile as exc:
+        raise ExportInvalido(
+            "No pudimos abrir el archivo. Tiene que ser el Excel (.xlsx) tal como lo descarga Balanz."
+        ) from exc
+    if tamanio > _MAX_DESCOMPRIMIDO:
+        raise ExportInvalido("El Excel es demasiado grande para un reporte de Balanz.")
     try:
         hojas = pd.read_excel(io.BytesIO(contenido), sheet_name=None)
     except Exception as exc:  # openpyxl tira varios tipos según qué esté roto
@@ -214,22 +270,25 @@ def _fila_venta(r) -> dict | None:
     }
 
 
-def _moneda_cupon(r, bruto: float, tenencia) -> str:
-    """Pesos o dólares, según cuánto da el cupón por nominal (ver docstring)."""
+def _moneda_cupon(r, bruto: float, tenencia, mep: float) -> str | None:
+    """Pesos o dólares, según cuánto da el cupón por nominal (ver docstring). `None`: no se puede saber."""
     if moneda(r["Moneda Venta"]) != "USD":
         return "ARS"
     nominales = tenencia(normalizar_ticker(r["Ticker"]), r["Fecha"])
-    if nominales <= 0:
-        # Sin tenencia reconstruible no hay cómo medirlo: se usa lo medido
-        # en el export real, donde los cupones venían en pesos.
-        return "ARS"
-    return "USD" if bruto / nominales <= _CUPON_MAX_USD_POR_NOMINAL else "ARS"
+    if nominales <= 0 or bruto <= 0 or not mep or mep <= 0:
+        return None
+    en_usd = bruto / nominales
+    en_ars = en_usd / mep
+    distancia = lambda x: abs(math.log(x / _CUPON_TIPICO_POR_NOMINAL))  # noqa: E731
+    return "USD" if distancia(en_usd) <= distancia(en_ars) else "ARS"
 
 
 def _fila_cobro(r, mov: str, tenencia) -> dict | None:
     mep_v = _num(r["OperacionVentaDolarMEP"])
     bruto = _num(r[_COLUMNA_COBRO[mov]])
-    mon = _moneda_cupon(r, bruto, tenencia) if mov == MOV_CUPON else moneda(r["Moneda Venta"])
+    mon = _moneda_cupon(r, bruto, tenencia, mep_v) if mov == MOV_CUPON else moneda(r["Moneda Venta"])
+    if mov == MOV_CUPON and mon is None:
+        raise _SinMoneda()
     cobro = _a_usd(bruto, mon, mep_v)
     gastos = _a_usd(_num(r["Gastos"]), "ARS", mep_v)
     if cobro is None or gastos is None:
@@ -251,18 +310,20 @@ def _tenencias(df: pd.DataFrame, lotes: pd.DataFrame):
     ventas = df[df["Tipo Movimiento"].map(_texto) == "Orden"]
     v = pd.DataFrame({
         "ticker": ventas["Ticker"].map(normalizar_ticker), "desde": ventas["FechaCompra"],
-        "hasta": ventas["Fecha"], "cantidad": ventas["Cantidad"].map(_num),
+        "hasta": ventas["Fecha"], "cantidad": pd.to_numeric(ventas["Cantidad"], errors="coerce").fillna(0),
     })
     if not lotes.empty:
         a = pd.DataFrame({
             "ticker": lotes["Ticker"].map(normalizar_ticker), "desde": _fecha(lotes["Fecha"]),
-            "hasta": "9999-12-31", "cantidad": lotes["Cantidad"].map(_num),
+            "hasta": "9999-12-31", "cantidad": pd.to_numeric(lotes["Cantidad"], errors="coerce").fillna(0),
         })
         v = pd.concat([v, a], ignore_index=True)
     v = v.dropna(subset=["desde", "hasta"])
 
     def tenencia(ticker: str, dia: str) -> float:
-        t = v[(v["ticker"] == ticker) & (v["desde"] <= dia) & (dia < v["hasta"])]
+        # El día de la venta (o del vencimiento) todavía se tenía: un cupón
+        # cobrado ese mismo día se paga sobre esos nominales.
+        t = v[(v["ticker"] == ticker) & (v["desde"] <= dia) & (dia <= v["hasta"])]
         return float(t["cantidad"].sum())
 
     return tenencia
@@ -279,32 +340,46 @@ def _operaciones(realizado: pd.DataFrame, lotes: pd.DataFrame) -> tuple[pd.DataF
         mov = MOVIMIENTOS.get(crudo, "?")
         if mov is None:
             continue
-        base = {
-            "broker": BROKER_BALANZ,
-            "fecha": r["Fecha"],
-            "ticker": normalizar_ticker(r["Ticker"]),
-            "descripcion": _texto(r["Descripcion"]),
-            "clase": CLASES.get(_texto(r["Tipo"]), _texto(r["Tipo"]) or "Sin tipo"),
-            "mep_venta": _num(r["OperacionVentaDolarMEP"]),
-            "gastos_ars": _num(r["Gastos"]),
-        }
-        detalle = None
-        if pd.notna(r["Fecha"]) and mov == MOV_VENTA:
-            detalle = _fila_venta(r)
-        elif pd.notna(r["Fecha"]) and mov in _COLUMNA_COBRO:
-            detalle = _fila_cobro(r, mov, tenencia)
-        if detalle is None:
+
+        motivo = None
+        try:
+            fila = _fila(r, mov, tenencia)
+        except _DatoIlegible:
+            fila, motivo = None, "tiene un número que no se pudo leer"
+        except _SinMoneda:
+            fila, motivo = None, ("no se pudo saber si el cupón vino en pesos o en dólares: "
+                                  "el reporte no trae los nominales de ese bono")
+        if fila is None:
             raras.append({
                 "broker": BROKER_BALANZ,
                 "fecha": r["Fecha"] if pd.notna(r["Fecha"]) else "",
-                "ticker": base["ticker"],
-                "descripcion": base["descripcion"],
+                "ticker": normalizar_ticker(r["Ticker"]),
+                "descripcion": _texto(r["Descripcion"]),
                 "movimiento": crudo or "(vacío)",
-                "motivo": "movimiento desconocido" if mov == "?" else "faltan datos para pasarlo a dólares",
+                "motivo": motivo or ("movimiento desconocido" if mov == "?" else "faltan datos para pasarlo a dólares"),
             })
             continue
-        filas.append({**base, "movimiento": mov, **detalle})
+        filas.append(fila)
     return armar_operaciones(filas), raras
+
+
+def _fila(r, mov: str, tenencia) -> dict | None:
+    """Una fila del realizado → operación, o `None` si no se puede pasar a dólares."""
+    base = {
+        "broker": BROKER_BALANZ,
+        "fecha": r["Fecha"],
+        "ticker": normalizar_ticker(r["Ticker"]),
+        "descripcion": _texto(r["Descripcion"]),
+        "clase": CLASES.get(_texto(r["Tipo"]), _texto(r["Tipo"]) or "Sin tipo"),
+        "mep_venta": _num(r["OperacionVentaDolarMEP"]),
+        "gastos_ars": _num(r["Gastos"]),
+    }
+    detalle = None
+    if pd.notna(r["Fecha"]) and mov == MOV_VENTA:
+        detalle = _fila_venta(r)
+    elif pd.notna(r["Fecha"]) and mov in _COLUMNA_COBRO:
+        detalle = _fila_cobro(r, mov, tenencia)
+    return None if detalle is None else {**base, "movimiento": mov, **detalle}
 
 
 def _lotes(lotes: pd.DataFrame) -> tuple[pd.DataFrame, list[dict]]:
@@ -314,8 +389,11 @@ def _lotes(lotes: pd.DataFrame) -> tuple[pd.DataFrame, list[dict]]:
     df["Fecha"] = _fecha(df["Fecha"])
     filas, raras = [], []
     for _, r in df.iterrows():
-        cant = _num(r["Cantidad"])
-        costo = _a_usd(cant * _num(r["Precio Compra"]), moneda(r["Moneda"]), _num(r["DolarMEP"]))
+        try:
+            cant = _num(r["Cantidad"])
+            costo = _a_usd(cant * _num(r["Precio Compra"]), moneda(r["Moneda"]), _num(r["DolarMEP"]))
+        except _DatoIlegible:
+            cant, costo = 0.0, None
         if costo is None or pd.isna(r["Fecha"]):
             raras.append({
                 "broker": BROKER_BALANZ,
@@ -358,6 +436,8 @@ def leer_balanz(contenido: bytes) -> Cartera:
         cortes += list(_fecha(lotes["Fecha Lote"]).dropna())
     if not ops.empty:
         cortes += list(ops["fecha"])
+    if not cortes:
+        raise ExportInvalido("El reporte no trae ninguna fecha que se pueda leer.")
     fecha_corte = max(cortes)
 
     raras = pd.DataFrame(raras_ops + raras_lotes, columns=COLUMNAS_NO_RECONOCIDOS)

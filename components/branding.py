@@ -63,6 +63,15 @@ from theme import (
 NAV_ANCHOR_CLASS = "nav-anchor"
 BRAND_ANCHOR_CLASS = "brand-nav-anchor"
 
+# El puntito de una opción de radio, alcanzado por lo que **no** es: todo
+# `div` dentro de la opción que no sea el texto, ni lo contenga, ni esté
+# adentro de él. No depende de cuántos `div` lo envuelvan, que es lo que
+# cambia entre versiones de Streamlit.
+RADIO_DOT = (
+    '[data-testid="stRadioOption"] div:not([data-testid="stMarkdownContainer"])'
+    ':not(:has([data-testid="stMarkdownContainer"])):not([data-testid="stMarkdownContainer"] *)'
+)
+
 
 def _svg_data_uri(cuerpo: str) -> str:
     svg = (
@@ -151,14 +160,20 @@ div[data-testid="stMetricDelta"] {
    es la píldora violeta de la landing con el logo en un círculo blanco; la
    otra, la misma forma en blanco con borde lavanda. El logo y la bajada no
    pueden ir en el texto de una opción de radio, así que los pone el CSS:
-   `::before` es el círculo del logo y `p::after` la bajada. Qué logo y qué
-   bajada lleva cada opción lo decide `render_brand_nav()`, por posición. */
+   `::before` del texto es el círculo del logo y `p::after` la bajada. Qué
+   logo y qué bajada lleva cada opción lo decide `render_brand_nav()`.
+
+   Todo se engancha de atributos estables —`stRadioOption`,
+   `stMarkdownContainer`, el `value` del input— y nunca de cuántos `div`
+   anidan a cada opción: eso cambió entre Streamlit 1.62 y 1.66 (la 1.66
+   envuelve cada opción en un `div` más) y con selectores por posición las
+   dos píldoras salían con el logo y la bajada de la primera. */
 div.element-container:has(.$brand_anchor) + div div[role="radiogroup"] {
     gap: 0.7rem;
     flex-wrap: wrap;
     margin-bottom: 1.15rem;
 }
-div.element-container:has(.$brand_anchor) + div div[role="radiogroup"] label {
+div.element-container:has(.$brand_anchor) + div [data-testid="stRadioOption"] {
     margin: 0;
     padding: 0.42rem 1.1rem 0.42rem 0.45rem;
     border-radius: 999px;
@@ -167,24 +182,24 @@ div.element-container:has(.$brand_anchor) + div div[role="radiogroup"] label {
     cursor: pointer;
     transition: background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
 }
-div.element-container:has(.$brand_anchor) + div div[role="radiogroup"] label:hover {
+div.element-container:has(.$brand_anchor) + div [data-testid="stRadioOption"]:hover {
     border-color: $brand;
 }
-div.element-container:has(.$brand_anchor) + div div[role="radiogroup"] label[data-selected="true"] {
+div.element-container:has(.$brand_anchor) + div [data-testid="stRadioOption"]:has(input:checked) {
     background: $brand;
     border-color: $brand;
     box-shadow: 0 12px 26px -14px rgba(49, 27, 140, 0.75);
 }
-div.element-container:has(.$brand_anchor) + div div[role="radiogroup"] label > div > div {
+/* El puntito del radio sobra: la píldora entera es la opción. */
+div.element-container:has(.$brand_anchor) + div $radio_dot {
+    display: none;
+}
+div.element-container:has(.$brand_anchor) + div [data-testid="stRadioOption"] [data-testid="stMarkdownContainer"] {
     display: flex;
     align-items: center;
     gap: 0.6rem;
 }
-/* El puntito del radio sobra: la píldora entera es la opción. */
-div.element-container:has(.$brand_anchor) + div div[role="radiogroup"] label > div > div > div:first-child {
-    display: none;
-}
-div.element-container:has(.$brand_anchor) + div div[role="radiogroup"] label > div > div::before {
+div.element-container:has(.$brand_anchor) + div [data-testid="stRadioOption"] [data-testid="stMarkdownContainer"]::before {
     content: "";
     width: 30px;
     height: 30px;
@@ -195,10 +210,10 @@ div.element-container:has(.$brand_anchor) + div div[role="radiogroup"] label > d
     background-repeat: no-repeat;
     background-size: 17px;
 }
-div.element-container:has(.$brand_anchor) + div div[role="radiogroup"] label[data-selected="true"] > div > div::before {
+div.element-container:has(.$brand_anchor) + div [data-testid="stRadioOption"]:has(input:checked) [data-testid="stMarkdownContainer"]::before {
     background-color: #ffffff;
 }
-div.element-container:has(.$brand_anchor) + div div[role="radiogroup"] p {
+div.element-container:has(.$brand_anchor) + div [data-testid="stRadioOption"] p {
     margin: 0;
     font-family: $font_display;
     font-size: 0.95rem;
@@ -207,7 +222,7 @@ div.element-container:has(.$brand_anchor) + div div[role="radiogroup"] p {
     line-height: 1.12;
     color: $brand_strong;
 }
-div.element-container:has(.$brand_anchor) + div div[role="radiogroup"] p::after {
+div.element-container:has(.$brand_anchor) + div [data-testid="stRadioOption"] p::after {
     display: block;
     margin-top: 2px;
     font-family: $font;
@@ -217,10 +232,10 @@ div.element-container:has(.$brand_anchor) + div div[role="radiogroup"] p::after 
     text-transform: uppercase;
     color: $muted;
 }
-div.element-container:has(.$brand_anchor) + div div[role="radiogroup"] label[data-selected="true"] p {
+div.element-container:has(.$brand_anchor) + div [data-testid="stRadioOption"]:has(input:checked) p {
     color: #ffffff;
 }
-div.element-container:has(.$brand_anchor) + div div[role="radiogroup"] label[data-selected="true"] p::after {
+div.element-container:has(.$brand_anchor) + div [data-testid="stRadioOption"]:has(input:checked) p::after {
     color: rgba(255, 255, 255, 0.72);
 }
 
@@ -255,27 +270,26 @@ div.element-container:has(.$nav_anchor) + div div[role="radiogroup"] {
     margin-bottom: 1.5rem;
     box-shadow: 0 10px 26px -18px $shadow;
 }
-div.element-container:has(.$nav_anchor) + div div[role="radiogroup"] label {
+div.element-container:has(.$nav_anchor) + div [data-testid="stRadioOption"] {
     border-radius: 999px;
     padding: 0.45rem 1.15rem;
     margin: 0;
     transition: background 0.15s ease, color 0.15s ease;
 }
-div.element-container:has(.$nav_anchor) + div div[role="radiogroup"] label:hover {
+div.element-container:has(.$nav_anchor) + div [data-testid="stRadioOption"]:hover {
     background: $surface_alt;
 }
-div.element-container:has(.$nav_anchor) + div div[role="radiogroup"] label[data-selected="true"] {
+div.element-container:has(.$nav_anchor) + div [data-testid="stRadioOption"]:has(input:checked) {
     background: $brand;
     box-shadow: 0 10px 22px -12px rgba(49, 27, 140, 0.8);
 }
-div.element-container:has(.$nav_anchor) + div div[role="radiogroup"] label[data-selected="true"] p {
+div.element-container:has(.$nav_anchor) + div [data-testid="stRadioOption"]:has(input:checked) p {
     color: #ffffff;
     font-weight: 600;
 }
-/* El puntito del radio sobra cuando las opciones ya son pastillas. Va tan
-   adentro porque Streamlit envuelve cada opción en tres `div` sin clase
-   estable: label > wrapper > fila > [punto, texto]. */
-div.element-container:has(.$nav_anchor) + div div[role="radiogroup"] label > div > div > div:first-child {
+/* El puntito del radio sobra cuando las opciones ya son pastillas. Se lo
+   alcanza por lo que no es (ver `RADIO_DOT` arriba), no por su posición. */
+div.element-container:has(.$nav_anchor) + div $radio_dot {
     display: none;
 }
 
@@ -594,6 +608,7 @@ def inject_global_styles() -> None:
             squeeze_text=COLOR_SQUEEZE_TEXT,
             nav_anchor=NAV_ANCHOR_CLASS,
             brand_anchor=BRAND_ANCHOR_CLASS,
+            radio_dot=RADIO_DOT,
         ),
         unsafe_allow_html=True,
     )
@@ -607,11 +622,14 @@ def render_brand_nav() -> str:
     la bajada de cada píldora salen de acá y de `APP_TAGLINES`; la forma, del
     CSS global.
     """
-    sel = f'div.element-container:has(.{BRAND_ANCHOR_CLASS}) + div div[role="radiogroup"]'
+    # Cada opción se reconoce por el `value` de su input (su índice), que es
+    # estable; la posición en el DOM no (ver el CSS global).
+    sel = f'div.element-container:has(.{BRAND_ANCHOR_CLASS}) + div [data-testid="stRadioOption"]'
     reglas = "".join(
-        f'{sel} label:nth-child({i}) > div > div::before {{ background-image: url("{_ICONOS_PRODUCTO[op]}"); }}'
-        f'{sel} label:nth-child({i}) p::after {{ content: "{APP_TAGLINES[op]}"; }}'
-        for i, op in enumerate(APP_OPTIONS, start=1)
+        f'{sel}:has(input[value="{i}"]) [data-testid="stMarkdownContainer"]::before '
+        f'{{ background-image: url("{_ICONOS_PRODUCTO[op]}"); }}'
+        f'{sel}:has(input[value="{i}"]) p::after {{ content: "{APP_TAGLINES[op]}"; }}'
+        for i, op in enumerate(APP_OPTIONS)
     )
     st.markdown(f'<div class="{BRAND_ANCHOR_CLASS}"></div><style>{reglas}</style>', unsafe_allow_html=True)
     return st.radio("Vista", APP_OPTIONS, horizontal=True, label_visibility="collapsed")

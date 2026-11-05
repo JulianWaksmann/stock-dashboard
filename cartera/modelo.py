@@ -18,7 +18,7 @@ compró en un broker solo se vende en ese broker.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import pandas as pd
 
@@ -62,6 +62,10 @@ class Cartera:
     lotes_abiertos: pd.DataFrame
     no_reconocidos: pd.DataFrame
     fecha_corte: str
+    # Fecha hasta la que informa cada broker. Al combinar, `fecha_corte` es la
+    # más reciente; al filtrar por un broker se vuelve a la suya, o un reporte
+    # de Balanz bajado en marzo se mediría como si llegara hasta octubre.
+    cortes: dict = field(default_factory=dict)
 
 
 def normalizar_ticker(t) -> str:
@@ -77,11 +81,25 @@ def armar_operaciones(filas: list[dict]) -> pd.DataFrame:
     return ops.sort_values(["fecha", "broker", "ticker"], kind="stable").reset_index(drop=True)
 
 
+def _cortes(c: Cartera) -> dict[str, str]:
+    """Corte de cada broker de una cartera: el propio si ya lo trae, si no su `fecha_corte`."""
+    if c.cortes:
+        return dict(c.cortes)
+    brokers = set(c.operaciones.get("broker", pd.Series(dtype=str)).dropna()) | set(
+        c.lotes_abiertos.get("broker", pd.Series(dtype=str)).dropna()
+    )
+    return {b: c.fecha_corte for b in brokers}
+
+
 def combinar(carteras: list[Cartera]) -> Cartera:
     """Une las carteras de varios archivos o brokers en una sola."""
     ops = [c.operaciones for c in carteras if not c.operaciones.empty]
     lotes = [c.lotes_abiertos for c in carteras if not c.lotes_abiertos.empty]
     raras = [c.no_reconocidos for c in carteras if not c.no_reconocidos.empty]
+    cortes: dict[str, str] = {}
+    for c in carteras:
+        for broker, fecha in _cortes(c).items():
+            cortes[broker] = max(fecha, cortes.get(broker, fecha))
     op = pd.concat(ops, ignore_index=True) if ops else pd.DataFrame(columns=COLUMNAS_OPERACIONES)
     if not op.empty:
         op = op.sort_values(["fecha", "broker", "ticker"], kind="stable").reset_index(drop=True)
@@ -91,6 +109,7 @@ def combinar(carteras: list[Cartera]) -> Cartera:
         lotes_abiertos=pd.concat(lotes, ignore_index=True) if lotes else pd.DataFrame(columns=COLUMNAS_LOTES),
         no_reconocidos=pd.concat(raras, ignore_index=True) if raras else pd.DataFrame(columns=COLUMNAS_NO_RECONOCIDOS),
         fecha_corte=max(c.fecha_corte for c in carteras),
+        cortes=cortes,
     )
 
 
@@ -102,4 +121,5 @@ def filtrar_broker(c: Cartera, broker: str | None) -> Cartera:
     def f(df):
         return df[df["broker"] == broker].reset_index(drop=True) if not df.empty else df
 
-    return Cartera(f(c.operaciones), f(c.lotes_abiertos), f(c.no_reconocidos), c.fecha_corte)
+    corte = c.cortes.get(broker, c.fecha_corte)
+    return Cartera(f(c.operaciones), f(c.lotes_abiertos), f(c.no_reconocidos), corte, {broker: corte})

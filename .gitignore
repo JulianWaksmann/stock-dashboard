@@ -18,3 +18,10 @@ dist/
 
 # Registro diario de los paneles: es un log local, no fuente.
 data/snapshots/
+
+# Exports de brokers: traen nombre, número de cuenta y toda la historia de
+# operaciones de una persona. Nunca entran al repo, aunque se guarden acá
+# para probar "Mi cartera" (los tests usan archivos sintéticos).
+resultados_por_*.xlsx
+movimientos_cuenta*.csv
+*.xlsx

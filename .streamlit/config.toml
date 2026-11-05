@@ -16,3 +16,8 @@ backgroundColor = "#ffffff"
 secondaryBackgroundColor = "#f5f3ff"
 textColor = "#15132b"
 font = "sans serif"
+
+# Los exports de un broker pesan cientos de KB. El tope por omisión (200 MB)
+# deja que cualquiera suba un archivo enorme a un servidor compartido.
+[server]
+maxUploadSize = 20

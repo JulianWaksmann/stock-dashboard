@@ -102,7 +102,7 @@ export default function (component) {
       const tr = document.createElement('tr'); tr.tabIndex = 0; tr.setAttribute('aria-selected', String(r.ticker === st.sel));
       td(tr, r.ticker, 'l bz-tk');
       td(tr, r.clase, 'l bz-hide-sm muted');
-      td(tr, r.costo_vendido ? sgn(r.compraventa) : '—', r.costo_vendido ? pn(r.compraventa) : 'muted');
+      td(tr, r.vendio ? sgn(r.compraventa) : '—', r.vendio ? pn(r.compraventa) : 'muted');
       td(tr, r.renta ? sgn(r.renta) : '—', (r.renta ? pn(r.renta) : 'muted') + ' bz-hide-sm');
       const T = r.total;
       const c = td(tr, '', pn(T)); const wrap = document.createElement('span'); wrap.className = 'bz-barcell';
@@ -134,7 +134,7 @@ export default function (component) {
     $('#dt-tk').textContent = r ? r.ticker : '—';
     $('#dt-sub').textContent = r ? r.descripcion + ' · ' + r.clase : '—';
     if (!r) return;
-    setTxt('#st-cv', r.costo_vendido ? sgn(r.compraventa) : '—', pn(r.compraventa));
+    setTxt('#st-cv', r.vendio ? sgn(r.compraventa) : '—', pn(r.compraventa));
     setTxt('#st-re', r.renta ? sgn(r.renta) : '—', pn(r.renta));
     setTxt('#st-to', sgn(r.total), pn(r.total));
     setTxt('#st-co', r.costo_vendido ? usd(r.costo_vendido) : '—', '');
@@ -162,7 +162,8 @@ export default function (component) {
         td(tr, v ? precio(o.precio_compra, o.moneda_compra) + ' → ' + precio(o.precio_venta, o.moneda_venta) : '');
       }
       // Una venta usa dos dólares (el de la compra y el de la venta); un cobro, uno.
-      td(tr, v && o.mep_compra != null ? nf2.format(o.mep_compra) + ' → ' + nf2.format(o.mep_venta) : (o.mep_venta == null ? '' : nf2.format(o.mep_venta)), 'muted');
+      const mep = (x) => (x ? nf2.format(x) : '—');
+      td(tr, v && o.mep_compra ? mep(o.mep_compra) + ' → ' + mep(o.mep_venta) : mep(o.mep_venta), 'muted');
       if (hasV) td(tr, v && o.costo_usd != null ? num2(o.costo_usd) : '');
       td(tr, v ? (o.venta_usd == null ? '' : num2(o.venta_usd)) : (o.cobro_usd == null ? '' : num2(o.cobro_usd)));
       td(tr, o.gastos_usd ? num2(o.gastos_usd) : '', 'muted');
@@ -235,8 +236,10 @@ export default function (component) {
     const el = $('#chart-mix'); el.replaceChildren();
     const rows = data.cartera_mix.filter((r) => r.grupo === st.mix);
     if (!rows.length) return;
-    const pal = ['var(--bz-d1)', 'var(--bz-d2)', 'var(--bz-d3)', 'var(--bz-d4)', 'var(--bz-d5)', 'var(--bz-d6)', 'var(--bz-d6)', 'var(--bz-d6)'];
-    const total = d3.sum(rows, (r) => r.costo);
+    // Seis tonos: los grupos que sobran repiten el último, que es el de "resto".
+    const tonos = ['var(--bz-d1)', 'var(--bz-d2)', 'var(--bz-d3)', 'var(--bz-d4)', 'var(--bz-d5)', 'var(--bz-d6)'];
+    const pal = rows.map((_, i) => tonos[Math.min(i, tonos.length - 1)]);
+    const total = data.kpis.cartera_costo;
     const box = document.createElement('div'); box.className = 'bz-donut-svg'; el.appendChild(box);
     const S = 180, R = S / 2, r0 = R * 0.62;
     const svg = d3.select(box).append('svg').attr('width', '100%').attr('viewBox', `0 0 ${S} ${S}`).style('max-width', S + 'px');
@@ -405,10 +408,9 @@ export default function (component) {
       t.append(l, v, n); el.appendChild(t);
     };
     if (!e.ventas) { tile('Ventas', '—', 'Todavía no vendiste nada: los patrones aparecen con las primeras ventas.'); return; }
-    tile('Tasa de acierto', Math.round((e.ganadoras / e.ventas) * 100) + '%', e.ganadoras + ' de ' + e.ventas + ' ventas cerraron en ganancia; ' + e.perdedoras + ' en pérdida.');
-    const ratio = e.perdida_media ? e.ganancia_media / Math.abs(e.perdida_media) : null;
+    tile('Tasa de acierto', e.acierto_pct + '%', e.ganadoras + ' de ' + e.ventas + ' ventas cerraron en ganancia; ' + e.perdedoras + ' en pérdida.');
     tile('Ganancia vs. pérdida promedio', '+' + usd(e.ganancia_media) + ' / ' + usd(e.perdida_media),
-      ratio == null ? 'Sin ventas en pérdida.' : 'Una venta ganadora deja en promedio ' + ratio.toLocaleString('es-AR', { maximumFractionDigits: 1 }) + ' veces lo que te saca una perdedora.');
+      e.payoff == null ? 'Sin ventas en pérdida.' : 'Una venta ganadora deja en promedio ' + e.payoff.toLocaleString('es-AR', { maximumFractionDigits: 1 }) + ' veces lo que te saca una perdedora.');
     if (e.dias_ganadoras != null && e.dias_perdedoras != null) {
       tile('Cuánto aguantás', e.dias_ganadoras + ' vs ' + e.dias_perdedoras + ' días', e.dias_ganadoras >= e.dias_perdedoras
         ? 'Mantuviste las ganadoras más tiempo que las perdedoras.'
@@ -419,8 +421,8 @@ export default function (component) {
       const t = e.top_tickers;
       tile('Concentración', e.top_pct + '%', 'de tu ganancia vino de ' + (t.length > 1 ? t.slice(0, -1).join(', ') + ' y ' + t[t.length - 1] : t[0]) + '.');
     }
-    tile('Renta pasiva, últimos 12 meses', usd(e.renta_12m), e.renta_12m_previos
-      ? pct(Math.round(((e.renta_12m - e.renta_12m_previos) / Math.abs(e.renta_12m_previos)) * 100)) + ' contra los 12 meses anteriores (' + usd(e.renta_12m_previos) + ').'
+    tile('Renta pasiva, últimos 12 meses', usd(e.renta_12m), e.renta_var_pct != null
+      ? pct(e.renta_var_pct) + ' contra los 12 meses anteriores (' + usd(e.renta_12m_previos) + ').'
       : 'Primer año con renta.');
   }
 
@@ -443,6 +445,9 @@ export default function (component) {
     const peor = conRend.reduce((a, b) => (!a || b.rendimiento < a.rendimiento ? b : a), null);
     setTxt('#a-mejor', mejor ? mejor.anio + ' · ' + pct(mejor.rendimiento) : '—', mejor ? pn(mejor.rendimiento) : '');
     setTxt('#a-peor', peor && conRend.length > 1 ? peor.anio + ' · ' + pct(peor.rendimiento) : '—', peor && conRend.length > 1 ? pn(peor.rendimiento) : '');
+    $('#anual-nota').textContent = data.renta_sin_capital
+      ? 'Los intereses de caución de Balanz (' + usd(data.renta_sin_capital) + ') cuentan en los totales pero no acá: Balanz no informa cuánto se colocó en cada una.'
+      : '';
     const tb = $('#t-anual tbody'); tb.replaceChildren();
     const max = Math.max(1, ...conRend.map((r) => Math.abs(r.rendimiento)));
     for (const r of rows) {

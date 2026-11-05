@@ -42,6 +42,9 @@ def leer_archivos(archivos: list[tuple[str, bytes]], serie_mep: pd.Series | None
                 balanz.append((nombre, leer_balanz(contenido)))
             except ExportInvalido as exc:
                 avisos.append(f"{nombre}: {exc}")
+            except Exception:  # noqa: BLE001 - un archivo roto no tumba a los demás
+                # Sin el detalle del error: puede traer valores del archivo.
+                avisos.append(f"{nombre}: no pudimos leerlo. Descargalo de nuevo desde Balanz.")
         else:
             avisos.append(f"{nombre}: no es un export de Balanz ni de Cocos que sepamos leer.")
 
@@ -50,8 +53,9 @@ def leer_archivos(archivos: list[tuple[str, bytes]], serie_mep: pd.Series | None
         balanz.sort(key=lambda x: x[1].fecha_corte)
         if len(balanz) > 1:
             avisos.append(
-                f"Subiste {len(balanz)} reportes de Balanz: cada uno trae toda la historia, así que usamos "
-                f"solo el más reciente ({balanz[-1][0]})."
+                f"Subiste {len(balanz)} reportes de Balanz. Cada uno trae toda la historia de su cuenta, así que "
+                f"usamos solo el más reciente ({balanz[-1][0]}) para no contar dos veces lo mismo. Si son de cuentas "
+                "distintas, mirá cada una por separado."
             )
         carteras.append(balanz[-1][1])
     if cocos:
@@ -59,6 +63,8 @@ def leer_archivos(archivos: list[tuple[str, bytes]], serie_mep: pd.Series | None
             carteras.append(leer_cocos([c for _, c in cocos], serie_mep))
         except ExportInvalido as exc:
             avisos.append(f"Cocos: {exc}")
+        except Exception:  # noqa: BLE001 - ver arriba
+            avisos.append("Cocos: no pudimos leer los archivos. Descargalos de nuevo desde Cocos.")
 
     if not carteras:
         raise ExportInvalido(" ".join(avisos) or "No subiste ningún archivo que sepamos leer.")
